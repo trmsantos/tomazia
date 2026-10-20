@@ -5,6 +5,17 @@ processo de testes: é a única forma de provar que o script funciona como vai
 ser mesmo invocado (`python -m app.openapi [destino]`), com `cwd` numa pasta
 qualquer — nunca escrevendo, por acidente, em `frontend/openapi.json` do
 repositório real.
+
+Achado [média] da ronda de correções da F1-02: `PYTHONPATH` aponta para o
+`backend/` real (é preciso, para `import app` funcionar), mas sem
+`TOMAZIA_ENV_FILE`, `app.config._caminho_ficheiro_de_ambiente()` resolvia,
+por omissão, para `RAIZ_APP / ".env"` — ou seja, `backend/.env` a sério, se
+algum dia vier a existir (p. ex. para testes manuais de alguém). O revisor
+reproduziu plantando um `.env` com `AMBIENTE=producao` ali e os três testes
+de export ficaram vermelhos, com o traceback do pydantic a imprimir as
+definições no log de CI. Por isso `_correr_export` define sempre
+`TOMAZIA_ENV_FILE` para um caminho inexistente dentro do `tmp_path` do
+próprio teste, nunca dependente de `cwd` nem do `backend/` real.
 """
 
 from __future__ import annotations
@@ -25,10 +36,29 @@ _AMBIENTE_BASE = {
 }
 
 
+def _construir_ambiente_isolado(destino: Path) -> dict[str, str]:
+    """Ambiente de subprocesso para `python -m app.openapi`, isolado do `backend/.env` real.
+
+    Extraída à parte (e reaproveitada por
+    `tests/seguranca/test_isolamento_de_subprocessos.py`) precisamente para
+    o isolamento poder ser verificado sem ter de correr o subprocesso: só a
+    asserção sobre este dicionário já prende o achado [média] da ronda de
+    correções da F1-02.
+    """
+    ambiente = dict(_AMBIENTE_BASE)
+    # Nunca o `.env` do `backend/` real: um caminho inexistente dentro do
+    # `tmp_path` do teste que pediu este export (`destino.parent`), para
+    # cada teste ficar isolado do ambiente de quem corre a suite.
+    ambiente["TOMAZIA_ENV_FILE"] = str(
+        destino.parent / "isolamento-de-testes-nao-existe" / ".env"
+    )
+    return ambiente
+
+
 def _correr_export(
     destino: Path, cwd: Path, variaveis_extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
-    ambiente = dict(_AMBIENTE_BASE)
+    ambiente = _construir_ambiente_isolado(destino)
     if variaveis_extra:
         ambiente.update(variaveis_extra)
     return subprocess.run(

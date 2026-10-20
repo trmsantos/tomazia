@@ -1,10 +1,14 @@
 """Testes do contrato WSGI/Passenger (F1-02).
 
-Três grupos de testes:
+Dois grupos de testes (um terceiro, `/docs`/`/redoc`/`/openapi.json`
+desligados em produção, vive agora só em
+`tests/seguranca/test_documentacao_desligada_em_producao.py` — é um critério
+de segurança, tem de estar dentro de `tests/seguranca/` para `uv run pytest
+tests/seguranca` o apanhar se alguém o destapar, em vez de ficar escondido
+aqui):
 
 1. A app (`app.main.app`) montada com `a2wsgi.ASGIMiddleware` responde bem a
-   `SCRIPT_NAME=/api`: `/health` dá 200, um caminho inexistente dá 404, e em
-   produção `/docs`, `/redoc` e `/openapi.json` ficam desligados. Estes
+   `SCRIPT_NAME=/api`: `/health` dá 200, um caminho inexistente dá 404. Estes
    testes correm no processo de testes, em cima de `app.main.app`
    diretamente — não precisam do ficheiro `passenger_wsgi.py` em si, só da
    combinação FastAPI + a2wsgi.
@@ -22,7 +26,6 @@ from __future__ import annotations
 import importlib
 import io
 import json
-import secrets
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -123,45 +126,6 @@ class TestDespachoComPrefixoApi:
         assert status.startswith("404")
 
 
-class TestDocumentacaoDesligadaEmProducao:
-    def test_producao_desliga_docs_redoc_e_openapi_json(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from a2wsgi import ASGIMiddleware
-
-        segredo_forte = secrets.token_urlsafe(48)
-        monkeypatch.setenv("AMBIENTE", "producao")
-        monkeypatch.setenv("SEGREDO_SESSAO", segredo_forte)
-        from app.config import obter_definicoes
-
-        obter_definicoes.cache_clear()
-        modulo = _reimportar_app_main()
-
-        aplicacao_wsgi = ASGIMiddleware(modulo.app)
-        for caminho in ("/docs", "/redoc", "/openapi.json"):
-            status, _, _ = _chamar_wsgi(aplicacao_wsgi, "", caminho)
-            assert status.startswith("404"), f"{caminho} devia dar 404 em produção"
-
-    def test_desenvolvimento_mantem_docs_redoc_e_openapi_json(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from a2wsgi import ASGIMiddleware
-
-        monkeypatch.setenv("AMBIENTE", "desenvolvimento")
-        monkeypatch.delenv("SEGREDO_SESSAO", raising=False)
-        from app.config import obter_definicoes
-
-        obter_definicoes.cache_clear()
-        modulo = _reimportar_app_main()
-
-        aplicacao_wsgi = ASGIMiddleware(modulo.app)
-        for caminho in ("/docs", "/redoc", "/openapi.json"):
-            status, _, _ = _chamar_wsgi(aplicacao_wsgi, "", caminho)
-            assert status.startswith("200"), (
-                f"{caminho} devia continuar ligado em desenvolvimento"
-            )
-
-
 class TestPassengerWsgiApplication:
     def test_application_existe_e_e_chamavel(self, tmp_path: Path) -> None:
         """`passenger_wsgi.application` existe e responde — importado a sério, em subprocesso.
@@ -169,9 +133,20 @@ class TestPassengerWsgiApplication:
         Corre num subprocesso isolado (ver `tests/apoio_subprocesso.py`) para
         nunca mudar a pasta de trabalho nem importar `app.main` dentro do
         processo de testes.
+
+        Cria um `.env` dentro de `pasta_tomazia_api/` de propósito: depois da
+        correção do achado [alta] da ronda de correções (`passenger_wsgi.py`
+        recusa arrancar se o ficheiro de ambiente resolvido não existir),
+        este teste deixaria de arrancar sem ele — e este teste tem de
+        continuar verde, é um caminho feliz, não um teste de segurança. Os
+        cenários sem `.env` vivem em
+        `tests/seguranca/test_arranque_passenger.py`.
         """
         pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
             tmp_path / "tomazia_api"
+        )
+        (pasta_tomazia_api / ".env").write_text(
+            "AMBIENTE=desenvolvimento\n", encoding="utf-8"
         )
         outra_pasta = tmp_path / "outra-pasta-de-trabalho"
         outra_pasta.mkdir()

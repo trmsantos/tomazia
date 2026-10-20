@@ -24,7 +24,19 @@ RAIZ_BACKEND = Path(__file__).resolve().parent.parent
 
 # Nunca herdado do processo de testes: só o suficiente para o Python do
 # `.venv` arrancar e encontrar bibliotecas do sistema operativo.
-AMBIENTE_MINIMO: dict[str, str] = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
+AMBIENTE_MINIMO: dict[str, str] = {
+    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    # Sem isto, `python -c` acrescenta sempre `""` (a pasta de trabalho) a
+    # `sys.path[0]`. Isso bastava, sozinho, para tornar `import app.main`
+    # possível mesmo que o `sys.path.insert(0, str(BASE_DIR))` do próprio
+    # `passenger_wsgi.py` desaparecesse por completo — o `os.chdir(BASE_DIR)`
+    # do ficheiro já deixava `cwd` certo para essa entrada `""` funcionar, e a
+    # falta do `insert` passava sempre despercebida. Com `PYTHONSAFEPATH=1`,
+    # essa entrada nunca é acrescentada: só o `sys.path.insert(...)` do
+    # próprio `passenger_wsgi.py` torna o import possível, não importa a
+    # pasta de trabalho. Ver o docstring de `correr_passenger_wsgi_isolado`.
+    "PYTHONSAFEPATH": "1",
+}
 
 
 def copiar_tomazia_api_falso(destino: Path) -> Path:
@@ -97,11 +109,19 @@ def correr_passenger_wsgi_isolado(
     `python passenger_wsgi.py` (como script) nem com `PYTHONPATH` a apontar
     para `pasta_tomazia_api`: as duas formas acrescentariam essa pasta a
     `sys.path` só por o Python arrancar assim, mascarando uma eventual falta
-    do `sys.path.insert(0, ...)` dentro do próprio `passenger_wsgi.py`. Com
-    `python -c`, `sys.path[0]` fica `""` — a pasta de trabalho (`cwd`), que
-    nunca é `pasta_tomazia_api` nestes testes — por isso só o
-    `chdir`/`sys.path.insert` do próprio ficheiro tornam `import app.main`
-    possível.
+    do `sys.path.insert(0, ...)` dentro do próprio `passenger_wsgi.py`.
+
+    Com `python -c` e `PYTHONSAFEPATH=1` (ver `AMBIENTE_MINIMO`), `sys.path[0]`
+    nunca fica `""` (a pasta de trabalho) — por isso só o
+    `sys.path.insert(0, str(BASE_DIR))` do próprio `passenger_wsgi.py` torna
+    `import app.main` possível, não importa a pasta de trabalho corrente nem
+    o `os.chdir(BASE_DIR)`. Isto é o que faz os dois mecanismos serem
+    exercitados a sério, em separado: tirar só o `sys.path.insert` parte a
+    importação (com ou sem `os.chdir`); tirar só o `os.chdir` continua a
+    importar bem — muda apenas `os.getcwd()` depois de importado, por isso
+    quem precisa de apanhar essa remoção tem de afirmá-lo explicitamente (ver
+    `tests/seguranca/test_arranque_passenger.py`), nunca confiar em a
+    importação ter sucedido ou falhado.
 
     `codigo_depois_de_importar` corre depois de `application` (o atributo de
     `passenger_wsgi`) estar disponível nesse nome, no subprocesso.
