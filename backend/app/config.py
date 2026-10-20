@@ -25,7 +25,7 @@ SEGREDO_SESSAO_TAMANHO_MINIMO = 32
 
 
 def _caminho_ficheiro_de_ambiente() -> Path:
-    """Resolve o ficheiro de ambiente a usar, nunca relativo à pasta de trabalho.
+    """Resolve o ficheiro de ambiente a usar, sempre para um caminho absoluto.
 
     Se `TOMAZIA_ENV_FILE` estiver definida, usa-a; senão, usa `RAIZ_APP /
     ".env"` — a pasta que contém o pacote `app` (`backend/` em
@@ -35,10 +35,15 @@ def _caminho_ficheiro_de_ambiente() -> Path:
     pasta de trabalho errada, e o que permite aos testes isolarem-se do
     `.env` real do repositório apontando `TOMAZIA_ENV_FILE` para um
     caminho inexistente, independentemente da pasta de trabalho.
+
+    Um valor relativo em `TOMAZIA_ENV_FILE` continuaria relativo à pasta de
+    trabalho do processo nesse preciso momento se não passasse por
+    `.resolve()` aqui — é esta chamada que garante o caminho absoluto, não
+    o facto de a variável "parecer" vir de outro lado.
     """
     variavel = os.environ.get("TOMAZIA_ENV_FILE")
     if variavel:
-        return Path(variavel)
+        return Path(variavel).resolve()
     return RAIZ_APP / ".env"
 
 
@@ -107,4 +112,8 @@ class Definicoes(BaseSettings):
 
 @lru_cache
 def obter_definicoes() -> Definicoes:
-    return Definicoes(_env_file=_caminho_ficheiro_de_ambiente())
+    # O mypy sintetiza o `__init__` de `Definicoes` a partir dos campos
+    # (PEP 681) e por isso não vê `_env_file`, uma chave privada que o
+    # `BaseSettings` aceita em runtime para escolher o ficheiro de
+    # ambiente a carregar.
+    return Definicoes(_env_file=_caminho_ficheiro_de_ambiente())  # type: ignore[call-arg]
