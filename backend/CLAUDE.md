@@ -1,0 +1,15 @@
+# Backend
+
+- Estrutura: `app/main.py`, `config.py`, `db.py`, `models/`, `schemas/`, `routers/` (`publico.py`, `gestao.py`, `auth.py`), `services/` (`imagens.py`, `auth.py`), `scripts/`, `migrations/`, `tests/`.
+- As rotas definem-se sem o prefixo `/api`. Em produção o Passenger passa-o em `SCRIPT_NAME`.
+- `app/config.py` lê variáveis de ambiente com valores por omissão seguros para desenvolvimento (`DATA_DIR=./var`, BD `./var/dev.db`). Os testes usam uma BD temporária por teste.
+- Pydantic v2 em todos os inputs e outputs. Nunca devolver modelos SQLAlchemy diretamente.
+- O texto é guardado tal como foi escrito. Nunca fazer escape HTML ao guardar.
+- Preços em cêntimos (`int`). Datas em UTC na BD; `Europe/Lisbon` só na apresentação.
+- Rotas `/gestao/*` dependem de `exigir_admin`. Pedidos que alteram dados exigem o cabeçalho `X-Tomazia: 1`.
+- Uploads: ignorar o nome e o `Content-Type` do cliente; abrir com Pillow; limitar tamanho e píxeis; recodificar para WebP sem EXIF; nome aleatório; guardar em `DATA_DIR/pendentes`.
+- SQLite em modo WAL com `busy_timeout` de 5000 ms.
+- Erros em JSON: `{"erro": "codigo_curto", "mensagem": "Texto em PT-PT."}`.
+- Testes: pytest com o `TestClient`. Testes de segurança em `tests/seguranca/test_sNN_*.py`, um por critério S-NN.
+- `requirements.txt` gera-se com `uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt`.
+- `python -m app.openapi` escreve o OpenAPI em `../frontend/openapi.json`.

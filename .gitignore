@@ -1,0 +1,26 @@
+# Segredos e dados: nunca no repositório
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+var/
+
+# Dependências e builds
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+playwright-report/
+test-results/
+
+# Claude Code: configurações locais
+.claude/settings.local.json
+.claude/agent-memory-local/
+
+# Sistema
+.DS_Store
