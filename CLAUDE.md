@@ -24,7 +24,7 @@ Backend (em `backend/`):
 ```bash
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run mypy app
+uv run mypy app passenger_wsgi.py
 uv run pytest
 uv run uvicorn app.main:app --reload --port 8070
 ```

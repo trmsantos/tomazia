@@ -11,7 +11,7 @@ Backend, em `backend/`:
 1. `uv sync --frozen`
 2. `uv run ruff check .`
 3. `uv run ruff format --check .`
-4. `uv run mypy app`
+4. `uv run mypy app passenger_wsgi.py`
 5. `uv run pytest -q`
 
 Frontend, em `frontend/`:
