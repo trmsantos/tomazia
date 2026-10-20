@@ -22,7 +22,7 @@ Os agentes vivem em `.claude/` e só existem no repositório e no GitHub. Não v
 | Pedir uma correção num PR | Comentar `@claude corrige o teste que falha` no PR |
 | Fazer duas tarefas em paralelo | Um `git worktree` por tarefa (`git worktree add ../tomazia-F3-02 -b tarefa/F3-02-ementa`) e um `claude` em cada. Só tarefas que não mexem nos mesmos ficheiros |
 
-Fluxo de uma tarefa: `/tarefa` → arquiteto planeia → qa escreve os testes → backend, frontend ou infra implementam → `/verificar` → revisores → PR aberto → CI e revisão Claude no GitHub → tu revês e fazes merge → deploy automático.
+Fluxo de uma tarefa: `/tarefa` → arquiteto planeia → qa escreve os testes → backend, frontend ou infra implementam → `/verificar` → revisores → PR aberto → CI no GitHub → tu revês e fazes merge → deploy automático.
 
 ## O que os agentes não conseguem fazer
 
@@ -36,7 +36,9 @@ Fluxo de uma tarefa: `/tarefa` → arquiteto planeia → qa escreve os testes �
 
 ## Custos
 
-Cada PR que não seja rascunho dispara uma revisão com até quatro revisores. Com o token da subscrição, conta para os limites do teu plano. Para poupar, abre os PRs como rascunho enquanto trabalhas e marca "Ready for review" só no fim.
+A revisão pelos agentes acontece **localmente**, com o `/pronto-para-merge`, antes de o PR ser aberto. No GitHub corre só o `ci.yml`, que não consome tokens.
+
+Não há revisão automática em cada PR: seria uma segunda passagem sobre o mesmo diff que o `/pronto-para-merge` já reviu, e não é barata — numa única tarefa, os revisores chegaram a consumir mais de cem mil tokens cada. Se quiseres uma segunda opinião num PR concreto, comenta `@claude revê este PR`, que o `claude.yml` responde a pedido.
 
 ## Quando o veredito do Claude e o teu não coincidem
 
