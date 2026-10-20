@@ -3,6 +3,14 @@
 Garantem que nenhum teste lê ou escreve o `.env` real do repositório nem a
 pasta `var/` de desenvolvimento, e que a cache de `obter_definicoes()` (um
 `lru_cache`) nunca "vaza" definições de um teste para o seguinte.
+
+Desde a F1-02, `app/config.py` resolve o ficheiro de ambiente a partir de
+`TOMAZIA_ENV_FILE` (ou de `RAIZ_APP / ".env"` se a variável não estiver
+definida) em vez de um `env_file=".env"` fixo, relativo à pasta de trabalho.
+Por isso o isolamento aqui aponta `TOMAZIA_ENV_FILE` para um caminho
+inexistente dentro de `tmp_path`: fica mais forte do que antes, porque deixa
+de depender do `chdir` para nenhum teste encontrar, por acidente, o `.env`
+real do repositório.
 """
 
 from __future__ import annotations
@@ -48,6 +56,13 @@ def isolar_definicoes(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "var"))
+    # Caminho inexistente de propósito: nenhum `.env` lá para ser lido.
+    # Independente do `chdir` acima — mesmo que um teste mude de pasta de
+    # trabalho depois, o ficheiro de ambiente real do repositório nunca
+    # entra em jogo.
+    monkeypatch.setenv(
+        "TOMAZIA_ENV_FILE", str(tmp_path / "isolamento-de-testes-nao-existe" / ".env")
+    )
 
     from app.config import obter_definicoes
 

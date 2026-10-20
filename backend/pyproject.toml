@@ -8,6 +8,7 @@ dependencies = [
     "sqlalchemy>=2",
     "alembic",
     "pydantic-settings",
+    "a2wsgi>=1.10.10",
 ]
 
 [dependency-groups]
@@ -48,5 +49,10 @@ ignore = ["E501"]
 "migrations/*" = ["E", "F", "I", "UP", "B", "C4", "SIM"]
 
 [tool.mypy]
+# O mypy sintetiza o __init__ dos modelos pydantic a partir dos campos
+# (PEP 681) e por isso não vê as chaves privadas que o BaseSettings aceita
+# em runtime, como o _env_file. O plugin ensina-o a ler modelos pydantic a
+# sério, aqui e nos esquemas que a F2 vai trazer.
+plugins = ["pydantic.mypy"]
 python_version = "3.11"
 strict = true

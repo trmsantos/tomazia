@@ -3,5 +3,8 @@ coverage
 src/lib/api
 package-lock.json
 
+# Gerado por `python -m app.openapi`, nunca formatado à mão.
+openapi.json
+
 # Cache de ferramentas locais de quem desenvolve, nunca versionado.
 .impeccable

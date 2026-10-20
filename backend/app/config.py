@@ -9,6 +9,7 @@ sobrepõem-se a estes valores.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -16,9 +17,29 @@ from typing import Literal
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.caminhos import RAIZ_APP
+
 SEGREDO_SESSAO_OMISSAO = "desenvolvimento-sem-segredo"
 SEGREDO_SESSAO_PLACEHOLDER_ENV_EXAMPLE = "<gera-um-segredo-com-o-comando-acima>"
 SEGREDO_SESSAO_TAMANHO_MINIMO = 32
+
+
+def _caminho_ficheiro_de_ambiente() -> Path:
+    """Resolve o ficheiro de ambiente a usar, nunca relativo à pasta de trabalho.
+
+    Se `TOMAZIA_ENV_FILE` estiver definida, usa-a; senão, usa `RAIZ_APP /
+    ".env"` — a pasta que contém o pacote `app` (`backend/` em
+    desenvolvimento, `tomazia_api/` em produção), não a pasta de trabalho
+    do processo. Isto é o que permite ao `passenger_wsgi.py` fazer
+    `os.chdir(BASE_DIR)` sem que `Definicoes` passe a procurar o `.env` na
+    pasta de trabalho errada, e o que permite aos testes isolarem-se do
+    `.env` real do repositório apontando `TOMAZIA_ENV_FILE` para um
+    caminho inexistente, independentemente da pasta de trabalho.
+    """
+    variavel = os.environ.get("TOMAZIA_ENV_FILE")
+    if variavel:
+        return Path(variavel)
+    return RAIZ_APP / ".env"
 
 
 def _normalizar_segredo_para_comparacao(valor: str) -> str:
@@ -36,9 +57,7 @@ def _normalizar_segredo_para_comparacao(valor: str) -> str:
 class Definicoes(BaseSettings):
     """Definições da aplicação, lidas de variáveis de ambiente."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
     ambiente: Literal["desenvolvimento", "producao"] = "desenvolvimento"
     data_dir: Path = Path("./var")
@@ -88,4 +107,4 @@ class Definicoes(BaseSettings):
 
 @lru_cache
 def obter_definicoes() -> Definicoes:
-    return Definicoes()
+    return Definicoes(_env_file=_caminho_ficheiro_de_ambiente())
