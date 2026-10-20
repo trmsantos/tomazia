@@ -1,0 +1,52 @@
+[project]
+name = "tomazia-backend"
+version = "0.1.0"
+description = "API do Bar da Tomazia"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "sqlalchemy>=2",
+    "alembic",
+    "pydantic-settings",
+]
+
+[dependency-groups]
+dev = [
+    "uvicorn",
+    "pytest",
+    "httpx",
+    "ruff",
+    "mypy",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+# E501 (linha longa): o `ruff format` já trata do comprimento do código;
+# esta regra só sobra para comentários, docstrings e strings, que o
+# formatador não consegue (nem deve) partir sozinho.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*" = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

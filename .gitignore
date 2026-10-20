@@ -10,11 +10,14 @@ var/
 # Dependências e builds
 node_modules/
 dist/
+coverage/
+*.tsbuildinfo
 .venv/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.eslintcache
 playwright-report/
 test-results/
 

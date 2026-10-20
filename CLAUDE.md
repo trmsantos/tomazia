@@ -26,7 +26,7 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app
 uv run pytest
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8070
 ```
 
 Frontend (em `frontend/`):

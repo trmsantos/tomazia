@@ -1,0 +1,7 @@
+dist
+coverage
+src/lib/api
+package-lock.json
+
+# Cache de ferramentas locais de quem desenvolve, nunca versionado.
+.impeccable
