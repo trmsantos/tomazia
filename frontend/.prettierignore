@@ -1,0 +1,4 @@
+dist
+coverage
+src/lib/api
+package-lock.json

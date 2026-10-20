@@ -1,0 +1,8 @@
+[
+  {
+    "name": "JavaScript da área pública",
+    "path": "dist/assets/*.js",
+    "limit": "100 kB",
+    "gzip": true
+  }
+]
