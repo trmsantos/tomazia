@@ -21,6 +21,18 @@ SEGREDO_SESSAO_PLACEHOLDER_ENV_EXAMPLE = "<gera-um-segredo-com-o-comando-acima>"
 SEGREDO_SESSAO_TAMANHO_MINIMO = 32
 
 
+def _normalizar_segredo_para_comparacao(valor: str) -> str:
+    """Normaliza um segredo só para o comparar com valores inseguros conhecidos.
+
+    Tira espaços nas pontas, tira os sinais `<` e `>` que sobram de quem
+    copiou o placeholder do `.env.example` e apagou só parte dele, e
+    ignora maiúsculas/minúsculas. Usa-se apenas para decidir se o valor é
+    o de omissão ou o placeholder; o `segredo_sessao` guardado nunca passa
+    por esta normalização.
+    """
+    return valor.strip().strip("<>").strip().lower()
+
+
 class Definicoes(BaseSettings):
     """Definições da aplicação, lidas de variáveis de ambiente."""
 
@@ -48,10 +60,16 @@ class Definicoes(BaseSettings):
             return self
 
         segredo = self.segredo_sessao.strip()
+        segredo_normalizado = _normalizar_segredo_para_comparacao(self.segredo_sessao)
+        omissao_normalizada = _normalizar_segredo_para_comparacao(
+            SEGREDO_SESSAO_OMISSAO
+        )
+        placeholder_normalizado = _normalizar_segredo_para_comparacao(
+            SEGREDO_SESSAO_PLACEHOLDER_ENV_EXAMPLE
+        )
         invalido = (
-            not segredo
-            or segredo.lower() == SEGREDO_SESSAO_OMISSAO.lower()
-            or segredo == SEGREDO_SESSAO_PLACEHOLDER_ENV_EXAMPLE
+            not segredo_normalizado
+            or segredo_normalizado in (omissao_normalizada, placeholder_normalizado)
             or len(segredo) < SEGREDO_SESSAO_TAMANHO_MINIMO
         )
         if invalido:
