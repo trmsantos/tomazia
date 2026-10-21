@@ -31,9 +31,13 @@ O `git diff --exit-code` não serve aqui: não vê ficheiros novos por versionar
 
 Deriva e ficheiros proibidos, da raiz do repositório:
 
-13. Em `backend/`, `uv run uv lock --check`, depois regenerar o `requirements.txt` com o comando do `backend/CLAUDE.md` e confirmar que não mudou
+13. Em `backend/`, `uv lock --check` — **sem** `uv run`, que relocka antes de correr o comando e faz o check passar sempre —, depois regenerar o `requirements.txt` com o comando do `backend/CLAUDE.md` e confirmar que não mudou
 14. `.github/scripts/verificar-ficheiros-proibidos.sh --git`
 
-Os passos 13 e 14 existem porque o CI os corre: sem eles aqui, volta a haver "local verde, CI vermelho". O que **não** se corre localmente são as duas auditorias de dependências (`npm audit` com a allowlist e `pip-audit`), por precisarem de rede e mudarem de resultado sozinhas — essas vivem só no CI.
+Os passos 13 e 14 existem porque o CI os corre: sem eles aqui, volta a haver "local verde, CI vermelho".
+
+Depois do passo 10, em `frontend/`, corre também `../.github/scripts/verificar-ficheiros-proibidos.sh --pasta dist` — é o mesmo guarda sobre o que o build produz, e o CI corre-o.
+
+O que **não** se corre localmente são as duas auditorias de dependências (`npm audit` com a allowlist e `pip-audit`), por precisarem de rede e mudarem de resultado sozinhas — essas vivem só no CI.
 
 No fim, uma tabela com cada passo e "ok" ou "falhou", e para cada falha o comando que a reproduz.
