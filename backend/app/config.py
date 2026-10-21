@@ -54,13 +54,6 @@ def caminho_ficheiro_de_ambiente() -> Path:
     return RAIZ_APP / ".env"
 
 
-# Nome privado antigo, mantido como alias: `tests/seguranca/test_arranque_passenger.py`
-# importa-o diretamente (`test_tomazia_env_file_relativo_fica_resolvido_para_absoluto`)
-# e essa suite não se altera nesta ronda. `passenger_wsgi.py` — o módulo que
-# promoveu esta função de detalhe interno a dependência entre módulos — usa
-# só o nome público.
-
-
 def _normalizar_segredo_para_comparacao(valor: str) -> str:
     """Normaliza um segredo só para o comparar com valores inseguros conhecidos.
 

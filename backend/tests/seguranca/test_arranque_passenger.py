@@ -48,8 +48,19 @@ nunca chegou a ser exercitado a sério:
    `sys.modules` antes do `chdir`/`sys.path`) dispara a sério, não só
    quando o bloco existe no código-fonte: substituí-lo por `if False:`
    tem de fazer um teste falhar.
+10. Segunda camada, por baixo do achado 7: `ambiente` ser obrigatório em
+    `Definicoes` fecha o ficheiro, mas não fecha uma variável `AMBIENTE` real
+    no ambiente do processo — a mesma primitiva de escrita que o achado 6
+    contém (um `SetEnv` num `.htaccess` honrado pelo Apache). Com um
+    ficheiro de ambiente de produção completo e correto, `AMBIENTE=
+    desenvolvimento` no ambiente do processo ainda ganha ao ficheiro (é o
+    que faz o `pytest` e os comandos de linha funcionarem) e fazia o
+    Passenger arrancar em desenvolvimento à mesma — reabrindo `/docs` e
+    `/openapi.json`, desligando a guarda do segredo fraco. `passenger_wsgi.py`
+    afirma, depois de importar `app.main`, que `obter_definicoes().ambiente
+    == "producao"`; sem essa afirmação, este teste é o único que cai.
 
-Os testes 2, 3, 5, 6, 7, 8 e 9 correm em subprocesso (ver
+Os testes 2, 3, 5, 6, 7, 8, 9 e 10 correm em subprocesso (ver
 `tests/apoio_subprocesso.py`): importar `passenger_wsgi` dentro do processo
 de testes mudaria a pasta de trabalho do processo de testes e importaria
 `app.main` sob produção, contaminando tudo o que viesse a seguir.
@@ -612,6 +623,10 @@ class TestAmbienteObrigatorioSemValorPorOmissao:
             "à mesma — ambiente caiu no valor por omissão 'desenvolvimento'"
         )
         assert "ambiente" in resultado.stderr.lower()
+        # Afirma a mensagem em PT-PT, não só o nome do campo: o "Field
+        # required" genérico do pydantic também contém "ambiente", por isso
+        # sem isto ninguém repara se o validador que a produz desaparecer.
+        assert "os valores aceites são" in resultado.stderr
 
     def test_ficheiro_de_ambiente_so_com_comentarios_rebenta(
         self, tmp_path: Path
@@ -800,3 +815,44 @@ def test_canario_dispara_quando_app_config_ja_esta_em_sys_modules_antes_do_chdir
         "passenger_wsgi.py arrancou à mesma — o canário não disparou"
     )
     assert "já estava importado" in resultado.stderr
+
+
+class TestPontoDeEntradaSoServeProducao:
+    """Segunda camada, achado do revisor-seguranca: `AMBIENTE` real do processo ganha ao ficheiro.
+
+    Um ficheiro de ambiente de produção completo e correto (`AMBIENTE=
+    producao`, `SEGREDO_SESSAO` forte) não basta: `AMBIENTE=desenvolvimento`
+    definido no ambiente do próprio processo — nunca no ficheiro — ganha-lhe,
+    porque é assim que `pydantic-settings` resolve as fontes (variável de
+    processo antes do `_env_file`). É a mesma primitiva de escrita que a
+    guarda de `TestTomaziaEnvFileForaDaInstalacao` combate (um `SetEnv` num
+    `.htaccess` honrado pelo Apache/Passenger, ou — aqui — o Setup Python App
+    do cPanel), só que por outra variável: sem a guarda nova, o site
+    reabriria `/docs` e `/openapi.json` e desligaria a validação do
+    `SEGREDO_SESSAO` fraco, sem tocar num único ficheiro desta instalação.
+    """
+
+    def test_ambiente_desenvolvimento_no_processo_ganha_ao_ficheiro_de_producao_e_e_recusado(
+        self, tmp_path: Path
+    ) -> None:
+        segredo_forte = secrets.token_urlsafe(48)
+        pasta_tomazia_api, outra_pasta = _preparar_cenario(
+            tmp_path, f"AMBIENTE=producao\nSEGREDO_SESSAO={segredo_forte}\n"
+        )
+
+        ambiente = dict(apoio_subprocesso.AMBIENTE_MINIMO)
+        ambiente["AMBIENTE"] = "desenvolvimento"
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=ambiente,
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0, (
+            "AMBIENTE=desenvolvimento no ambiente do processo ganhou ao "
+            "ficheiro de ambiente de produção, e passenger_wsgi.py arrancou "
+            "em desenvolvimento à mesma — /docs e /openapi.json reabririam"
+        )
+        assert "só serve produção" in resultado.stderr

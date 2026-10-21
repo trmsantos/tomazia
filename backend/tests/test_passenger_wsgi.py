@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import secrets
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -141,12 +142,20 @@ class TestPassengerWsgiApplication:
         continuar verde, é um caminho feliz, não um teste de segurança. Os
         cenários sem `.env` vivem em
         `tests/seguranca/test_arranque_passenger.py`.
+
+        `AMBIENTE=producao`, com um segredo forte, não por acaso: desde a
+        segunda camada que afirma `obter_definicoes().ambiente == "producao"`
+        depois de importar `app.main`, este ponto de entrada só serve
+        produção — um `.env` em desenvolvimento já não é um caminho feliz
+        aqui, deixou de o ser (ver
+        `tests/seguranca/test_arranque_passenger.py::TestPontoDeEntradaSoServeProducao`).
         """
+        segredo_forte = secrets.token_urlsafe(48)
         pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
             tmp_path / "tomazia_api"
         )
         (pasta_tomazia_api / ".env").write_text(
-            "AMBIENTE=desenvolvimento\n", encoding="utf-8"
+            f"AMBIENTE=producao\nSEGREDO_SESSAO={segredo_forte}\n", encoding="utf-8"
         )
         outra_pasta = tmp_path / "outra-pasta-de-trabalho"
         outra_pasta.mkdir()

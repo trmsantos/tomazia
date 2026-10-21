@@ -12,11 +12,29 @@ inteiro. A guarda que rejeita um `SEGREDO_SESSAO` inseguro em produção
 nunca mais dispararia: é uma falha aberta, o site serviria produção com o
 segredo de desenvolvimento publicado no repositório.
 
-As duas guardas a seguir (ficheiro de ambiente regular e legível; dentro
-desta instalação) vivem deliberadamente aqui, nunca em `app/config.py`: os
-testes isolam-se do `.env` real apontando `TOMAZIA_ENV_FILE` para fora de
-`RAIZ_APP` de propósito (ver `tests/conftest.py`), e pôr estas guardas em
-`obter_definicoes()` partiria esse isolamento para a suite inteira.
+As três guardas a seguir (ficheiro de ambiente regular e legível; dentro
+desta instalação; ambiente lido é mesmo "producao") vivem deliberadamente
+aqui, nunca em `app/config.py`, por duas razões que não se misturam.
+
+A primeira é o isolamento dos testes: eles isolam-se do `.env` real
+apontando `TOMAZIA_ENV_FILE` para fora de `RAIZ_APP` de propósito (ver
+`tests/conftest.py`), e pôr a guarda do ficheiro regular e legível ou a da
+contenção dentro da instalação em `obter_definicoes()` partiria esse
+isolamento para a suite inteira.
+
+A segunda é a divisão de responsabilidade a sério, para lá dessa
+conveniência de teste: o *conteúdo* da configuração valida-se em
+`Definicoes` (`app/config.py`), que o aplica em qualquer ponto de
+entrada — SSH, `python -m app.openapi`, Alembic, scripts futuros, todos
+igualmente sujeitos a `ambiente` ser obrigatório e a um `SEGREDO_SESSAO`
+fraco ser recusado em produção. O *continente* — ser um ficheiro regular,
+estar dentro desta instalação, e o ambiente lido ser mesmo produção, nunca
+outra coisa — verifica-se aqui, porque só este ponto de entrada tem de ser
+sempre produção; os outros (testes, scripts correidos à mão em
+desenvolvimento) não podem ter essa exigência. É esta divisão, não só o
+isolamento dos testes, que decide onde nasce a próxima guarda: se for
+sobre o *valor* de um campo, nasce em `Definicoes`; se for sobre o ponto
+de entrada em si — que ficheiro se lê, que processo é este —, nasce aqui.
 """
 
 import os
@@ -60,16 +78,30 @@ if "app.config" in sys.modules or "app.main" in sys.modules:
         "validação de produção pode ter corrido com o ambiente incompleto."
     )
 
-from app.config import caminho_ficheiro_de_ambiente  # noqa: E402
+from app.config import caminho_ficheiro_de_ambiente, obter_definicoes  # noqa: E402
 
 _ficheiro_de_ambiente = caminho_ficheiro_de_ambiente()
 
-# Risco: um ficheiro de ambiente em falta é ignorado em silêncio pelo
-# pydantic-settings — `ambiente` cairia no valor por omissão
-# "desenvolvimento" e a app arrancaria a servir produção com o segredo de
-# desenvolvimento publicado no repositório e a documentação toda aberta.
-# É o cenário do primeiro deploy, antes de o `.env` ser colocado no
-# servidor — por isso recusa-se a arrancar em vez de assumir isso.
+# Esta guarda não ficou redundante quando `ambiente` passou a ser
+# obrigatório em `Definicoes` (`app/config.py`), sem valor por omissão —
+# hoje um ficheiro de ambiente em falta já não cai em "desenvolvimento" em
+# silêncio, rebenta. Continua a disparar primeiro, por três razões:
+#
+# 1. Diagnóstico: sem ela, o cenário mais provável de todos — o primeiro
+#    deploy, antes de o `.env` ser colocado no servidor — daria um
+#    `ValidationError` genérico do pydantic a quem está a instalar, bem
+#    pior do que a mensagem explícita abaixo.
+# 2. O FIFO: um `.env` que seja um FIFO (`os.mkfifo`) não dá uma leitura
+#    vazia como um ficheiro em falta dá — pendura o worker do Passenger
+#    para sempre, à espera de um leitor ou escritor do outro lado. Medido
+#    por acidente ao mutar `is_file()` para `exists()` aqui: a suite de
+#    testes passou de 3 para 18 segundos, presa no timeout do subprocesso
+#    em vez de rebentar depressa.
+# 3. `AMBIENTE` (e `SEGREDO_SESSAO`) podem vir do ambiente do processo, não
+#    só do ficheiro: o Setup Python App do cPanel define variáveis assim.
+#    Se vierem de lá e o ficheiro de ambiente tiver entretanto
+#    desaparecido, `Definicoes` fica satisfeita na mesma — só esta guarda
+#    repara que o ficheiro não está lá.
 if not _ficheiro_de_ambiente.is_file():
     _abortar(
         "Erro de arranque: o ficheiro de ambiente "
@@ -95,6 +127,29 @@ if not _ficheiro_de_ambiente.is_relative_to(BASE_DIR):
 from a2wsgi import ASGIMiddleware  # noqa: E402
 
 from app.main import app  # noqa: E402
+
+# Segunda camada, por baixo de `ambiente` ser obrigatório em `Definicoes`:
+# uma variável de ambiente real (`AMBIENTE=desenvolvimento`, definida no
+# ambiente do próprio processo, nunca no ficheiro) ganha ao ficheiro de
+# ambiente — é o que faz o `pytest` e os comandos de linha funcionarem com
+# um `.env` de produção presente mas sem interferir. Mas é exatamente a
+# mesma primitiva de escrita que a guarda de contenção acima combate (um
+# `SetEnv AMBIENTE desenvolvimento` num `.htaccess` honrado pelo Apache):
+# com um ficheiro de ambiente de produção completo e correto, bastaria essa
+# variável para o Passenger arrancar em desenvolvimento — reabrindo
+# `/docs` e `/openapi.json` e desligando a guarda do segredo fraco — sem
+# tocar num único ficheiro desta instalação. Este ponto de entrada só serve
+# produção; afirma-se isso explicitamente, depois de `app.main` já ter
+# construído a app com a mesma `Definicoes` (em cache) que se lê aqui.
+_definicoes = obter_definicoes()
+if _definicoes.ambiente != "producao":
+    _abortar(
+        "Erro de arranque: o ponto de entrada do Passenger "
+        "(passenger_wsgi.py) só serve produção, mas o ambiente lido foi "
+        f"'{_definicoes.ambiente}'. Confirma que AMBIENTE=producao não "
+        "está a ser sobreposto por uma variável de ambiente do processo "
+        "(p. ex. no Setup Python App do cPanel)."
+    )
 
 # Uma instância por processo, nunca por pedido: o `ASGIMiddleware` arranca
 # um event loop numa thread própria.
