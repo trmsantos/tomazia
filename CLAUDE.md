@@ -57,6 +57,7 @@ Tudo de uma vez: `/verificar`.
 7. Migrações Alembic só acrescentam. Remover uma coluna é uma tarefa à parte, num deploy posterior.
 8. Dependência nova só com uma linha de justificação no PR.
 9. Ficheiros gerados (`frontend/src/lib/api/`, `backend/requirements.txt`) nunca se editam à mão.
+10. Num guarda, "não encontrei" e "não consegui procurar" nunca podem dar o mesmo resultado. Em `grep`, `find`, `git` e no estado de saída de um processo, verificar o estado à mão em vez de o deixar cair num `if` — em bash, não-zero diz as duas coisas, e no `grep` o 1 e o 2 significam o oposto um do outro. Esta regra nasceu de sete instâncias reais neste projeto, todas descobertas em revisão e nenhuma apanhada por um teste de caminho feliz.
 
 ## Como se trabalha
 

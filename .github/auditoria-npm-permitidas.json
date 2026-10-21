@@ -1,0 +1,10 @@
+[
+  {
+    "id": "GHSA-vfj7-8cjw-p6xm",
+    "pacote": "braces",
+    "severidade": "high",
+    "razao": "Os cinco advisories 'high' do `npm audit --audit-level=high` em frontend/ são todos este mesmo GHSA no `braces` (stack exhaustion em padrões aninhados), propagado por `micromatch`, `fast-glob` e `chokidar` a partir do Tailwind 3.4. Não há versão corrigida do `braces` nesta linha; `npm audit fix` não resolve. Estas dependências só correm em build/dev (`tailwindcss`), nunca em runtime servido a utilizadores.",
+    "validade": "2026-12-31",
+    "sai-quando": "Migração para o Tailwind 4 (tarefa F3-01), que deixa de depender desta cadeia."
+  }
+]

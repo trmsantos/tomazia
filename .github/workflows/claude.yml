@@ -23,10 +23,20 @@ jobs:
       id-token: write
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
+          # Recomendação para quando o CLAUDE_CODE_OAUTH_TOKEN existir e
+          # puder ser testado ao vivo num PR descartável: acrescentar
+          # `persist-credentials: false` aqui. Fecha o único caminho em
+          # que o GITHUB_TOKEN deste job (contents: write, pull-requests:
+          # write) fica ao alcance de código de terceiros — um
+          # `postinstall` malicioso durante um `npm ci` dentro da própria
+          # ação do Claude. Não entra sem essa prova: sem o token
+          # configurado não se consegue verificar que a ação continua a
+          # buscar o branch do PR num repositório privado sem as
+          # credenciais persistidas do checkout.
+      - uses: anthropics/claude-code-action@a5a423f75c251dcbff8a74e99f83b2cb03c72bfa # v1 (v1.0.256)
         with:
           # Token da subscrição (claude setup-token). Com API key: anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
