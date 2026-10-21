@@ -15,7 +15,13 @@ import pytest
 
 
 def test_omissoes_de_desenvolvimento(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sem nenhuma variável de ambiente definida, valem os valores da tabela do contrato."""
+    """Com o AMBIENTE definido e mais nada, valem os valores da tabela do contrato.
+
+    O `ambiente` não entra nas asserções: deixou de ter valor por omissão e é
+    a fixture que o define, por isso lê-lo aqui seria ler de volta o que ela
+    pôs. Quem prende a obrigatoriedade é
+    `tests/seguranca/test_arranque_passenger.py`.
+    """
     # A fixture `isolar_definicoes` já aponta DATA_DIR para um tmp_path, para
     # nenhum teste escrever em `var/`; aqui interessa-nos o valor por
     # omissão real da classe, por isso removemo-la antes de medir.
@@ -26,7 +32,6 @@ def test_omissoes_de_desenvolvimento(monkeypatch: pytest.MonkeyPatch) -> None:
     obter_definicoes.cache_clear()
     definicoes = obter_definicoes()
 
-    assert definicoes.ambiente == "desenvolvimento"
     assert definicoes.data_dir == Path("./var")
     assert definicoes.media_dir == Path("./var/media")
     assert definicoes.base_dados_url == "sqlite:///./var/dev.db"

@@ -8,6 +8,7 @@ dependencies = [
     "sqlalchemy>=2",
     "alembic",
     "pydantic-settings",
+    "a2wsgi>=1.10.10",
 ]
 
 [dependency-groups]

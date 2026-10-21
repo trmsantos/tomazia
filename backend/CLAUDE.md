@@ -2,7 +2,7 @@
 
 - Estrutura: `app/main.py`, `config.py`, `db.py`, `models/`, `schemas/`, `routers/` (`publico.py`, `gestao.py`, `auth.py`), `services/` (`imagens.py`, `auth.py`), `scripts/`, `migrations/`, `tests/`.
 - As rotas definem-se sem o prefixo `/api`. Em produção o Passenger passa-o em `SCRIPT_NAME`.
-- `app/config.py` lê variáveis de ambiente com valores por omissão seguros para desenvolvimento (`DATA_DIR=./var`, BD `./var/dev.db`). Os testes usam uma BD temporária por teste.
+- `app/config.py` lê variáveis de ambiente. O `AMBIENTE` é **obrigatório** e não tem omissão: é o que impede uma configuração em falta de ser tomada por desenvolvimento, em qualquer ponto de entrada — incluindo os `scripts/` corridos por SSH. Os restantes campos têm omissões de desenvolvimento (`DATA_DIR=./var`, BD `./var/dev.db`). Os testes usam uma BD temporária por teste.
 - Pydantic v2 em todos os inputs e outputs. Nunca devolver modelos SQLAlchemy diretamente.
 - O texto é guardado tal como foi escrito. Nunca fazer escape HTML ao guardar.
 - Preços em cêntimos (`int`). Datas em UTC na BD; `Europe/Lisbon` só na apresentação.

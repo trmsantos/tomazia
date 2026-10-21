@@ -7,6 +7,9 @@
 *.sqlite3
 var/
 
+# Artefacto gerado por `python -m app.openapi`, não fonte
+frontend/openapi.json
+
 # Dependências e builds
 node_modules/
 dist/
