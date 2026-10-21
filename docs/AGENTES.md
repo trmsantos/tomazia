@@ -40,6 +40,16 @@ A revisão pelos agentes acontece **localmente**, com o `/pronto-para-merge`, an
 
 Não há revisão automática em cada PR: seria uma segunda passagem sobre o mesmo diff que o `/pronto-para-merge` já reviu, e não é barata — numa única tarefa, os revisores chegaram a consumir mais de cem mil tokens cada. Se quiseres uma segunda opinião num PR concreto, comenta `@claude revê este PR`, que o `claude.yml` responde a pedido.
 
+## O CI
+
+O `ci.yml` corre em cada PR e em cada push para a `main`, com cinco jobs: `backend`, `frontend`, `contrato`, `seguranca` e `resumo`. Espelha os doze passos do `/verificar` e acrescenta o que só faz sentido no servidor: as duas auditorias de dependências e os guardas de deriva.
+
+**O `resumo` é o único check que vais marcar como obrigatório** quando houver GitHub Pro. É por isso que o nome dele nunca se muda: assim acrescentar ou renomear jobs nunca obriga a mexer na lista de checks exigidos.
+
+Enquanto não houver Pro, o CI **aconselha, não bloqueia** — nada impede um merge com os checks vermelhos. O portão a sério continua a ser o `/verificar` e o `/pronto-para-merge`, corridos antes de abrir o PR. O `push` para a `main` está no workflow precisamente por causa disto: é o que apanha um merge feito por cima dos vermelhos.
+
+Uma corrida custa cerca de cinco minutos faturados, medidos. São minutos de GitHub Actions, não tokens da tua subscrição.
+
 ## Quando o veredito do Claude e o teu não coincidem
 
 O veredito do Claude é consultivo. Se discordares de um bloqueante, responde no comentário com a razão. Se a razão for uma regra nova do projeto, acrescenta-a ao `CLAUDE.md` ou ao agente certo, para não voltar a aparecer.
