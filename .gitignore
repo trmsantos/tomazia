@@ -3,19 +3,27 @@
 .env.*
 !.env.example
 *.db
-*.db-wal
-*.db-shm
-*.db-journal
+*.db-*
+*.db.*
+*.db3
 *.sqlite
-*.sqlite-wal
-*.sqlite-shm
-*.sqlite-journal
+*.sqlite-*
+*.sqlite.*
+*.sqlitedb
 *.sqlite3
 *.sqlite3-*
+*.sqlite3.*
 *.sql
 *.sql.gz
+*.dump
+*.mysql
 # Esquema (DDL) do MySQL do site antigo, não dados: documentação
 # legítima, da mesma forma que o .env.example é a exceção ao *.env.
+# Atenção: isto exclui pelo caminho, não pelo conteúdo — quem gera este
+# ficheiro tem de usar `mysqldump --no-data`. O guarda do CI
+# (verificar-ficheiros-proibidos.sh) lê o conteúdo e rejeita na mesma se
+# houver um INSERT/REPLACE/LOAD DATA/COPY; o .gitignore não sabe fazer
+# essa verificação.
 !docs/legado/esquema-bd-antiga.sql
 var/
 

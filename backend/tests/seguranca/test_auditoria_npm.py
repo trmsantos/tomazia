@@ -192,6 +192,18 @@ def test_erro_de_rede_no_relatorio_nao_pode_sair_0(tmp_path: Path) -> None:
     Sem este guarda, o filtro de advisories não encontra `.vulnerabilities`
     nenhuma (não existe), e o script concluiria "nenhum advisory fora da
     allowlist" quando a auditoria, de facto, nunca correu.
+
+    Sobreposição confirmada por mutação: este relatório real de erro de
+    rede também não tem `.metadata.vulnerabilities.total` (um erro de
+    registo nunca traz metadata nenhuma) — por isso, tirando só o guarda
+    `has("error")` do script, este teste continua a falhar na mesma, mas
+    pelo guarda de `.metadata` a seguir, não por ter detetado o erro. Os
+    dois guardas sozinhos dão o mesmo resultado aqui; não prova que o
+    guarda `has("error")` em si funcione. `test_erro_de_rede_isolado_do_guarda_de_metadata_nao_pode_sair_0`,
+    a seguir, usa um JSON sintético (com `.metadata` válida a par do
+    `"error"`, coisa que um erro de registo real nunca traz) só para
+    isolar esse guarda — não apagues aquele por pareceres redundante com
+    este: são dois testes de coisas diferentes.
     """
     saida_json = json.dumps(
         {
@@ -199,6 +211,47 @@ def test_erro_de_rede_no_relatorio_nao_pode_sair_0(tmp_path: Path) -> None:
                 "code": "ENETUNREACH",
                 "summary": "network timeout at: https://registry.npmjs.org/",
             }
+        }
+    )
+    resultado = _preparar_cenario(
+        tmp_path, allowlist=[], saida_json=saida_json, estado_npm=1
+    )
+
+    assert resultado.returncode != 0, resultado.stdout + resultado.stderr
+
+
+def test_erro_de_rede_isolado_do_guarda_de_metadata_nao_pode_sair_0(
+    tmp_path: Path,
+) -> None:
+    """Cenário feito à medida para isolar só o guarda `has("error")`, sem o guarda de `.metadata` por trás a apanhar o mesmo caso por outro motivo.
+
+    Um relatório real de erro de registo nunca traz `.metadata` — por
+    isso `test_erro_de_rede_no_relatorio_nao_pode_sair_0`, acima, não
+    isola o guarda `has("error")` (ver a nota nesse teste): sem ele, o
+    guarda seguinte (`.metadata.vulnerabilities.total` em falta) apanha
+    na mesma. Aqui, o JSON tem as duas coisas: `"error"` (para o guarda
+    que este teste quer mesmo verificar) e uma `.metadata` completa e
+    válida (para o guarda seguinte não ter motivo nenhum para disparar).
+    Só assim um mutante que removesse o guarda `has("error")` faria este
+    relatório passar como "limpo" — e só assim este teste prova que esse
+    guarda, por si, é necessário.
+    """
+    saida_json = json.dumps(
+        {
+            "error": {
+                "code": "ENETUNREACH",
+                "summary": "network timeout at: https://registry.npmjs.org/",
+            },
+            "metadata": {
+                "vulnerabilities": {
+                    "info": 0,
+                    "low": 0,
+                    "moderate": 0,
+                    "high": 0,
+                    "critical": 0,
+                    "total": 0,
+                }
+            },
         }
     )
     resultado = _preparar_cenario(
@@ -281,8 +334,56 @@ def test_npm_morto_sem_relatorio_nenhum_nao_pode_sair_0(tmp_path: Path) -> None:
     morto a meio — nunca "sem vulnerabilidades". Só 0 (limpo) e 1
     (vulnerabilidades encontradas) são estados conhecidos do `npm
     audit`; 127 é o que a shell devolve para "comando não encontrado".
+
+    Sobreposição confirmada por mutação: a saída vazia (`""`) não chega
+    sequer a ser JSON com conteúdo — `jq empty`/`jq -e 'has("error")'`
+    sobre zero documentos não disparam nada (nenhum dos dois vê isto como
+    inválido nem como erro), e quem apanha este cenário, tirando o guarda
+    do estado do `npm`, é o guarda de `.metadata.vulnerabilities.total`
+    em falta, a seguir. Este teste não isola o guarda do estado do `npm`
+    por si só — `test_npm_estado_invalido_isolado_do_guarda_de_metadata_nao_pode_sair_0`,
+    a seguir, usa um relatório JSON válido e completo (coisa que um `npm`
+    morto nunca produz) só para isolar esse guarda; não apagues aquele
+    por pareceres redundante com este.
     """
     resultado = _preparar_cenario(tmp_path, allowlist=[], saida_json="", estado_npm=127)
+
+    assert resultado.returncode != 0, resultado.stdout + resultado.stderr
+
+
+def test_npm_estado_invalido_isolado_do_guarda_de_metadata_nao_pode_sair_0(
+    tmp_path: Path,
+) -> None:
+    """Cenário feito à medida para isolar só o guarda do estado do `npm`, sem o guarda de `.metadata` por trás a apanhar o mesmo caso por outro motivo.
+
+    Um `npm` morto nunca produz relatório nenhum — por isso
+    `test_npm_morto_sem_relatorio_nenhum_nao_pode_sair_0`, acima, não
+    isola o guarda do estado (ver a nota nesse teste): sem ele, o guarda
+    de `.metadata.vulnerabilities.total` em falta apanha o mesmo caso.
+    Aqui, o relatório é um JSON de auditoria limpa, válido e completo —
+    só o estado do processo (127) é que está errado. Só assim um mutante
+    que removesse o guarda do estado do `npm` faria este cenário passar
+    como "limpo", e só assim este teste prova que esse guarda, por si, é
+    necessário.
+    """
+    saida_json = json.dumps(
+        {
+            "vulnerabilities": {},
+            "metadata": {
+                "vulnerabilities": {
+                    "info": 0,
+                    "low": 0,
+                    "moderate": 0,
+                    "high": 0,
+                    "critical": 0,
+                    "total": 0,
+                }
+            },
+        }
+    )
+    resultado = _preparar_cenario(
+        tmp_path, allowlist=[], saida_json=saida_json, estado_npm=127
+    )
 
     assert resultado.returncode != 0, resultado.stdout + resultado.stderr
 
@@ -328,6 +429,17 @@ def test_entrada_allowlist_expirada_sai_1_mesmo_cobrindo_o_advisory_certo(
 
     A validade é o travão contra uma isenção que apodrece para sempre: o
     advisory estar coberto não chega, a cobertura tem de estar em dia.
+
+    Sobreposição confirmada por mutação: uma entrada expirada nunca entra
+    em `ids_allowlist_validos` (só as com `validade >= hoje` entram) — por
+    isso o mesmo advisory, aqui, é sempre "não coberto" também para o
+    loop genérico de "fora da allowlist", mais abaixo no script. Tirando
+    só o loop da validade expirada, este teste continua a falhar na
+    mesma, mas pelo loop genérico, não por ter detetado a expiração.
+    `test_entrada_allowlist_expirada_sem_advisory_no_relatorio_sai_1`, a
+    seguir, usa um relatório limpo (a vulnerabilidade já não existe) para
+    isolar só o loop da validade — não apagues aquele por pareceres
+    redundante com este.
     """
     saida_json = _relatorio_com_advisory_alto("GHSA-aaaa-bbbb-cccc")
     allowlist = [
@@ -343,6 +455,61 @@ def test_entrada_allowlist_expirada_sai_1_mesmo_cobrindo_o_advisory_certo(
 
     resultado = _preparar_cenario(
         tmp_path, allowlist=allowlist, saida_json=saida_json, estado_npm=1
+    )
+
+    assert resultado.returncode == 1, resultado.stdout + resultado.stderr
+
+
+def test_entrada_allowlist_expirada_sem_advisory_no_relatorio_sai_1(
+    tmp_path: Path,
+) -> None:
+    """Cenário feito à medida para isolar só o loop da validade expirada, sem o loop genérico de "fora da allowlist" a apanhar o mesmo caso por outro motivo.
+
+    Uma entrada expirada nunca entra em `ids_allowlist_validos` — por
+    isso `test_entrada_allowlist_expirada_sai_1_mesmo_cobrindo_o_advisory_certo`,
+    acima, não isola o loop da validade (ver a nota nesse teste): sem
+    ele, o loop genérico de "fora da allowlist" apanha o mesmo advisory
+    por este não estar coberto por nenhuma entrada válida. Aqui, o
+    relatório não tem vulnerabilidade nenhuma (`encontrados` fica vazio:
+    o Dependabot já deve ter corrigido isto), só sobra a entrada expirada
+    na allowlist — sem advisory nenhum para o loop genérico percorrer,
+    só o loop da validade expirada é que tem alguma coisa para dizer. Só
+    assim um mutante que removesse esse loop faria este cenário sair `0`,
+    e só assim este teste prova que esse loop, por si, é necessário.
+
+    Par do teste do aviso órfão (`test_entrada_allowlist_orfa_avisa_mas_sai_0`):
+    os dois arrancam do mesmo facto (uma entrada cujo advisory já não
+    está no relatório), mas só este expira — e é a validade, não a
+    ausência do advisory, que faz este sair `1` em vez de `0`.
+    """
+    saida_json = json.dumps(
+        {
+            "vulnerabilities": {},
+            "metadata": {
+                "vulnerabilities": {
+                    "info": 0,
+                    "low": 0,
+                    "moderate": 0,
+                    "high": 0,
+                    "critical": 0,
+                    "total": 0,
+                }
+            },
+        }
+    )
+    allowlist = [
+        {
+            "id": "GHSA-aaaa-bbbb-cccc",
+            "pacote": "pacote-x",
+            "severidade": "high",
+            "razao": "Falso, só para teste: entrada expirada cujo advisory já não existe no relatório.",
+            "validade": "2000-01-01",
+            "sai-quando": "Nunca sai: entrada falsa de teste.",
+        }
+    ]
+
+    resultado = _preparar_cenario(
+        tmp_path, allowlist=allowlist, saida_json=saida_json, estado_npm=0
     )
 
     assert resultado.returncode == 1, resultado.stdout + resultado.stderr

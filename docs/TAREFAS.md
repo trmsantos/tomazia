@@ -46,7 +46,8 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Agentes:** infra; revisor-seguranca obrigatório.
 - **Depende de:** F1-02, F1-03.
 - **Faz:** `deploy/montar.sh`, `publicar-branch.sh`, `pedir-deploy.sh`, `esperar-versao.sh`, `deploy.sh`, `.cpanel.yml`, `htaccess.exemplo` (SPA, CSP, HSTS, `nosniff`, scripts bloqueados em `media/`) e `.github/workflows/deploy.yml` com ambiente `production` e `concurrency`. Workflow agendado que verifica `/api/health` de hora a hora.
-- **Feito quando:** shellcheck verde; o CI corre `montar.sh` e falha se a pasta tiver `.claude/`, `CLAUDE.md`, `docs/`, `tests/` ou `e2e/` (S-12); `deploy.sh` testado com `HOME` falso; `pedir-deploy.sh` falha quando a UAPI devolve `status: 0` (testado com uma resposta simulada).
+- **Feito quando:** shellcheck verde; o CI corre `montar.sh` e falha se a pasta tiver `.claude/`, `CLAUDE.md`, `docs/`, `tests/` ou `e2e/` (S-12, com o `CLAUDE.md` excluído por padrão recursivo — há três); `deploy.sh` testado com `HOME` falso; `pedir-deploy.sh` falha quando a UAPI devolve `status: 0` (testado com uma resposta simulada); o `deploy.sh` recusa reiniciar se o ficheiro de ambiente não existir no servidor.
+- **Requisitos de segurança que vêm das revisões da F1-02 e F1-03:** `AllowOverride None` em `media/` não é higiene, é requisito — um `.htaccess` honrado nessa pasta chega para repor a configuração inteira com um `SetEnv`. O `PassengerFriendlyErrorPages` fica `Off`, senão um erro de configuração renderiza no browser com caminhos do servidor. O `pip install -r requirements.txt` do cPanel não tem verificação de integridade, porque o `uv export` corre com `--no-hashes`: ou se passa a exportar com hashes, ou se regista num ADR porque se vive sem ela.
 
 ### F1-05 Configuração do cPanel e primeiro deploy (manual)
 

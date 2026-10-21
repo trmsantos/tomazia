@@ -73,16 +73,27 @@ def _git(repo: Path, tmp_path: Path, *args: str) -> subprocess.CompletedProcess[
     return resultado
 
 
-def _adicionar_forcado(repo: Path, tmp_path: Path, caminho_relativo: str) -> None:
+def _adicionar_forcado(
+    repo: Path,
+    tmp_path: Path,
+    caminho_relativo: str,
+    conteudo: str = CONTEUDO_FICHEIRO_FALSO,
+) -> None:
     """Escreve um ficheiro falso e força-o para o índice com `git add --force`.
 
     `--force` é essencial: sem ele, todos os padrões testados aqui seriam
     recusados pelo próprio `.gitignore` antes de o guarda sequer entrar em
     jogo, e o teste não estaria a verificar nada.
+
+    `conteudo` tem omissão `CONTEUDO_FICHEIRO_FALSO`: a maioria dos testes
+    deste ficheiro só precisa do nome/caminho para disparar o padrão, nunca
+    do conteúdo. Os testes do guarda de conteúdo da exceção do esquema
+    legado (abaixo) é que passam um `conteudo` à medida, com uma instrução
+    de dados a sério.
     """
     caminho = repo / caminho_relativo
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    caminho.write_text(CONTEUDO_FICHEIRO_FALSO, encoding="utf-8")
+    caminho.write_text(conteudo, encoding="utf-8")
     _git(repo, tmp_path, "add", "--force", "--", caminho_relativo)
 
 
@@ -321,6 +332,80 @@ def test_ficheiro_sqlite_journal_falha(tmp_path: Path) -> None:
     assert "copia.sqlite-journal" in resultado.stdout
 
 
+# --- Master journals do SQLite: as três famílias têm de se comportar da mesma forma ---
+#
+# Um master journal (`-mj` seguido de um sufixo de hash hexadecimal) é o
+# ficheiro auxiliar de uma transação multi-base do SQLite; tal como o
+# `-wal`/`-shm`/`-journal` acima, contém dados a sério e nenhum termina em
+# `.db`, `.sqlite` ou `.sqlite3`. Confirmado hoje: `a.db-mj0A1B2C3D` e
+# `a.sqlite-mj0A1B` passavam, mas `a.sqlite3-mj0A1B` já era apanhado (pelo
+# padrão `*.sqlite3-*`, que por acaso também casa um sufixo `-mj...`) —
+# uma assimetria entre as três famílias, não uma proteção deliberada.
+
+
+def test_ficheiro_db_master_journal_falha(tmp_path: Path) -> None:
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(repo, tmp_path, "var/antiga.db-mj0A1B2C3D")
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert "antiga.db-mj0A1B2C3D" in resultado.stdout
+
+
+def test_ficheiro_sqlite_master_journal_falha(tmp_path: Path) -> None:
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(repo, tmp_path, "var/copia.sqlite-mj0A1B")
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert "copia.sqlite-mj0A1B" in resultado.stdout
+
+
+def test_ficheiro_sqlite3_master_journal_falha(tmp_path: Path) -> None:
+    """A família `.sqlite3` já apanhava isto antes das outras duas: fica aqui como prova de que a simetria não a quebrou."""
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(repo, tmp_path, "var/copia.sqlite3-mj0A1B")
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert "copia.sqlite3-mj0A1B" in resultado.stdout
+
+
+# --- Cópias comprimidas ou renomeadas ---
+#
+# Confirmado hoje: todas estas passavam. Nenhuma termina em `.db`,
+# `.sqlite` ou `.sqlite3` sozinho (`.db.gz`/`.db.bak`/`.db.zip` têm mais
+# uma extensão a seguir; `.db3`/`.sqlitedb` nem sequer têm o ponto no
+# sítio certo), mas são todas formas óbvias de uma base de dados (ou um
+# dump) escapar ao guarda só porque mudou de nome ou foi comprimida.
+
+
+@pytest.mark.parametrize(
+    "nome_ficheiro",
+    [
+        "copia.db.gz",
+        "copia.db.bak",
+        "copia.db.zip",
+        "copia.db3",
+        "copia.sqlitedb",
+        "dump.mysql",
+    ],
+)
+def test_copia_comprimida_ou_renomeada_falha(
+    tmp_path: Path, nome_ficheiro: str
+) -> None:
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(repo, tmp_path, f"var/{nome_ficheiro}")
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert nome_ficheiro in resultado.stdout
+
+
 # --- Dumps SQL, e a exceção do esquema legado ---
 #
 # `dump.sql` e `copia.sql.gz` são o veículo mais provável dos dados reais
@@ -356,6 +441,16 @@ def test_esquema_bd_antiga_e_a_excecao_e_passa(tmp_path: Path) -> None:
     `verificar-ficheiros-proibidos.sh`): o caminho exato
     "docs/legado/esquema-bd-antiga.sql", tal como o ficheiro real do
     repositório — não um padrão nem uma pasta inteira.
+
+    Este teste e `test_esquema_legado_com_insert_de_dados_falha` (abaixo)
+    são os dois que, juntos, dizem a regra toda: a exceção é só pelo
+    CAMINHO ("este `.sql` em particular pode existir"), nunca pelo
+    CONTEÚDO ("o que estiver lá dentro passa"). Sozinho, este teste
+    deixaria passar despercebido um guarda que excecionasse o caminho sem
+    nunca olhar para dentro do ficheiro — foi exatamente isso que o
+    revisor-seguranca apanhou: um `mysqldump` completo (sem
+    `--no-data`), com um `INSERT INTO` a sério, passava neste mesmo
+    caminho.
     """
     repo = _repositorio_git_vazio(tmp_path)
     _adicionar_forcado(repo, tmp_path, "docs/legado/esquema-bd-antiga.sql")
@@ -379,6 +474,102 @@ def test_mesmo_nome_do_esquema_legado_noutro_caminho_falha(tmp_path: Path) -> No
     resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
 
     assert resultado.returncode == 1, resultado.stderr
+
+
+# --- O conteúdo do esquema legado: a exceção é só pelo caminho, nunca pelo conteúdo ---
+#
+# Reproduzido pelo revisor-seguranca: um `mysqldump` completo (em vez de
+# `mysqldump --no-data`) dentro de `docs/legado/esquema-bd-antiga.sql`
+# passava a verde, porque a exceção acima olhava só para o caminho. É a
+# única porta que este guarda abre de propósito para um `.sql`, e não
+# pode ser uma porta que fica aberta independentemente do que lá é posto
+# depois — por isso a exceção tem de ler o conteúdo, mesmo neste caminho
+# exato, à procura de uma instrução que insira dados.
+
+
+def test_esquema_legado_com_insert_de_dados_falha(tmp_path: Path) -> None:
+    """Um `mysqldump` a direito (sem `--no-data`) no caminho excecionado continua proibido: a exceção é pelo caminho, nunca pelo conteúdo.
+
+    Par de `test_esquema_bd_antiga_e_a_excecao_e_passa`, acima: aquele
+    confirma que o caminho exato passa quando o conteúdo é só estrutura;
+    este confirma que o mesmo caminho exato continua a falhar quando o
+    conteúdo deixa de ser só estrutura. Os dois juntos é que dizem a
+    regra — nenhum sozinho a diz toda.
+
+    O `INSERT INTO` é o mesmo género de linha que um `mysqldump` real
+    escreve a seguir ao `CREATE TABLE`, quando corre sem `--no-data`; os
+    dados (nome, email, telefone) são claramente falsos, nunca de um
+    cliente real.
+    """
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(
+        repo,
+        tmp_path,
+        "docs/legado/esquema-bd-antiga.sql",
+        conteudo=(
+            "-- MySQL dump 10.13  Distrib 8.0.34, for Linux (x86_64)\n"
+            "--\n"
+            "-- Host: localhost    Database: bd_tomazia_antiga\n"
+            "-- ------------------------------------------------------\n"
+            "\n"
+            "DROP TABLE IF EXISTS `tomazia_clientes`;\n"
+            "CREATE TABLE `tomazia_clientes` (\n"
+            "  `id` int NOT NULL AUTO_INCREMENT,\n"
+            "  `nome` varchar(100) DEFAULT NULL,\n"
+            "  `email` varchar(100) DEFAULT NULL,\n"
+            "  `telefone` varchar(20) DEFAULT NULL,\n"
+            "  PRIMARY KEY (`id`)\n"
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n"
+            "\n"
+            "--\n"
+            "-- Dumping data for table `tomazia_clientes`\n"
+            "--\n"
+            "\n"
+            "INSERT INTO `tomazia_clientes` VALUES "
+            "(1,'Ana Silva','ana.silva@exemplo.test','912345678');\n"
+        ),
+    )
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert "docs/legado/esquema-bd-antiga.sql" in resultado.stdout
+
+
+def test_esquema_legado_com_load_data_em_minusculas_falha(tmp_path: Path) -> None:
+    """`LOAD DATA` (ou `REPLACE`/`COPY`) prende tanto quanto `INSERT`: a regra é "qualquer instrução de dados", não só uma.
+
+    Em minúsculas de propósito: confirma, ao mesmo tempo, que a procura
+    por instruções de dados não distingue maiúsculas de minúsculas — um
+    `mysqldump --tab` (estrutura e dados em ficheiros separados, a carregar
+    com `load data infile`) é tão real quanto um `INSERT` a direito, e
+    normalmente aparece em minúsculas no `.sql` gerado.
+    """
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(
+        repo,
+        tmp_path,
+        "docs/legado/esquema-bd-antiga.sql",
+        conteudo=(
+            "-- variante hipotética de um mysqldump com --tab: estrutura e\n"
+            "-- dados em ficheiros separados, com 'load data infile' a\n"
+            "-- carregar os dados de volta.\n"
+            "\n"
+            "create table `tomazia_clientes` (\n"
+            "  `id` int not null auto_increment,\n"
+            "  `nome` varchar(100) default null,\n"
+            "  primary key (`id`)\n"
+            ");\n"
+            "\n"
+            "load data infile '/tmp/tomazia_clientes.txt' "
+            "into table `tomazia_clientes`;\n"
+        ),
+    )
+
+    resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+
+    assert resultado.returncode == 1, resultado.stderr
+    assert "docs/legado/esquema-bd-antiga.sql" in resultado.stdout
 
 
 # --- Ligações simbólicas (modo --pasta) ---
