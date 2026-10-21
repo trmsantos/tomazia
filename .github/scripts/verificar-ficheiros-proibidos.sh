@@ -1,23 +1,49 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# verificar-ficheiros-proibidos.sh — S-10: garante que nenhuma base de
-# dados nem ficheiro de ambiente está versionado no repositório, nem
-# acaba dentro de uma pasta de build ou de deploy.
+# verificar-ficheiros-proibidos.sh — S-10 (BD/segredos) e S-12 (pasta de
+# deploy sem `.claude/`, `CLAUDE.md`, `docs/`, `tests/`, `e2e/`).
 #
 # Uso:
-#   verificar-ficheiros-proibidos.sh --git [<raiz>]
-#   verificar-ficheiros-proibidos.sh --pasta <dir>
+#   verificar-ficheiros-proibidos.sh --git [<raiz>] [--conjunto s10|s12|todos]
+#   verificar-ficheiros-proibidos.sh --pasta <dir> [--conjunto s10|s12|todos]
 #
-#   --git   : percorre os ficheiros VERSIONADOS em <raiz> (omitido = pasta
-#             atual), com `git ls-files -z --recurse-submodules` (para um
-#             eventual submódulo não ficar escondido atrás do gitlink).
-#   --pasta : percorre <dir> no disco com `find -L -type f -o -type l
-#             -print0`, para apanhar também o que não está versionado
-#             (por exemplo, um build gerado em CI) e o que só existe
-#             através de uma ligação simbólica.
+#   --git      : percorre os ficheiros VERSIONADOS em <raiz> (omitido =
+#                pasta atual), com `git ls-files -z --recurse-submodules`
+#                (para um eventual submódulo não ficar escondido atrás do
+#                gitlink).
+#   --pasta    : percorre <dir> no disco com `find -L -type f -o -type l
+#                [-o -type d]) -print0`, para apanhar também o que não
+#                está versionado (por exemplo, um build gerado em CI) e o
+#                que só existe através de uma ligação simbólica.
+#   --conjunto : que família de padrões aplicar. Pode vir em qualquer
+#                posição dos argumentos. Omitido = `s10` — é o que mantém
+#                todas as chamadas existentes (e os testes de S-10) a
+#                correr exatamente como antes, sem edição.
+#       s10   : só os padrões de BD/segredos (o comportamento histórico
+#               deste script, descrito abaixo).
+#       s12   : só os padrões da pasta de deploy (regra 4 do `CLAUDE.md`
+#               da raiz): `CLAUDE.md` pelo nome base, sem distinguir
+#               maiúsculas, em qualquer profundidade; e `.claude`, `docs`,
+#               `tests`, `e2e` como COMPONENTES DE CAMINHO (não nomes
+#               base) — por isso `--pasta` passa a percorrer também
+#               diretorias (`-type d`), e não só ficheiros/ligações: uma
+#               `docs/` vazia não tem `-type f` nenhum lá dentro, e um
+#               guarda que só soubesse procurar ficheiros deixava-a
+#               passar. Sem exceções (ao contrário do S-10, não há aqui
+#               nenhum caminho legítimo para um `docs/`, `tests/`, etc.
+#               dentro de uma pasta de deploy).
+#       todos : os dois conjuntos de padrões, um ficheiro proibido por
+#               qualquer um deles entra na lista.
 #
-# Padrões proibidos, sobre o nome base do ficheiro, sem distinguir
+#       Nota para quem vier ligar isto ao CI: o conjunto `s12`/`todos`
+#       só faz sentido contra `--pasta <pacote-montado-ou-build>` — a
+#       árvore de trabalho do repositório TEM, de propósito, `docs/`,
+#       `tests/`, `.claude/`; `--git . --conjunto s12` assinalaria-os
+#       (corretamente, pela letra da regra, mas sem utilidade nenhuma
+#       nesse alvo).
+#
+# Padrões do S-10, sobre o nome base do ficheiro, sem distinguir
 # maiúsculas de minúsculas: *.db, *.sqlite, *.sqlite3, e tudo o que destes
 # três pareça um ficheiro auxiliar (modo WAL, master journal, etc.) ou uma
 # cópia renomeada/comprimida: *.db-*, *.sqlite-*, *.sqlite3-* (jornais e
@@ -27,15 +53,15 @@ set -euo pipefail
 # *.mysql. E segredos: .env, .env.*, *.env.
 #
 # Este guarda olha para NOMES de ficheiro, não para formato nem conteúdo
-# (exceto a exceção por caminho, abaixo, que é a única com leitura de
-# conteúdo). Não apanha uma exportação para outro formato — um
+# (exceto a exceção por caminho do S-10, abaixo, que é a única com leitura
+# de conteúdo). Não apanha uma exportação para outro formato — um
 # "clientes.csv", um "utilizadores.json" ou um "site-antigo.tar.gz" passam
 # por este guarda tal como qualquer outro ficheiro de dados do projeto.
 # A lista de extensões nunca fecha; isto é uma rede de segurança para o
 # erro mais comum (commitar a BD ou um dump a direito), não um substituto
 # para olhar para o que se commita.
 #
-# Exceções, sempre explícitas e documentadas, nunca por heurística:
+# Exceções do S-10, sempre explícitas e documentadas, nunca por heurística:
 #   - o nome exato ".env.example".
 #   - o caminho exato "docs/legado/esquema-bd-antiga.sql" (ver
 #     `eh_excecao_caminho`, abaixo): é o esquema do MySQL do site antigo,
@@ -54,17 +80,50 @@ set -euo pipefail
 #   0 — nada encontrado
 #   1 — encontrou pelo menos um ficheiro proibido
 #   2 — uso errado: argumento inválido, pasta inexistente, --git fora de
-#       um repositório git, ou falha a meio da própria procura (`git
-#       ls-files`/`find` saiu com erro, índice corrompido, subpasta sem
-#       permissão de leitura, etc.). Um guarda que passa a verde porque a
-#       procura não conseguiu terminar é um guarda que não existe.
+#       um repositório git, --conjunto desconhecido, ou falha a meio da
+#       própria procura (`git ls-files`/`find` saiu com erro, índice
+#       corrompido, subpasta sem permissão de leitura, etc.). Um guarda
+#       que passa a verde porque a procura não conseguiu terminar é um
+#       guarda que não existe.
 #
 # Sem dependências além de git, find, grep e coreutils.
 
 uso() {
-  echo "Uso: $(basename "$0") --git [<raiz>]" >&2
-  echo "   ou: $(basename "$0") --pasta <dir>" >&2
+  echo "Uso: $(basename "$0") --git [<raiz>] [--conjunto s10|s12|todos]" >&2
+  echo "   ou: $(basename "$0") --pasta <dir> [--conjunto s10|s12|todos]" >&2
 }
+
+# `--conjunto` pode vir em qualquer posição: extrai-se primeiro, antes de
+# interpretar o resto como `--git`/`--pasta` (e o seu argumento), para o
+# resto da análise de argumentos, abaixo, ficar exatamente como era antes
+# de `--conjunto` existir.
+conjunto="s10"
+argumentos_restantes=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --conjunto)
+      if [ "$#" -lt 2 ]; then
+        uso
+        exit 2
+      fi
+      conjunto="$2"
+      shift 2
+      ;;
+    *)
+      argumentos_restantes+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${argumentos_restantes[@]}"
+
+case "$conjunto" in
+  s10 | s12 | todos) ;;
+  *)
+    echo "Erro: --conjunto tem de ser 's10', 's12' ou 'todos' (recebi '$conjunto')." >&2
+    exit 2
+    ;;
+esac
 
 modo="${1:-}"
 
@@ -135,7 +194,7 @@ conteudo_tem_instrucoes_dados() {
   return 0                         # >= 2: não se conseguiu ler — falha fechado
 }
 
-eh_proibido() {
+eh_proibido_s10() {
   # $1 = caminho do ficheiro tal como devolvido por `git ls-files`/`find`
   # (usado para o nome base e para a exceção por caminho exato); o padrão
   # em si olha só para o nome base, sem distinguir maiúsculas.
@@ -147,6 +206,11 @@ eh_proibido() {
   # ficheiro, e se divergirem (algo alterado sem `git add`) o pior que
   # acontece é o caso sujo falhar fechado lá em cima, em
   # `conteudo_tem_instrucoes_dados`.
+  #
+  # Corpo idêntico ao `eh_proibido` de antes de `--conjunto` existir — só
+  # o nome mudou, para dar lugar ao `eh_proibido_s12` e ao despachante
+  # `eh_proibido`, abaixo. É o que garante que `--conjunto s10` (a
+  # omissão) continua byte a byte igual ao comportamento histórico.
   local caminho="$1"
   local caminho_disco="${2:-$1}"
   local nome_base
@@ -178,6 +242,78 @@ eh_proibido() {
       ;;
     *)
       return 1
+      ;;
+  esac
+}
+
+# Componentes de caminho proibidos pelo S-12 (critério: pasta de deploy
+# sem `.claude/`, `docs/`, `tests/`, `e2e/`). Comparação por COMPONENTE,
+# não por nome base: "backend/app/tests/conftest.py" tem de ser apanhado
+# tanto quanto uma "tests/" vazia — o que importa é que algum segmento do
+# caminho seja exatamente um destes nomes, sensível a maiúsculas (ao
+# contrário do `CLAUDE.md`, a regra 4 do `CLAUDE.md` da raiz não pede
+# insensibilidade aqui).
+tem_componente_proibido() {
+  # $1 = caminho relativo à raiz da procura (NUNCA um caminho absoluto do
+  # disco nem um caminho com a raiz da pesquisa por diante — ver os dois
+  # pontos de chamada, em `--git` e em `--pasta`, abaixo).
+  local caminho_relativo="$1"
+  local componente
+  while IFS= read -r componente; do
+    case "$componente" in
+      .claude | docs | tests | e2e)
+        return 0
+        ;;
+    esac
+  done <<<"$(printf '%s' "$caminho_relativo" | tr '/' '\n')"
+  return 1
+}
+
+eh_proibido_s12() {
+  # $1 = caminho do ficheiro/diretoria tal como devolvido por
+  # `git ls-files`/`find` (usado só para o nome base: `CLAUDE.md`, sem
+  # distinguir maiúsculas, em qualquer profundidade).
+  # $2 = caminho relativo à raiz da procura, para a comparação por
+  # componente (default: igual a $1 — correto em modo `--git`, onde o
+  # caminho que `git ls-files` devolve já é relativo a `--git <raiz>`;
+  # em modo `--pasta` quem chama tem de passar o caminho já despido do
+  # prefixo `$dir`, porque `find` devolve o caminho no disco a direito).
+  local caminho="$1"
+  local caminho_componentes="${2:-$1}"
+  local nome_base
+  nome_base="$(basename "$caminho")"
+  local nome_minusculo
+  nome_minusculo="$(printf '%s' "$nome_base" | tr '[:upper:]' '[:lower:]')"
+
+  if [ "$nome_minusculo" = "claude.md" ]; then
+    return 0
+  fi
+
+  tem_componente_proibido "$caminho_componentes"
+}
+
+eh_proibido() {
+  # Despachante: aplica o(s) conjunto(s) de padrões pedido(s) em
+  # `--conjunto` (variável global `$conjunto`, omissão "s10").
+  # $1 = caminho (ver `eh_proibido_s10`/`eh_proibido_s12`)
+  # $2 = caminho no disco (só usado pelo S-10)
+  # $3 = caminho relativo para componentes (só usado pelo S-12)
+  local caminho="$1"
+  local caminho_disco="${2:-$1}"
+  local caminho_componentes="${3:-$1}"
+
+  case "$conjunto" in
+    s10)
+      eh_proibido_s10 "$caminho" "$caminho_disco"
+      ;;
+    s12)
+      eh_proibido_s12 "$caminho" "$caminho_componentes"
+      ;;
+    todos)
+      if eh_proibido_s10 "$caminho" "$caminho_disco"; then
+        return 0
+      fi
+      eh_proibido_s12 "$caminho" "$caminho_componentes"
       ;;
   esac
 }
@@ -242,11 +378,21 @@ else
     exit 2
   fi
 
+  # Sem barra final: simplifica despir o prefixo `$dir/` de cada caminho
+  # devolvido pelo `find`, abaixo, para obter o caminho relativo que o
+  # S-12 compara por componente.
+  dir="${dir%/}"
+
   # `-L`: segue ligações simbólicas, para uma pasta ligada ou um
   # ficheiro ligado para fora de `$dir` não escaparem à procura.
   # `\( -type f -o -type l \)`: com `-L`, uma ligação para um alvo que
   # não existe (ou inacessível) deixa de ser `-type f`; mantém-se aqui
   # como `-type l` para não desaparecer da procura em silêncio.
+  # Com `--conjunto s12`/`todos` acrescenta-se `-type d`: uma `docs/`
+  # vazia não tem `-type f` nenhum lá dentro, e um guarda que só soubesse
+  # procurar ficheiros deixava-a passar (o caso que o arquiteto pediu
+  # para prender). Não se acrescenta por omissão (`s10`), para o
+  # comportamento e a saída desse modo ficarem byte a byte como antes.
   # `-xdev`: não atravessa para outro sistema de ficheiros — fecha uma
   # ligação tipo `dist/x -> /`. Não fecha `dist/x -> $HOME`, nem
   # nenhuma ligação para dentro do mesmo sistema de ficheiros: essa é
@@ -257,7 +403,16 @@ else
   # sem permissão de leitura faz o `find` escrever "Permission denied"
   # e sair com erro; sem verificar o estado, o script seguiria em frente
   # como se essa subpasta tivesse sido revistada e estivesse limpa.
-  if ! find -L "$dir" -xdev \( -type f -o -type l \) -print0 >"$tmp_lista" 2>"$tmp_lista_err"; then
+  if [ "$conjunto" = "s10" ]; then
+    find_falhou=0
+    find -L "$dir" -xdev \( -type f -o -type l \) -print0 \
+      >"$tmp_lista" 2>"$tmp_lista_err" || find_falhou=1
+  else
+    find_falhou=0
+    find -L "$dir" -xdev \( -type f -o -type l -o -type d \) -print0 \
+      >"$tmp_lista" 2>"$tmp_lista_err" || find_falhou=1
+  fi
+  if [ "$find_falhou" -ne 0 ]; then
     echo "Erro: 'find' falhou a percorrer '$dir' (ver abaixo); não é seguro assumir que não há ficheiros proibidos." >&2
     cat "$tmp_lista_err" >&2
     exit 2
@@ -290,7 +445,16 @@ else
   fi
 
   while IFS= read -r -d '' caminho; do
-    if eh_proibido "$caminho"; then
+    # Caminho relativo a `$dir`, para a comparação por componente do
+    # S-12 (`tem_componente_proibido`). A própria `$dir` (a raiz
+    # pesquisada, sempre `-type d`) nunca é, ela própria, considerada
+    # proibida por este componente: só o que está DENTRO dela.
+    if [ "$caminho" = "$dir" ]; then
+      caminho_componentes="."
+    else
+      caminho_componentes="${caminho#"$dir"/}"
+    fi
+    if eh_proibido "$caminho" "$caminho" "$caminho_componentes"; then
       encontrados+=("$caminho")
     fi
   done <"$tmp_lista"

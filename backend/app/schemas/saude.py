@@ -16,3 +16,10 @@ class RespostaSaude(BaseModel):
 
     estado: Literal["ok"]
     versao: str
+    #: Instante (UTC) em que este processo importou `app.main`, formatado
+    #: como `%Y-%m-%dT%H:%M:%SZ`. É `str`, não `datetime`: assim o formato
+    #: que sai pela rede é sempre exatamente este, sem frações de segundo e
+    #: sem depender da serialização de `datetime` do Pydantic — é o que o
+    #: `esperar-versao.sh` da F1-04 precisa para o comparar com `jq`,
+    #: inequivocamente, contra o instante em que o deploy começou.
+    arrancado_em: str

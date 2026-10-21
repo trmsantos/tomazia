@@ -1,0 +1,309 @@
+# Deploy do Bar da Tomazia: `main` verde → pacote montado → branch `deploy`
+# → cPanel (UAPI) → `deploy/deploy.sh` no servidor.
+#
+# Gatilho: `workflow_run` do `CI`, nunca `push` nem `pull_request`
+# diretamente. Razão: o SHA que queremos publicar tem de ser o SHA que o
+# `ci.yml` já validou por inteiro (backend, frontend, contrato, segurança),
+# nunca um SHA novo que ainda não correu nada. `workflow_run` dá-nos isso de
+# graça (`github.event.workflow_run.head_sha`) — ao contrário de `github.sha`
+# neste tipo de evento, que é sempre o tip ATUAL da `main`, e pode já ter
+# andado para a frente entre o fim do CI e o início deste workflow. Por
+# isso `github.sha` nunca aparece neste ficheiro: cada passo usa
+# `github.event.workflow_run.head_sha` explicitamente.
+#
+# Cinco jobs, em cadeia por `needs`, cada um com só a permissão que precisa:
+#   porteiro  → confirma que o CI acabou com sucesso, na main, para este
+#               SHA exato. Corre sempre (nunca com um `if:` a este nível —
+#               ver o comentário dentro do job).
+#   montar    → checkout do SHA aprovado, `npm ci && npm run build`,
+#               `deploy/montar.sh`, e os dois guardas (S-12, S-10) sobre o
+#               pacote. Sem token de escrita: corre código de terceiros.
+#   publicar  → empurra o pacote para a branch `deploy` (fast-forward). O
+#               único job com `contents: write`; não corre nenhum gestor de
+#               pacotes.
+#   pedir     → pede à UAPI do cPanel para puxar `deploy` e correr
+#               `deploy/deploy.sh` no servidor. `environment: production`.
+#   verificar → espera que `/api/health` sirva o SHA novo, de um processo
+#               arrancado depois deste deploy ter começado. `environment:
+#               production`.
+#
+# `pedir` e `verificar` nunca fazem checkout do repositório: vão buscar os
+# scripts de `deploy/` ao artefacto que `montar` publicou (o mesmo pacote
+# já verificado pelo S-12/S-10), por isso `permissions: {}` chega mesmo —
+# `actions/download-artifact` dentro da mesma run não depende do
+# `GITHUB_TOKEN` nem do bloco `permissions:`.
+#
+# Concurrency com um grupo CONSTANTE (`deploy-producao`), nunca derivado do
+# ref ou do SHA: há um servidor só, nunca dois deploys ao mesmo tempo.
+# `cancel-in-progress: false` é a parte que à primeira vista parece
+# errada: um deploy a meio nunca é cancelado por um mais recente. Se B e C
+# chegarem enquanto A ainda corre, o GitHub põe B e C em fila (pela ordem
+# de chegada); quando A acaba, B arranca — mas como B e C visam o MESMO
+# grupo e `cancel-in-progress: false` só impede cancelar o que já está a
+# CORRER, B fica à espera atrás de A, nunca corre concorrentemente com A,
+# e C fica atrás de B. O efeito prático (confirmado pelo comportamento
+# documentado do GitHub para filas de `concurrency`: no máximo uma corrida
+# WAITING por grupo, cada nova substitui a anterior em fila) é que, quando
+# A termina, o que corre a seguir é C (o mais recente), não B — C
+# substituiu B na fila. Nunca se perde o SHA mais recente e nunca há dois
+# deploys a escrever no servidor ao mesmo tempo.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  porteiro:
+    name: porteiro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      inicio_deploy: ${{ steps.marcar_inicio.outputs.inicio_deploy }}
+    steps:
+      # Nunca um `if:` ao nível do job (nem sequer `if: github.event.
+      # workflow_run.conclusion == 'success'`): isso deixaria o workflow
+      # inteiro `skipped` sempre que o CI corresse vermelho — sem X, sem
+      # email, sem notificação nenhuma. É a mesma lição que o `resumo` do
+      # `ci.yml` já aprendeu (ver o comentário lá): `skipped` não é
+      # passagem, e um guarda que desaparece em vez de falhar não protege
+      # nada. Este job corre sempre e falha em voz alta, com um `exit 1`
+      # bem visível, sempre que algo não bate certo.
+      - name: CI terminou com sucesso, na main, e o SHA é o que vamos publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOME_WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSAO: ${{ github.event.workflow_run.conclusion }}
+          RAMO: ${{ github.event.workflow_run.head_branch }}
+          REPOSITORIO_CABECA: ${{ github.event.workflow_run.head_repository.full_name }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          if [ "${NOME_WORKFLOW}" != "CI" ]; then
+            echo "::error::workflow_run não é do workflow 'CI' (foi '${NOME_WORKFLOW}')."
+            exit 1
+          fi
+
+          if [ "${RAMO}" != "main" ]; then
+            echo "::error::workflow_run não terminou na branch 'main' (foi '${RAMO}')."
+            exit 1
+          fi
+
+          if [ "${REPOSITORIO_CABECA}" != "${GITHUB_REPOSITORY}" ]; then
+            echo "::error::workflow_run não é deste repositório (foi '${REPOSITORIO_CABECA}')."
+            exit 1
+          fi
+
+          if [ "${CONCLUSAO}" != "success" ]; then
+            echo "::error::O CI não terminou com sucesso (conclusão: '${CONCLUSAO}'). Sem deploy."
+            exit 1
+          fi
+
+          if ! [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_sha do workflow_run não parece um SHA de commit ('${SHA}')."
+            exit 1
+          fi
+
+          # Não confia só no payload do evento (podia, em teoria, estar
+          # desatualizado face ao estado atual da corrida): pergunta à API
+          # pela própria corrida do CI, pelo id, e confirma que o SHA e a
+          # conclusão batem certo com o que o evento disse. É esta
+          # confirmação independente que prova "o SHA que o CI verificou
+          # é o que se vai publicar".
+          resposta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+          sha_confirmado="$(printf '%s' "${resposta}" | jq -r '.head_sha')"
+          conclusao_confirmada="$(printf '%s' "${resposta}" | jq -r '.conclusion')"
+          estado_confirmado="$(printf '%s' "${resposta}" | jq -r '.status')"
+
+          if [ "${estado_confirmado}" != "completed" ]; then
+            echo "::error::A corrida do CI ainda não está 'completed' segundo a API (está '${estado_confirmado}')."
+            exit 1
+          fi
+
+          if [ "${conclusao_confirmada}" != "success" ]; then
+            echo "::error::A API confirma que o CI não teve sucesso (conclusão: '${conclusao_confirmada}')."
+            exit 1
+          fi
+
+          if [ "${sha_confirmado}" != "${SHA}" ]; then
+            echo "::error::O SHA devolvido pela API para esta corrida ('${sha_confirmado}') não bate com o SHA do evento ('${SHA}')."
+            exit 1
+          fi
+
+          echo "CI confirmado: sucesso, na main, SHA ${SHA}."
+
+      - name: Marcar o instante em que este deploy começou
+        id: marcar_inicio
+        run: echo "inicio_deploy=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"${GITHUB_OUTPUT}"
+
+  montar:
+    name: montar
+    needs: porteiro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # `persist-credentials: false`: o passo seguinte corre `npm ci`,
+      # código de terceiros — um `postinstall` malicioso não pode ter o
+      # `GITHUB_TOKEN` ao alcance em `.git/config` (a mesma ameaça já
+      # identificada no `claude.yml`). Este job só tem `contents: read` de
+      # qualquer forma, mas a credencial nem chega a ficar escrita em disco.
+      - name: Checkout do SHA exato que o CI aprovou (nunca o tip da main)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Instalar o Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci (código de terceiros)
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm run build
+        working-directory: frontend
+        run: npm run build
+
+      - name: deploy/montar.sh (monta o pacote de deploy)
+        run: deploy/montar.sh --sha "${SHA}" --saida "${{ runner.temp }}/pacote"
+
+      - name: Verificador S-12 sobre o pacote (.claude/, CLAUDE.md, docs/, tests/, e2e/)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s12 --pasta "${{ runner.temp }}/pacote"
+
+      - name: Verificador S-10 sobre o pacote (.db, .sqlite, .env)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta "${{ runner.temp }}/pacote"
+
+      - name: Publicar o pacote como artefacto
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pacote-deploy
+          path: ${{ runner.temp }}/pacote
+          if-no-files-found: error
+          retention-days: 1
+
+  publicar:
+    name: publicar
+    needs: montar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # O único job com `contents: write` (ver `test_job_publicar_e_o_unico_
+    # com_contents_write`, em backend/tests/test_workflows.py). Por isso é
+    # também o único que NUNCA pode correr código de terceiros: nada de
+    # `npm`/`npx`/`pip`/`uv`/`yarn`/`pnpm` aqui (ver `test_job_publicar_
+    # nao_corre_gestor_de_pacotes_nenhum`, no mesmo ficheiro) — é a mesma
+    # ameaça do `claude.yml`, um `postinstall` malicioso a ler o
+    # `GITHUB_TOKEN` de `.git/config`. Este job só corre `deploy/publicar-
+    # branch.sh`, que só usa `git`.
+    permissions:
+      contents: write
+    steps:
+      # `fetch-depth: 0` (histórico completo): `publicar-branch.sh` recusa
+      # publicar um SHA antepassado do já publicado (anti-retrocesso),
+      # comparando com `git merge-base --is-ancestor` — isso só funciona
+      # se os objetos dos commits relevantes (o antigo e o novo) estiverem
+      # mesmo presentes localmente, nunca com um clone raso.
+      - name: Checkout do SHA exato que o CI aprovou, com histórico completo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Descarregar o pacote montado
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pacote-deploy
+          path: ${{ runner.temp }}/pacote
+
+      - name: deploy/publicar-branch.sh (fast-forward para a branch deploy)
+        run: |
+          deploy/publicar-branch.sh \
+            --pasta "${{ runner.temp }}/pacote" \
+            --sha "${{ github.event.workflow_run.head_sha }}" \
+            --branch deploy
+
+  pedir:
+    name: pedir
+    needs: publicar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Sem checkout nenhum: `deploy/pedir-deploy.sh` vem do pacote que
+    # `montar` já verificou (S-12/S-10) e publicou como artefacto — por
+    # isso `permissions: {}` chega mesmo. `actions/download-artifact`
+    # dentro da mesma run não depende do `GITHUB_TOKEN`.
+    permissions: {}
+    environment: production
+    steps:
+      - name: Descarregar o pacote (só para ir buscar deploy/pedir-deploy.sh)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pacote-deploy
+          path: ${{ runner.temp }}/pacote
+
+      # A UAPI do cPanel responde sempre 200, mesmo quando falha — por
+      # isso quem decide sucesso/falha é o `status` do corpo JSON, lido
+      # dentro do próprio `pedir-deploy.sh` (nunca este passo). O token
+      # nunca aparece na linha de comandos (ficaria nos logs do Actions):
+      # entra só por variável de ambiente, lida pelo script.
+      - name: Pedir ao cPanel para puxar a branch deploy e correr deploy.sh
+        env:
+          TOMAZIA_CPANEL_BASE_URL: ${{ secrets.TOMAZIA_CPANEL_BASE_URL }}
+          TOMAZIA_CPANEL_USER: ${{ secrets.TOMAZIA_CPANEL_USER }}
+          TOMAZIA_CPANEL_TOKEN: ${{ secrets.TOMAZIA_CPANEL_TOKEN }}
+        run: |
+          chmod +x "${{ runner.temp }}/pacote/deploy/pedir-deploy.sh"
+          "${{ runner.temp }}/pacote/deploy/pedir-deploy.sh"
+
+  verificar:
+    name: verificar
+    needs: [pedir, porteiro]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Mesma razão do job `pedir`: `deploy/esperar-versao.sh` vem do pacote
+    # artefacto, nunca de um checkout — `permissions: {}` chega.
+    permissions: {}
+    environment: production
+    steps:
+      - name: Descarregar o pacote (só para ir buscar deploy/esperar-versao.sh)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pacote-deploy
+          path: ${{ runner.temp }}/pacote
+
+      # Um guarda que só verificasse HTTP 200 seria decorativo (uma
+      # página de manutenção dá 200). `esperar-versao.sh` exige: a versão
+      # certa, DUAS leituras seguidas, e um `arrancado_em` posterior ao
+      # instante em que este deploy começou (marcado pelo job `porteiro`)
+      # — é o que prova "código novo a correr", não só "o VERSION mudou
+      # no disco".
+      - name: Esperar que /api/health sirva o SHA novo, de um processo novo
+        env:
+          TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
+        run: |
+          chmod +x "${{ runner.temp }}/pacote/deploy/esperar-versao.sh"
+          "${{ runner.temp }}/pacote/deploy/esperar-versao.sh" \
+            "${TOMAZIA_API_BASE_URL}" \
+            "${{ github.event.workflow_run.head_sha }}" \
+            300 \
+            5 \
+            "${{ needs.porteiro.outputs.inicio_deploy }}"

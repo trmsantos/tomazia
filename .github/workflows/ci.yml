@@ -84,14 +84,35 @@ jobs:
 
       - name: requirements.txt em dia (o que o cPanel instala = o que o CI testou)
         run: |
-          uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt
+          # COM hashes (decisão do Tomás, F1-04): é o único salto da cadeia
+          # sem verificação de integridade — o uv.lock está preso, o CI
+          # testa com --frozen, o pacote é verificado byte a byte (S-12/
+          # S-10)... e depois o cPanel ia buscar os pacotes Python à rede
+          # sem confirmar nada. Este passo tem de usar EXATAMENTE o mesmo
+          # comando do passo de prova mais abaixo ("pip install
+          # --require-hashes"), senão um fica vermelho por nada.
+          uv export --no-dev --format requirements-txt -o requirements.txt
           # Porquê `git status --porcelain`, não `git diff --exit-code`:
           # ver o comentário no cabeçalho deste ficheiro.
           if [ -n "$(git status --porcelain --untracked-files=all -- requirements.txt)" ]; then
-            echo "::error::backend/requirements.txt ficou diferente do gerado agora (ou foi apagado). Corrige com: cd backend && uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt — e faz commit do resultado NO MESMO PR: um PR do Dependabot no ecossistema uv nasce vermelho de propósito até esse commit, não é avaria do CI."
+            echo "::error::backend/requirements.txt ficou diferente do gerado agora (ou foi apagado). Corrige com: cd backend && uv export --no-dev --format requirements-txt -o requirements.txt — e faz commit do resultado NO MESMO PR: um PR do Dependabot no ecossistema uv nasce vermelho de propósito até esse commit, não é avaria do CI."
             git status --porcelain --untracked-files=all -- requirements.txt
             exit 1
           fi
+
+      - name: pip install --require-hashes --dry-run (integridade + plataforma do servidor)
+        run: |
+          # Prova que requirements.txt é internamente consistente e
+          # instalável em Linux x86_64 com Python 3.11 — a mesma
+          # plataforma do cPanel. Se a resolução universal do uv não
+          # cobrir essa plataforma, descobre-se aqui, não no primeiro
+          # deploy. Usa o Python 3.11 que o passo "Instalar o uv" já
+          # deixou pronto (lido de .python-version) e o `pip` real da
+          # stdlib (venv), nunca `uv pip`: é o `pip` a sério que o Setup
+          # Python App do cPanel usa.
+          python_bin="$(uv python find 3.11)"
+          "${python_bin}" -m venv --upgrade-deps "${RUNNER_TEMP}/prova-hashes"
+          "${RUNNER_TEMP}/prova-hashes/bin/python" -m pip install --require-hashes --dry-run -r requirements.txt
 
   frontend:
     name: frontend
@@ -128,6 +149,24 @@ jobs:
 
       - name: build
         run: npm run build
+
+      # Monta o pacote de deploy a sério (o mesmo deploy/montar.sh que o
+      # deploy.yml usa, com o SHA real deste commit) e corre os dois
+      # guardas sobre ele, não só sobre frontend/dist: um `.env`/`.db`
+      # plantado em `backend/app/`, ou um `docs/`/`tests/`/`.claude/` que
+      # sobreviva à cópia de `backend/`, nunca chegaria a aparecer num
+      # guarda que só olhasse para `dist/`.
+      - name: deploy/montar.sh (pacote de deploy, para os guardas S-12/S-10)
+        working-directory: ${{ github.workspace }}
+        run: deploy/montar.sh --sha "${{ github.sha }}" --saida "${{ runner.temp }}/pacote-ci"
+
+      - name: S-12 (pacote de deploy — .claude/, CLAUDE.md, docs/, tests/, e2e/)
+        working-directory: ${{ github.workspace }}
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s12 --pasta "${{ runner.temp }}/pacote-ci"
+
+      - name: S-10 (pacote de deploy — .db, .sqlite, .env)
+        working-directory: ${{ github.workspace }}
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta "${{ runner.temp }}/pacote-ci"
 
       - name: size
         run: npm run size
@@ -239,6 +278,23 @@ jobs:
 
       - name: pip-audit (backend/requirements.txt)
         run: uvx pip-audit --no-deps --strict -r backend/requirements.txt
+
+      - name: shellcheck -x (deploy/*.sh, .github/scripts/*.sh)
+        run: |
+          # `nullglob`: um glob que não encontra nada vira array vazio, em
+          # vez de ficar como o texto literal do padrão (que o shellcheck
+          # trataria como "ficheiro não encontrado" — um erro diferente do
+          # que este passo quer apanhar). Contagem mínima explícita: um
+          # glob vazio sai 0 do `for`/array sem nunca correr o shellcheck,
+          # e "não correu nada" não pode ficar verde silenciosamente.
+          shopt -s nullglob
+          ficheiros=(deploy/*.sh .github/scripts/*.sh)
+          if [ "${#ficheiros[@]}" -eq 0 ]; then
+            echo "::error::Nenhum script encontrado para o shellcheck (glob vazio) — isto não verificou nada."
+            exit 1
+          fi
+          echo "A verificar ${#ficheiros[@]} ficheiro(s): ${ficheiros[*]}"
+          shellcheck -x "${ficheiros[@]}"
 
   resumo:
     name: resumo
