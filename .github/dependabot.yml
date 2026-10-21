@@ -1,0 +1,50 @@
+# Três ecossistemas: Actions (raiz), npm (frontend/) e uv (backend/).
+#
+# O ecossistema do backend é "uv", não "pip": é o que atualiza
+# `pyproject.toml` e `uv.lock` juntos. O "pip" mexeria em
+# `requirements.txt`, que é gerado (`uv export`, no job `backend` do CI) e
+# nunca se edita à mão.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Lisbon"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(acoes)"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Lisbon"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(frontend)"
+    groups:
+      dependencias-de-desenvolvimento:
+        dependency-type: "development"
+        patterns:
+          - "*"
+
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Lisbon"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(backend)"
+    groups:
+      dependencias-de-desenvolvimento:
+        dependency-type: "development"
+        patterns:
+          - "*"

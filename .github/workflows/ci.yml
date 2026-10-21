@@ -1,0 +1,269 @@
+# CI do Bar da Tomazia.
+#
+# `ubuntu-24.04` fixo, não `ubuntu-latest`: a imagem "latest" muda debaixo
+# dos pés, sem aviso, e pode partir o build sem nenhuma alteração nossa.
+# Revê este pin quando o GitHub anunciar a descontinuação do `ubuntu-24.04`
+# nos runners hospedados, ou quando sair uma imagem para o `ubuntu-26.04`
+# (a LTS seguinte, prevista para abril de 2026) — o que vier primeiro.
+#
+# Nomes dos cinco jobs (backend, frontend, contrato, seguranca, resumo) são
+# um contrato público: ficam exatamente assim. O `resumo` nunca se
+# renomeia — vai ser o único check obrigatório de branch protection no dia
+# em que houver GitHub Pro, e assim acrescentar jobs nunca obriga a mexer
+# na lista de checks exigidos.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancela execuções anteriores em PRs (poupa minutos num branch que
+  # recebe vários pushes seguidos), mas nunca na main: o resultado do CI
+  # na main é a precondição do deploy.yml (F1-04), e cancelar essa
+  # execução a meio deixaria a main sem um resultado de CI válido.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Instalar o uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          # Sem `python-version`: o uv lê `backend/.python-version` sozinho.
+          cache-dependency-glob: backend/uv.lock
+
+      - name: uv lock --check (pyproject.toml editado sem relock)
+        run: |
+          if ! uv lock --check; then
+            echo "::error::backend/uv.lock está desatualizado em relação a backend/pyproject.toml. Corrige com: cd backend && uv lock"
+            exit 1
+          fi
+
+      - name: uv sync --frozen
+        run: uv sync --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy app passenger_wsgi.py
+
+      - name: pytest
+        run: uv run pytest -q
+
+      - name: requirements.txt em dia (o que o cPanel instala = o que o CI testou)
+        run: |
+          uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt
+          if ! git diff --exit-code -- requirements.txt; then
+            echo "::error::backend/requirements.txt ficou diferente do gerado agora. Corrige com: cd backend && uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt"
+            exit 1
+          fi
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Instalar o Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test -- --run
+
+      - name: build
+        run: npm run build
+
+      - name: size
+        run: npm run size
+
+      - name: S-10 (pasta de build, apanha o que não está versionado)
+        run: ${{ github.workspace }}/.github/scripts/verificar-ficheiros-proibidos.sh --pasta dist
+
+  contrato:
+    name: contrato
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      # Não é segredo: só o suficiente para `app.main.criar_app()` (corrida
+      # ao importar `app.main`, o que `python -m app.openapi` faz) não
+      # rebentar à procura de AMBIENTE, que passou a ser obrigatório na
+      # F1-02. "producao" falharia aqui à mesma: `Definicoes` exige um
+      # SEGREDO_SESSAO forte nesse ambiente, e este job não define nenhum.
+      AMBIENTE: desenvolvimento
+      # Caminho que nunca existe: garante que nenhum `.env` real (do
+      # repositório ou do runner) é lido, para este job ser hermético.
+      TOMAZIA_ENV_FILE: ${{ runner.temp }}/tomazia-ci-sem-ambiente/.env
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Instalar o uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - name: uv sync --frozen
+        working-directory: backend
+        run: uv sync --frozen
+
+      # A ordem importa: o OpenAPI tem de ser exportado ANTES do
+      # `gerar-api`. `frontend/openapi.json` está no `.gitignore`, por isso
+      # nunca vem do checkout — só existe neste job depois deste passo.
+      - name: Exportar o OpenAPI (python -m app.openapi)
+        working-directory: backend
+        run: uv run python -m app.openapi
+
+      # O `gerar-api` ainda é um placeholder (a geração a sério é a
+      # F2-09); estas duas guardas dão dentes ao job desde já.
+      - name: OpenAPI exportado é JSON válido
+        run: jq empty frontend/openapi.json
+
+      - name: OpenAPI tem a rota /health
+        run: jq -e '.paths["/health"]' frontend/openapi.json
+
+      - name: Instalar o Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: gerar-api
+        working-directory: frontend
+        run: npm run gerar-api
+
+      # Correção ao passo equivalente do `/verificar` local: `git diff
+      # --exit-code` não vê ficheiros novos não versionados. Quando a
+      # F2-09 gerar ficheiros novos em `src/lib/api`, um `git diff`
+      # simples passaria a verde com esses ficheiros por commitar.
+      - name: frontend/src/lib/api não mudou
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- frontend/src/lib/api)" ]; then
+            echo "::error::frontend/src/lib/api ficou diferente depois de 'npm run gerar-api'. Corrige com: cd frontend && npm run gerar-api && git add src/lib/api"
+            git status --porcelain --untracked-files=all -- frontend/src/lib/api
+            exit 1
+          fi
+
+  seguranca:
+    name: seguranca
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: S-10 (ficheiros versionados no repositório)
+        run: ${{ github.workspace }}/.github/scripts/verificar-ficheiros-proibidos.sh --git
+
+      - name: Instalar o Node (só para o lockfile; sem npm ci)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Auditoria npm (allowlist em .github/auditoria-npm-permitidas.json)
+        run: ${{ github.workspace }}/.github/scripts/auditar-npm.sh
+
+      - name: Instalar o uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - name: pip-audit (backend/requirements.txt)
+        run: uvx pip-audit --no-deps --strict -r backend/requirements.txt
+
+  resumo:
+    name: resumo
+    needs: [backend, frontend, contrato, seguranca]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Escrever a tabela e decidir o resultado
+        env:
+          RESULTADO_BACKEND: ${{ needs.backend.result }}
+          RESULTADO_FRONTEND: ${{ needs.frontend.result }}
+          RESULTADO_CONTRATO: ${{ needs.contrato.result }}
+          RESULTADO_SEGURANCA: ${{ needs.seguranca.result }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Resumo do CI"
+            echo
+            echo "| Job | Resultado |"
+            echo "| --- | --- |"
+            echo "| backend | ${RESULTADO_BACKEND} |"
+            echo "| frontend | ${RESULTADO_FRONTEND} |"
+            echo "| contrato | ${RESULTADO_CONTRATO} |"
+            echo "| seguranca | ${RESULTADO_SEGURANCA} |"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+          falhou=0
+          for resultado in "${RESULTADO_BACKEND}" "${RESULTADO_FRONTEND}" "${RESULTADO_CONTRATO}" "${RESULTADO_SEGURANCA}"; do
+            case "${resultado}" in
+              failure | cancelled)
+                falhou=1
+                ;;
+            esac
+          done
+
+          if [ "${falhou}" -eq 1 ]; then
+            echo "::error::Pelo menos um job do CI falhou ou foi cancelado."
+            exit 1
+          fi
