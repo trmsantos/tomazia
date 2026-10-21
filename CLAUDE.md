@@ -26,8 +26,14 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app passenger_wsgi.py
 uv run pytest
-uv run uvicorn app.main:app --reload --port 8070
+AMBIENTE=desenvolvimento uv run uvicorn app.main:app --reload --port 8070
 ```
+
+`AMBIENTE` não tem valor por omissão: faltando, a app recusa arrancar. É o que
+impede uma configuração em falta de ser tomada por desenvolvimento. Precisam
+dela os comandos que constroem a app ou abrem a base de dados — `uvicorn`,
+`python -m app.openapi` e o `alembic`. O `pytest`, o `ruff` e o `mypy` não,
+porque as fixtures já a definem.
 
 Frontend (em `frontend/`):
 

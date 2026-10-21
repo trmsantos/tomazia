@@ -22,8 +22,25 @@ testes isolam-se do `.env` real apontando `TOMAZIA_ENV_FILE` para fora de
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _abortar(mensagem: str) -> NoReturn:
+    """Escreve `mensagem` em stderr e aborta o arranque com um `RuntimeError`.
+
+    Um único ponto de falha para o canário e para as duas guardas abaixo:
+    antes, um usava `raise RuntimeError(...)` e os outros dois
+    `sys.stderr.write(...)` seguido de `raise SystemExit(1)`, sem nenhuma
+    razão para a diferença — e o `SystemExit` apaga o traceback no log do
+    Passenger, o que torna a causa mais difícil de ver depois. Escreve-se
+    a mensagem explicitamente em stderr (para quem só veja essa saída, sem
+    traceback) e levanta-se sempre o mesmo tipo de exceção.
+    """
+    sys.stderr.write(mensagem + "\n")
+    raise RuntimeError(mensagem)
+
 
 os.chdir(BASE_DIR)
 
@@ -37,45 +54,43 @@ if str(BASE_DIR) not in sys.path:
 # limpar a cache de `obter_definicoes()` não repete a validação nem
 # reconstrói a app. Falha em voz alta em vez de mascarar o problema.
 if "app.config" in sys.modules or "app.main" in sys.modules:
-    raise RuntimeError(
+    _abortar(
         "app.config ou app.main já estava importado antes de "
         "passenger_wsgi.py ajustar a pasta de trabalho e o sys.path — a "
         "validação de produção pode ter corrido com o ambiente incompleto."
     )
 
-from app.config import _caminho_ficheiro_de_ambiente  # noqa: E402
+from app.config import caminho_ficheiro_de_ambiente  # noqa: E402
 
-_ficheiro_de_ambiente = _caminho_ficheiro_de_ambiente()
+_ficheiro_de_ambiente = caminho_ficheiro_de_ambiente()
 
-# Achado [alta]: um ficheiro de ambiente em falta é ignorado em silêncio
-# pelo pydantic-settings — `ambiente` cairia no valor por omissão
+# Risco: um ficheiro de ambiente em falta é ignorado em silêncio pelo
+# pydantic-settings — `ambiente` cairia no valor por omissão
 # "desenvolvimento" e a app arrancaria a servir produção com o segredo de
 # desenvolvimento publicado no repositório e a documentação toda aberta.
 # É o cenário do primeiro deploy, antes de o `.env` ser colocado no
 # servidor — por isso recusa-se a arrancar em vez de assumir isso.
 if not _ficheiro_de_ambiente.is_file():
-    sys.stderr.write(
+    _abortar(
         "Erro de arranque: o ficheiro de ambiente "
         f"'{_ficheiro_de_ambiente}' não existe ou não é um ficheiro "
         "regular legível (pode ser uma diretoria ou um dispositivo como "
         "/dev/null). Confirma que o `.env` já foi colocado no servidor "
-        "antes de reiniciar a aplicação.\n"
+        "antes de reiniciar a aplicação."
     )
-    raise SystemExit(1)
 
-# Achado [média]: `TOMAZIA_ENV_FILE` é uma variável de ambiente do
-# processo — em produção, exatamente a primitiva que um `SetEnv
-# TOMAZIA_ENV_FILE ...` num `.htaccess` honrado pelo Apache escreveria.
-# Um caminho fora desta instalação nunca pode escolher a configuração de
-# produção a partir de fora, mesmo que o ficheiro em si seja válido.
+# Risco: `TOMAZIA_ENV_FILE` é uma variável de ambiente do processo — em
+# produção, exatamente a primitiva que um `SetEnv TOMAZIA_ENV_FILE ...`
+# num `.htaccess` honrado pelo Apache escreveria. Um caminho fora desta
+# instalação nunca pode escolher a configuração de produção a partir de
+# fora, mesmo que o ficheiro em si seja válido.
 if not _ficheiro_de_ambiente.is_relative_to(BASE_DIR):
-    sys.stderr.write(
+    _abortar(
         "Erro de arranque: o ficheiro de ambiente "
         f"'{_ficheiro_de_ambiente}' está fora de '{BASE_DIR}'. "
         "TOMAZIA_ENV_FILE só pode apontar para um ficheiro dentro desta "
-        "instalação.\n"
+        "instalação."
     )
-    raise SystemExit(1)
 
 from a2wsgi import ASGIMiddleware  # noqa: E402
 

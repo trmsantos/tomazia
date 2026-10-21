@@ -8,14 +8,18 @@ repositório real.
 
 Achado [média] da ronda de correções da F1-02: `PYTHONPATH` aponta para o
 `backend/` real (é preciso, para `import app` funcionar), mas sem
-`TOMAZIA_ENV_FILE`, `app.config._caminho_ficheiro_de_ambiente()` resolvia,
+`TOMAZIA_ENV_FILE`, `app.config.caminho_ficheiro_de_ambiente()` resolvia,
 por omissão, para `RAIZ_APP / ".env"` — ou seja, `backend/.env` a sério, se
 algum dia vier a existir (p. ex. para testes manuais de alguém). O revisor
 reproduziu plantando um `.env` com `AMBIENTE=producao` ali e os três testes
 de export ficaram vermelhos, com o traceback do pydantic a imprimir as
 definições no log de CI. Por isso `_correr_export` define sempre
 `TOMAZIA_ENV_FILE` para um caminho inexistente dentro do `tmp_path` do
-próprio teste, nunca dependente de `cwd` nem do `backend/` real.
+próprio teste, nunca dependente de `cwd` nem do `backend/` real — a
+construção desse ambiente isolado vive agora em
+`tests.apoio_subprocesso.construir_ambiente_isolado_para_openapi`, reusada
+por `tests/seguranca/test_isolamento_de_subprocessos.py` sem este ficheiro
+ter de expor um privado a um `tests/seguranca/` que não lhe pertence.
 """
 
 from __future__ import annotations
@@ -25,40 +29,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-RAIZ_BACKEND = Path(__file__).resolve().parent.parent
+from tests.apoio_subprocesso import (
+    RAIZ_BACKEND,
+    construir_ambiente_isolado_para_openapi,
+)
+
 RAIZ_REPOSITORIO = RAIZ_BACKEND.parent
-
-# Ambiente mínimo: só o necessário para o Python do `.venv` arrancar e
-# encontrar o pacote `app` (via `PYTHONPATH`, nunca via `cwd`).
-_AMBIENTE_BASE = {
-    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-    "PYTHONPATH": str(RAIZ_BACKEND),
-}
-
-
-def _construir_ambiente_isolado(destino: Path) -> dict[str, str]:
-    """Ambiente de subprocesso para `python -m app.openapi`, isolado do `backend/.env` real.
-
-    Extraída à parte (e reaproveitada por
-    `tests/seguranca/test_isolamento_de_subprocessos.py`) precisamente para
-    o isolamento poder ser verificado sem ter de correr o subprocesso: só a
-    asserção sobre este dicionário já prende o achado [média] da ronda de
-    correções da F1-02.
-    """
-    ambiente = dict(_AMBIENTE_BASE)
-    # Nunca o `.env` do `backend/` real: um caminho inexistente dentro do
-    # `tmp_path` do teste que pediu este export (`destino.parent`), para
-    # cada teste ficar isolado do ambiente de quem corre a suite.
-    ambiente["TOMAZIA_ENV_FILE"] = str(
-        destino.parent / "isolamento-de-testes-nao-existe" / ".env"
-    )
-    return ambiente
 
 
 def _correr_export(
     destino: Path, cwd: Path, variaveis_extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
-    ambiente = _construir_ambiente_isolado(destino)
+    ambiente = construir_ambiente_isolado_para_openapi(destino)
     if variaveis_extra:
         ambiente.update(variaveis_extra)
     return subprocess.run(
@@ -119,8 +101,14 @@ def test_correr_duas_vezes_produz_bytes_identicos_e_newline_final(
 
 
 def test_destino_por_omissao_e_frontend_openapi_json_na_raiz_do_repositorio() -> None:
-    """Só a asserção sobre a constante — nunca se chama `main()` sem argumentos, para não escrever lá."""
-    from app.openapi import RAIZ_APP
+    """Afirma diretamente sobre a constante do destino — o contrato a sério.
 
-    destino_esperado = RAIZ_APP.parent / "frontend" / "openapi.json"
-    assert destino_esperado == RAIZ_REPOSITORIO / "frontend" / "openapi.json"
+    `app.openapi` não precisa de reexportar `RAIZ_APP` (que vive em
+    `app.caminhos`) só para este teste: a constante que importa aqui é
+    `CAMINHO_OPENAPI_OMISSAO`, o destino por omissão em si, que é o que
+    `main()` usa de verdade. Nunca se chama `main()` sem argumentos, para
+    não escrever em `frontend/openapi.json` do repositório real.
+    """
+    from app.openapi import CAMINHO_OPENAPI_OMISSAO
+
+    assert CAMINHO_OPENAPI_OMISSAO == RAIZ_REPOSITORIO / "frontend" / "openapi.json"

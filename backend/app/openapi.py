@@ -16,7 +16,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.caminhos import RAIZ_APP as RAIZ_APP
+from app.caminhos import RAIZ_APP
 from app.main import criar_app
 
 CAMINHO_OPENAPI_OMISSAO = RAIZ_APP.parent / "frontend" / "openapi.json"

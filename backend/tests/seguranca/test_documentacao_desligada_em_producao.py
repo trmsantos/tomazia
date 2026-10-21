@@ -8,55 +8,24 @@ definição de pronto, não apanhou a regressão. Esta classe é a mesma, movida
 para aqui: `/docs` e `/redoc` servem o mesmo conteúdo que `/openapi.json`
 publicaria (o mapa completo da superfície de gestão, `/gestao/*`, `/auth/*`,
 esquemas de entrada) a quem não tem sessão nenhuma.
+
+`_chamar_wsgi` vivia duplicada aqui com a justificação de que
+`tests/seguranca/` não devia depender de ficheiros de teste fora de si —
+mas um módulo de apoio partilhado, sem `test_` no nome (`tests.apoio_subprocesso`,
+já usado por outros ficheiros de `tests/seguranca/`), não é um desses
+ficheiros. A função vive lá agora, como `chamar_wsgi`, sem cópia nenhuma.
 """
 
 from __future__ import annotations
 
 import importlib
-import io
 import secrets
 import sys
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 
-
-def _chamar_wsgi(
-    aplicacao_wsgi: Any, script_name: str, path_info: str, metodo: str = "GET"
-) -> tuple[str, dict[str, str], bytes]:
-    """Chama uma app WSGI (tipicamente `ASGIMiddleware(app)`) diretamente, sem servidor.
-
-    Cópia deliberada da função homónima em `tests/test_passenger_wsgi.py`:
-    este ficheiro tem de viver sozinho dentro de `tests/seguranca/` — ver o
-    docstring do módulo — e `tests/seguranca/` nunca deve depender de
-    ficheiros de teste fora de si para os seus critérios de segurança
-    continuarem a passar sozinhos (`uv run pytest tests/seguranca`).
-    """
-    ambiente = {
-        "REQUEST_METHOD": metodo,
-        "SCRIPT_NAME": script_name,
-        "PATH_INFO": path_info,
-        "SERVER_NAME": "testserver",
-        "SERVER_PORT": "80",
-        "SERVER_PROTOCOL": "HTTP/1.1",
-        "wsgi.url_scheme": "http",
-        "wsgi.input": io.BytesIO(b""),
-        "wsgi.errors": io.BytesIO(),
-        "QUERY_STRING": "",
-        "CONTENT_TYPE": "",
-        "CONTENT_LENGTH": "",
-    }
-    capturado: dict[str, object] = {}
-
-    def start_response(
-        status: str, headers: list[tuple[str, str]], exc_info: Any = None
-    ) -> None:
-        capturado["status"] = status
-        capturado["headers"] = dict(headers)
-
-    corpo = b"".join(aplicacao_wsgi(ambiente, start_response))
-    return capturado["status"], capturado["headers"], corpo  # type: ignore[return-value]
+from tests.apoio_subprocesso import chamar_wsgi
 
 
 @pytest.fixture(autouse=True)
@@ -89,7 +58,7 @@ class TestDocumentacaoDesligadaEmProducao:
 
         aplicacao_wsgi = ASGIMiddleware(modulo.app)
         for caminho in ("/docs", "/redoc", "/openapi.json"):
-            status, _, _ = _chamar_wsgi(aplicacao_wsgi, "", caminho)
+            status, _, _ = chamar_wsgi(aplicacao_wsgi, "", caminho)
             assert status.startswith("404"), f"{caminho} devia dar 404 em produção"
 
     def test_desenvolvimento_mantem_docs_redoc_e_openapi_json(
@@ -107,7 +76,7 @@ class TestDocumentacaoDesligadaEmProducao:
 
         aplicacao_wsgi = ASGIMiddleware(modulo.app)
         for caminho in ("/docs", "/redoc", "/openapi.json"):
-            status, _, _ = _chamar_wsgi(aplicacao_wsgi, "", caminho)
+            status, _, _ = chamar_wsgi(aplicacao_wsgi, "", caminho)
             assert status.startswith("200"), (
                 f"{caminho} devia continuar ligado em desenvolvimento"
             )

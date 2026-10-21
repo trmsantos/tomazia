@@ -1,7 +1,15 @@
-"""Apoio para testes que correm `backend/passenger_wsgi.py` a sério.
+"""Apoio partilhado pelos testes de arranque, WSGI e export do OpenAPI.
 
 Não é um ficheiro de testes (não começa por `test_`): é usado pelos testes
-de `tests/test_passenger_wsgi.py` e `tests/seguranca/test_arranque_passenger.py`.
+de `tests/test_passenger_wsgi.py`, `tests/test_openapi_export.py` e por
+vários ficheiros de `tests/seguranca/`. Fica em `tests/` (não em
+`tests/seguranca/`) de propósito: um módulo de apoio, sem `test_` no nome,
+não conta como "ficheiro de testes fora de `tests/seguranca/`" — é a mesma
+distinção que já valia para `copiar_tomazia_api_falso` e
+`correr_passenger_wsgi_isolado`, só que agora também para `chamar_wsgi` e
+`construir_ambiente_isolado_para_openapi`, que antes viviam duplicados ou
+importados de um ficheiro `test_*.py` por um `tests/seguranca/` que não
+devia depender dele.
 
 Importar `passenger_wsgi` dentro do processo de testes seria perigoso: o
 próprio módulo muda a pasta de trabalho do processo (`os.chdir`) e importa
@@ -15,12 +23,90 @@ subprocesso `python` à parte, com um ambiente mínimo construído de propósito
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 RAIZ_BACKEND = Path(__file__).resolve().parent.parent
+
+# Ambiente mínimo para `python -m app.openapi` isolado do `backend/.env`
+# real: só o necessário para o Python do `.venv` arrancar e encontrar o
+# pacote `app` (via `PYTHONPATH`, nunca via `cwd`).
+_AMBIENTE_BASE_OPENAPI: dict[str, str] = {
+    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    "PYTHONPATH": str(RAIZ_BACKEND),
+}
+
+
+def chamar_wsgi(
+    aplicacao_wsgi: Any, script_name: str, path_info: str, metodo: str = "GET"
+) -> tuple[str, dict[str, str], bytes]:
+    """Chama uma app WSGI (tipicamente `ASGIMiddleware(app)`) diretamente, sem servidor.
+
+    Antes vivia duplicada em `tests/test_passenger_wsgi.py` e
+    `tests/seguranca/test_documentacao_desligada_em_producao.py` — a
+    duplicação justificava-se com "`tests/seguranca/` não deve depender de
+    ficheiros de teste fora de si", mas um módulo de apoio como este,
+    partilhado e sem `test_` no nome, não é um desses ficheiros: já era a
+    mesma lógica que `copiar_tomazia_api_falso` e
+    `correr_passenger_wsgi_isolado` seguiam.
+    """
+    ambiente = {
+        "REQUEST_METHOD": metodo,
+        "SCRIPT_NAME": script_name,
+        "PATH_INFO": path_info,
+        "SERVER_NAME": "testserver",
+        "SERVER_PORT": "80",
+        "SERVER_PROTOCOL": "HTTP/1.1",
+        "wsgi.url_scheme": "http",
+        "wsgi.input": io.BytesIO(b""),
+        "wsgi.errors": io.BytesIO(),
+        "QUERY_STRING": "",
+        "CONTENT_TYPE": "",
+        "CONTENT_LENGTH": "",
+    }
+    capturado: dict[str, object] = {}
+
+    def start_response(
+        status: str, headers: list[tuple[str, str]], exc_info: Any = None
+    ) -> None:
+        capturado["status"] = status
+        capturado["headers"] = dict(headers)
+
+    corpo = b"".join(aplicacao_wsgi(ambiente, start_response))
+    return capturado["status"], capturado["headers"], corpo  # type: ignore[return-value]
+
+
+def construir_ambiente_isolado_para_openapi(destino: Path) -> dict[str, str]:
+    """Ambiente de subprocesso para `python -m app.openapi`, isolado do `backend/.env` real.
+
+    Extraída de `tests/test_openapi_export.py` (reaproveitada por
+    `tests/seguranca/test_isolamento_de_subprocessos.py`) precisamente para
+    o isolamento poder ser verificado sem ter de correr o subprocesso: só a
+    asserção sobre este dicionário já prende o achado [média] da ronda de
+    correções da F1-02 — viver aqui, num módulo de apoio, em vez de um
+    `tests/seguranca/` a importar um privado de um `test_*.py`, é o que
+    deixa `uv run pytest tests/seguranca` autónomo de novo.
+
+    Define `AMBIENTE=desenvolvimento` explicitamente: desde que `ambiente`
+    deixou de ter um valor por omissão em `Definicoes`, um subprocesso sem
+    `.env` nenhum (o caso aqui, de propósito) e sem `AMBIENTE` na `env`
+    rebentaria com "Field required" em vez de exportar o esquema — e esse
+    não é o achado que este ambiente isolado existe para prender.
+    """
+    ambiente = dict(_AMBIENTE_BASE_OPENAPI)
+    ambiente["AMBIENTE"] = "desenvolvimento"
+    # Nunca o `.env` do `backend/` real: um caminho inexistente dentro do
+    # `tmp_path` do teste que pediu este export (`destino.parent`), para
+    # cada teste ficar isolado do ambiente de quem corre a suite.
+    ambiente["TOMAZIA_ENV_FILE"] = str(
+        destino.parent / "isolamento-de-testes-nao-existe" / ".env"
+    )
+    return ambiente
+
 
 # Nunca herdado do processo de testes: só o suficiente para o Python do
 # `.venv` arrancar e encontrar bibliotecas do sistema operativo.
@@ -101,6 +187,7 @@ def correr_passenger_wsgi_isolado(
     cwd: Path,
     ambiente: dict[str, str],
     codigo_depois_de_importar: str,
+    codigo_antes_de_importar: str = "",
     timeout: float = 15,
 ) -> subprocess.CompletedProcess[str]:
     """Corre, num subprocesso, a importação de `passenger_wsgi.py` por caminho.
@@ -123,12 +210,19 @@ def correr_passenger_wsgi_isolado(
     `tests/seguranca/test_arranque_passenger.py`), nunca confiar em a
     importação ter sucedido ou falhado.
 
+    `codigo_antes_de_importar` corre antes de `importlib` sequer tocar em
+    `passenger_wsgi.py` — é o que permite a um teste colocar `sys.modules`
+    no estado que o canário de `passenger_wsgi.py` existe para apanhar
+    (`app.config`/`app.main` já carregado por um carregamento anterior do
+    Passenger no mesmo processo), sem isso contaminar o processo de testes
+    em si (tudo corre no subprocesso).
+
     `codigo_depois_de_importar` corre depois de `application` (o atributo de
     `passenger_wsgi`) estar disponível nesse nome, no subprocesso.
     """
     caminho_passenger_wsgi = pasta_tomazia_api / "passenger_wsgi.py"
     bootstrap = (
-        "import importlib.util\n"
+        codigo_antes_de_importar + "import importlib.util\n"
         "spec = importlib.util.spec_from_file_location(\n"
         f"    'passenger_wsgi', {str(caminho_passenger_wsgi)!r}\n"
         ")\n"

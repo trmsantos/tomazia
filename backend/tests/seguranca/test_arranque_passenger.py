@@ -32,17 +32,36 @@ nunca chegou a ser exercitado a sério:
    primitiva de escrita (`SetEnv` num `.htaccess` honrado pelo Apache) que
    permitiria a alguém de fora escolher a configuração de produção inteira,
    incluindo o `SEGREDO_SESSAO`.
+7. `ambiente` é obrigatório, sem valor por omissão: um ficheiro de ambiente
+   regular, legível e dentro da instalação (passa as guardas 5 e 6) mas que
+   não diz nada de útil sobre `AMBIENTE` — vazio, só com comentários, sem a
+   linha `AMBIENTE`, ou com a chave mal escrita (`AMBIENTE_=...`, engolida
+   em silêncio por `extra="ignore"`) — tem de rebentar, nunca cair no valor
+   de omissão "desenvolvimento" e arrancar a servir produção com o segredo
+   publicado no repositório.
+8. A correção do achado 7 vive em `app/config.py` (`Definicoes`), nunca só
+   em `passenger_wsgi.py`: quem importa `app.config` diretamente, sem
+   passar pelo ponto de entrada do Passenger (p. ex. um script correido à
+   mão, `scripts/criar_admin.py`), numa instalação sem ficheiro de ambiente
+   nenhum, também tem de rebentar.
+9. O canário de `passenger_wsgi.py` (`app.config`/`app.main` já em
+   `sys.modules` antes do `chdir`/`sys.path`) dispara a sério, não só
+   quando o bloco existe no código-fonte: substituí-lo por `if False:`
+   tem de fazer um teste falhar.
 
-Os testes 2, 3, 5 e 6 correm em subprocesso (ver `tests/apoio_subprocesso.py`):
-importar `passenger_wsgi` dentro do processo de testes mudaria a pasta de
-trabalho do processo de testes e importaria `app.main` sob produção,
-contaminando tudo o que viesse a seguir.
+Os testes 2, 3, 5, 6, 7, 8 e 9 correm em subprocesso (ver
+`tests/apoio_subprocesso.py`): importar `passenger_wsgi` dentro do processo
+de testes mudaria a pasta de trabalho do processo de testes e importaria
+`app.main` sob produção, contaminando tudo o que viesse a seguir.
 """
 
 from __future__ import annotations
 
 import ast
+import os
 import secrets
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -313,8 +332,13 @@ class TestTomaziaEnvFile:
         pasta_b = tmp_path / "b"
         pasta_a.mkdir()
         pasta_b.mkdir()
+        # O AMBIENTE vive no ficheiro para onde o TOMAZIA_ENV_FILE aponta, não
+        # no ambiente do processo: uma variável real ganharia a qualquer
+        # ficheiro e o teste passaria sem provar nada. Assim, se o `.env` da
+        # pasta de trabalho fosse lido, o ambiente seria "producao".
         (pasta_a / ".env").write_text(
-            "DATA_DIR=" + str(pasta_a / "dados-de-a") + "\n", encoding="utf-8"
+            "AMBIENTE=desenvolvimento\nDATA_DIR=" + str(pasta_a / "dados-de-a") + "\n",
+            encoding="utf-8",
         )
         (pasta_b / ".env").write_text("AMBIENTE=producao\n", encoding="utf-8")
 
@@ -334,7 +358,7 @@ class TestTomaziaEnvFile:
     ) -> None:
         """Achado do revisor-codigo: um valor relativo em `TOMAZIA_ENV_FILE` não pode escapar `.resolve()`.
 
-        A docstring antiga de `_caminho_ficheiro_de_ambiente` dizia "nunca
+        A docstring antiga de `caminho_ficheiro_de_ambiente` dizia "nunca
         relativo à pasta de trabalho" sem garantir isso quando a própria
         variável de ambiente tem um valor relativo: `Path(variavel)`, sem
         `.resolve()`, devolve um `Path` relativo, e quem o abre (o
@@ -349,12 +373,17 @@ class TestTomaziaEnvFile:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("TOMAZIA_ENV_FILE", "caminho/relativo/.env")
 
-        from app.config import _caminho_ficheiro_de_ambiente
+        from app.config import caminho_ficheiro_de_ambiente
 
-        resolvido = _caminho_ficheiro_de_ambiente()
+        resolvido = caminho_ficheiro_de_ambiente()
 
         assert resolvido.is_absolute()
         assert resolvido == (tmp_path / "caminho/relativo/.env").resolve()
+
+
+_MENSAGEM_GUARDA_FICHEIRO_NAO_REGULAR = (
+    "não existe ou não é um ficheiro regular legível"
+)
 
 
 class TestArranqueRecusaSeFicheiroDeAmbienteNaoForRegularLegivel:
@@ -368,13 +397,26 @@ class TestArranqueRecusaSeFicheiroDeAmbienteNaoForRegularLegivel:
     publicado no repositório e a documentação toda aberta. É o cenário do
     primeiro deploy, antes de o `.env` ser colocado no servidor.
 
-    As três variantes a seguir arrancam **hoje** (o processo sai com código
-    0): é a razão de serem testes que falham agora — só passam quando
-    `passenger_wsgi.py` ganhar a guarda que recusa arrancar sempre que o
-    ficheiro de ambiente resolvido não for um ficheiro regular legível.
-    Nenhuma depende de `AMBIENTE`/`SEGREDO_SESSAO` estarem definidos em lado
-    nenhum: a guarda tem de disparar só por o ficheiro não prestar, antes de
-    sequer chegar a essa validação.
+    As quatro variantes a seguir arrancam **hoje** (o processo sai com
+    código 0): é a razão de serem testes que falham agora — só passam
+    quando `passenger_wsgi.py` ganhar a guarda que recusa arrancar sempre
+    que o ficheiro de ambiente resolvido não for um ficheiro regular
+    legível. Nenhuma depende de `AMBIENTE`/`SEGREDO_SESSAO` estarem
+    definidos em lado nenhum: a guarda tem de disparar só por o ficheiro
+    não prestar, antes de sequer chegar a essa validação.
+
+    Nenhuma define `TOMAZIA_ENV_FILE`, de propósito: todas usam o caminho
+    por omissão (`pasta_tomazia_api/.env`), que não passa por `.resolve()`
+    em `caminho_ficheiro_de_ambiente()` (`RAIZ_APP / ".env"` já é
+    absoluto). Apontar `TOMAZIA_ENV_FILE` para fora de `pasta_tomazia_api/`
+    — como as versões antigas da diretoria e do `/dev/null` faziam —
+    dispara a guarda de contenção
+    (`TestTomaziaEnvFileForaDaInstalacao`), não esta: os dois testes
+    passavam, mas pela guarda errada. Cada `assert resultado.returncode !=
+    0` vem acompanhado de uma asserção sobre `resultado.stderr` que o
+    confirma: sem ela, o teste do canário (ou qualquer outra falha de
+    arranque) também os faria passar, por um motivo que não é o que o nome
+    promete.
     """
 
     def test_sem_ficheiro_de_ambiente_nenhum_rebenta(self, tmp_path: Path) -> None:
@@ -399,56 +441,98 @@ class TestArranqueRecusaSeFicheiroDeAmbienteNaoForRegularLegivel:
             "produção com o segredo de desenvolvimento publicado e a "
             "documentação aberta"
         )
+        assert _MENSAGEM_GUARDA_FICHEIRO_NAO_REGULAR in resultado.stderr
 
-    def test_ficheiro_de_ambiente_a_apontar_para_uma_diretoria_rebenta(
+    def test_ficheiro_de_ambiente_e_uma_diretoria_dentro_da_instalacao_rebenta(
         self, tmp_path: Path
     ) -> None:
-        pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
-            tmp_path / "tomazia_api"
-        )
-        pasta_que_finge_ser_env = tmp_path / "isto-e-uma-pasta.env"
-        pasta_que_finge_ser_env.mkdir()
-        outra_pasta = tmp_path / "pasta-de-trabalho-diferente"
-        outra_pasta.mkdir()
+        """`pasta_tomazia_api/.env` é, ele próprio, uma diretoria — não um ficheiro fora da instalação.
 
-        ambiente = dict(apoio_subprocesso.AMBIENTE_MINIMO)
-        ambiente["TOMAZIA_ENV_FILE"] = str(pasta_que_finge_ser_env)
-
-        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
-            pasta_tomazia_api=pasta_tomazia_api,
-            cwd=outra_pasta,
-            ambiente=ambiente,
-            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
-        )
-
-        assert resultado.returncode != 0
-
-    def test_ficheiro_de_ambiente_a_apontar_para_dev_null_rebenta(
-        self, tmp_path: Path
-    ) -> None:
-        """`/dev/null` existe e é "legível" (lê-se vazio) mas não é um ficheiro regular.
-
-        Um simples `os.path.exists()`/`open(...).read()` não apanhava isto —
-        é por isto que a guarda tem de confirmar explicitamente que é um
-        ficheiro regular (`Path.is_file()`), não só que existe ou abre.
+        A versão antiga deste teste apontava `TOMAZIA_ENV_FILE` para uma
+        diretoria irmã de `pasta_tomazia_api/` (fora da instalação): quem a
+        rejeitava era a guarda de contenção
+        (`TestTomaziaEnvFileForaDaInstalacao`), nunca a guarda do `is_file()`
+        que o nome do teste promete — confirmado trocando `is_file()` por
+        `exists()` em `passenger_wsgi.py`: a suite inteira continuava verde.
+        Aqui a diretoria fica no caminho por omissão, dentro de
+        `pasta_tomazia_api/`, para ser mesmo esta guarda a disparar.
         """
         pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
             tmp_path / "tomazia_api"
         )
+        (pasta_tomazia_api / ".env").mkdir()
         outra_pasta = tmp_path / "pasta-de-trabalho-diferente"
         outra_pasta.mkdir()
-
-        ambiente = dict(apoio_subprocesso.AMBIENTE_MINIMO)
-        ambiente["TOMAZIA_ENV_FILE"] = "/dev/null"
 
         resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
             pasta_tomazia_api=pasta_tomazia_api,
             cwd=outra_pasta,
-            ambiente=ambiente,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
             codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
         )
 
         assert resultado.returncode != 0
+        assert _MENSAGEM_GUARDA_FICHEIRO_NAO_REGULAR in resultado.stderr
+
+    def test_ficheiro_de_ambiente_e_um_fifo_dentro_da_instalacao_rebenta(
+        self, tmp_path: Path
+    ) -> None:
+        """Um FIFO (`os.mkfifo`) existe, abre, mas não é um ficheiro regular.
+
+        `Path.is_file()` nunca o confunde com um ficheiro regular — e, como
+        a guarda só faz `stat()` (nunca abre o ficheiro para ler), criar o
+        FIFO aqui não arrisca bloquear o teste à espera de um leitor ou
+        escritor do outro lado.
+        """
+        pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
+            tmp_path / "tomazia_api"
+        )
+        os.mkfifo(pasta_tomazia_api / ".env")
+        outra_pasta = tmp_path / "pasta-de-trabalho-diferente"
+        outra_pasta.mkdir()
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0
+        assert _MENSAGEM_GUARDA_FICHEIRO_NAO_REGULAR in resultado.stderr
+
+    def test_ficheiro_de_ambiente_e_um_symlink_para_dev_null_dentro_da_instalacao_rebenta(
+        self, tmp_path: Path
+    ) -> None:
+        """O acidente mais realista: um `.env` que passou a ser `ln -sf /dev/null .env`.
+
+        A versão antiga deste teste definia `TOMAZIA_ENV_FILE=/dev/null`
+        diretamente — um caminho fora de `pasta_tomazia_api/` — por isso
+        quem o rejeitava era a guarda de contenção, nunca a do `is_file()`
+        que a docstring antiga afirmava (e que, confirmado trocando
+        `is_file()` por `exists()`, não disparava mesmo). Aqui o symlink
+        fica dentro da instalação, no caminho por omissão: `/dev/null`
+        existe e "lê-se vazio" (daí `exists()` não bastar), mas é um
+        dispositivo de caracteres, não um ficheiro regular — é
+        `Path.is_file()`, que segue o symlink e confirma o tipo do alvo,
+        que tem de apanhar isto.
+        """
+        pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
+            tmp_path / "tomazia_api"
+        )
+        os.symlink("/dev/null", pasta_tomazia_api / ".env")
+        outra_pasta = tmp_path / "pasta-de-trabalho-diferente"
+        outra_pasta.mkdir()
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0
+        assert _MENSAGEM_GUARDA_FICHEIRO_NAO_REGULAR in resultado.stderr
 
 
 class TestTomaziaEnvFileForaDaInstalacao:
@@ -492,3 +576,227 @@ class TestTomaziaEnvFileForaDaInstalacao:
             "isto é o equivalente a um SetEnv num .htaccess escolher a "
             "configuração de produção inteira a partir de fora"
         )
+
+
+class TestAmbienteObrigatorioSemValorPorOmissao:
+    """A quarta falha da mesma família: a guarda do `is_file()` nunca verifica o *conteúdo*.
+
+    Com `ambiente` a cair no valor por omissão `"desenvolvimento"` sempre
+    que a chave `AMBIENTE` não aparece (ou aparece comentada, ou mal
+    escrita) no ficheiro, qualquer ficheiro regular, legível e dentro da
+    instalação passa as duas guardas de `passenger_wsgi.py` e arranca em
+    desenvolvimento — com o segredo de desenvolvimento publicado no
+    repositório e a documentação toda aberta, mesmo que o `.env` exista
+    mesmo. A correção, decidida pelo Tomás: `ambiente` passa a ser
+    obrigatório em `Definicoes` (`app/config.py`), sem valor por omissão —
+    só assim nenhuma destas quatro variantes consegue arrancar.
+
+    As quatro rebentam **hoje** com `returncode == 0`: falham agora porque
+    o comportamento ainda não existe em `app/config.py`, não por erro de
+    importação. Cada uma confirma, por `resultado.stderr`, que a razão é
+    mesmo a falta de `ambiente`, não outra guarda qualquer.
+    """
+
+    def test_ficheiro_de_ambiente_vazio_rebenta(self, tmp_path: Path) -> None:
+        pasta_tomazia_api, outra_pasta = _preparar_cenario(tmp_path, "")
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0, (
+            "um .env vazio não diz nada sobre o ambiente, mas a app arrancou "
+            "à mesma — ambiente caiu no valor por omissão 'desenvolvimento'"
+        )
+        assert "ambiente" in resultado.stderr.lower()
+
+    def test_ficheiro_de_ambiente_so_com_comentarios_rebenta(
+        self, tmp_path: Path
+    ) -> None:
+        """Copiou o `.env.example` e comentou tudo — nenhuma chave sobrevive."""
+        conteudo_env = (
+            "# AMBIENTE=producao\n"
+            "# SEGREDO_SESSAO=<gera-um-segredo-com-o-comando-acima>\n"
+            "# DATA_DIR=./var\n"
+        )
+        pasta_tomazia_api, outra_pasta = _preparar_cenario(tmp_path, conteudo_env)
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0, (
+            "um .env só com comentários não diz nada sobre o ambiente, mas "
+            "a app arrancou à mesma"
+        )
+        assert "ambiente" in resultado.stderr.lower()
+
+    def test_ficheiro_completo_com_segredo_forte_mas_sem_a_linha_ambiente_rebenta(
+        self, tmp_path: Path
+    ) -> None:
+        """Um `SEGREDO_SESSAO` forte não chega: sem `AMBIENTE=...`, não há produção nenhuma a validar."""
+        segredo_forte = secrets.token_urlsafe(48)
+        pasta_tomazia_api, outra_pasta = _preparar_cenario(
+            tmp_path, f"SEGREDO_SESSAO={segredo_forte}\n"
+        )
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0, (
+            "um SEGREDO_SESSAO forte, sozinho, não basta — sem a linha "
+            "AMBIENTE, a app arrancou em desenvolvimento à mesma"
+        )
+        assert "ambiente" in resultado.stderr.lower()
+
+    def test_gralha_na_chave_ambiente_engolida_por_extra_ignore_rebenta(
+        self, tmp_path: Path
+    ) -> None:
+        """`AMBIENTE_=producao` (sublinhado a mais) não é `AMBIENTE` — `extra="ignore"` engole-o em silêncio."""
+        segredo_forte = secrets.token_urlsafe(48)
+        pasta_tomazia_api, outra_pasta = _preparar_cenario(
+            tmp_path, f"AMBIENTE_=producao\nSEGREDO_SESSAO={segredo_forte}\n"
+        )
+
+        resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+            pasta_tomazia_api=pasta_tomazia_api,
+            cwd=outra_pasta,
+            ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+            codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+        )
+
+        assert resultado.returncode != 0, (
+            "AMBIENTE_ (gralha na chave) não é AMBIENTE — extra='ignore' "
+            "engoliu-a em silêncio e a app arrancou em desenvolvimento"
+        )
+        assert "ambiente" in resultado.stderr.lower()
+
+
+def test_importar_app_config_sem_passar_pelo_passenger_wsgi_sem_ficheiro_de_ambiente_rebenta(
+    tmp_path: Path,
+) -> None:
+    """O que a colocação das guardas em `passenger_wsgi.py` deixa de fora.
+
+    Medido pelo revisor: numa instalação sem ficheiro de ambiente, `python
+    -c "from app.config import obter_definicoes; obter_definicoes()"`
+    devolve `ambiente=desenvolvimento`, `segredo=desenvolvimento-sem-segredo`,
+    `bd=sqlite:///./var/dev.db`, sem guarda nenhuma a disparar — as duas
+    guardas (ficheiro regular legível; dentro da instalação) vivem em
+    `passenger_wsgi.py`, de propósito (ver o cabeçalho deste ficheiro),
+    nunca em `app/config.py`.
+
+    O ataque: o dono corre `scripts/criar_admin.py` (F2-02) a partir da sua
+    home, o script importa `app.config` diretamente — sem nunca passar pelo
+    ponto de entrada do Passenger —, abre `./var/dev.db` relativo à shell em
+    vez da base de dados real, e o dono fica convencido de que mudou a
+    palavra-passe quando o site continua com a antiga.
+
+    É este teste que prova que a correção (achado 7: `ambiente` obrigatório,
+    sem valor por omissão, em `Definicoes`) fecha o que um
+    `assert`/`SystemExit` só no ponto de entrada (`passenger_wsgi.py`) nunca
+    fecharia: aqui não há `passenger_wsgi.py` nenhum no caminho, de
+    propósito — só `python -c` a importar `app.config` a direito.
+    """
+    pasta_tomazia_api = apoio_subprocesso.copiar_tomazia_api_falso(
+        tmp_path / "tomazia_api"
+    )
+    # De propósito: nenhum `.env` em pasta_tomazia_api/, e nenhum
+    # TOMAZIA_ENV_FILE definido — o caminho por omissão
+    # (pasta_tomazia_api/.env) fica inexistente.
+    pasta_tipo_home = tmp_path / "home-do-dono"
+    pasta_tipo_home.mkdir()
+
+    ambiente = dict(apoio_subprocesso.AMBIENTE_MINIMO)
+    ambiente["PYTHONPATH"] = str(pasta_tomazia_api)
+
+    resultado = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from app.config import obter_definicoes\n"
+            "obter_definicoes()\n"
+            "print('nunca devia chegar aqui')\n",
+        ],
+        cwd=pasta_tipo_home,
+        env=ambiente,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert resultado.returncode != 0, (
+        "importar app.config sem passar por passenger_wsgi.py, numa "
+        "instalação sem ficheiro de ambiente nenhum, arrancou com as "
+        "definições de desenvolvimento — nenhuma guarda disparou"
+    )
+    assert "ambiente" in resultado.stderr.lower()
+
+
+def test_canario_dispara_quando_app_config_ja_esta_em_sys_modules_antes_do_chdir(
+    tmp_path: Path,
+) -> None:
+    """O canário de `passenger_wsgi.py` tem de disparar a sério, não só existir no código-fonte.
+
+    Reproduz o achado do revisor: substituir o bloco do canário por
+    `if False:` deixava a suite inteira passar, porque nenhum teste punha
+    `app.config`/`app.main` em `sys.modules` antes de `passenger_wsgi.py`
+    correr — exatamente o estado de um segundo carregamento do Passenger no
+    mesmo processo (um worker reciclado, por exemplo), onde um import
+    anterior já fixaria `Definicoes` em cache (via `lru_cache`) antes de o
+    ambiente estar completo, e a guarda de produção nunca mais dispararia.
+
+    `codigo_antes_de_importar` importa o `app.config` a sério — nunca um
+    módulo falso — antes de `importlib` sequer tocar em `passenger_wsgi.py`,
+    para `sys.modules["app.config"]` ficar no estado que um segundo
+    carregamento do Passenger deixaria. Um módulo falso (p. ex.
+    `types.ModuleType("app.config")` vazio) falharia por uma razão errada:
+    o `from app.config import caminho_ficheiro_de_ambiente` de
+    `passenger_wsgi.py`, mais abaixo, daria `ImportError` mesmo com o
+    canário desativado (`if False:`), porque o módulo falso não tem esse
+    nome — o `returncode != 0` passaria pela mesma razão com ou sem
+    canário, sem provar nada sobre ele. Importando o módulo a sério, sem o
+    canário o arranque segue até ao fim com sucesso (o `.env` tem um
+    segredo forte) e só a asserção sobre `resultado.stderr` (a mensagem do
+    canário) distingue os dois casos — é essa mensagem, não o código de
+    saída sozinho, que a mutação `if False:` apaga.
+
+    `sys.path.insert(0, pasta_tomazia_api)` aqui é só para este import a
+    sério ser possível antes de `passenger_wsgi.py` correr; o seu próprio
+    `sys.path.insert(0, str(BASE_DIR))`, a seguir, não se importa de o
+    caminho já lá estar. Tudo isto corre dentro do subprocesso isolado,
+    nunca contaminando o processo de testes em si.
+    """
+    segredo_forte = secrets.token_urlsafe(48)
+    pasta_tomazia_api, outra_pasta = _preparar_cenario(
+        tmp_path, f"AMBIENTE=producao\nSEGREDO_SESSAO={segredo_forte}\n"
+    )
+
+    codigo_antes_de_importar = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(pasta_tomazia_api)!r})\n"
+        "import app.config\n"
+    )
+
+    resultado = apoio_subprocesso.correr_passenger_wsgi_isolado(
+        pasta_tomazia_api=pasta_tomazia_api,
+        cwd=outra_pasta,
+        ambiente=dict(apoio_subprocesso.AMBIENTE_MINIMO),
+        codigo_antes_de_importar=codigo_antes_de_importar,
+        codigo_depois_de_importar="print('nunca devia chegar aqui')\n",
+    )
+
+    assert resultado.returncode != 0, (
+        "app.config já estava em sys.modules antes do chdir/sys.path, e "
+        "passenger_wsgi.py arrancou à mesma — o canário não disparou"
+    )
+    assert "já estava importado" in resultado.stderr
