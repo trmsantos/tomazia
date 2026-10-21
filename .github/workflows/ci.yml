@@ -136,7 +136,10 @@ jobs:
       AMBIENTE: desenvolvimento
       # Caminho que nunca existe: garante que nenhum `.env` real (do
       # repositório ou do runner) é lido, para este job ser hermético.
-      TOMAZIA_ENV_FILE: ${{ runner.temp }}/tomazia-ci-sem-ambiente/.env
+      # Usa `github.workspace` e não `runner.temp`: o contexto `runner` não
+      # existe em `env` ao nível do job, e o GitHub rejeita o ficheiro
+      # inteiro antes de criar um único job.
+      TOMAZIA_ENV_FILE: ${{ github.workspace }}/tomazia-ci-sem-ambiente/.env
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
