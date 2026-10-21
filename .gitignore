@@ -3,8 +3,20 @@
 .env.*
 !.env.example
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
 *.sqlite3
+*.sqlite3-*
+*.sql
+*.sql.gz
+# Esquema (DDL) do MySQL do site antigo, não dados: documentação
+# legítima, da mesma forma que o .env.example é a exceção ao *.env.
+!docs/legado/esquema-bd-antiga.sql
 var/
 
 # Artefacto gerado por `python -m app.openapi`, não fonte

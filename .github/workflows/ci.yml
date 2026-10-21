@@ -76,8 +76,16 @@ jobs:
       - name: requirements.txt em dia (o que o cPanel instala = o que o CI testou)
         run: |
           uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt
-          if ! git diff --exit-code -- requirements.txt; then
-            echo "::error::backend/requirements.txt ficou diferente do gerado agora. Corrige com: cd backend && uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt"
+          # `git diff --exit-code` não vê um ficheiro apagado (deixa de
+          # existir, não há diff nenhum a mostrar) nem um ficheiro novo
+          # por versionar; um `requirements.txt` apagado deixava este
+          # passo verde e o cPanel sem nada para instalar. O mesmo
+          # argumento que o job `contrato` já aplica ao `src/lib/api`:
+          # `git status --porcelain --untracked-files=all` vê as duas
+          # formas.
+          if [ -n "$(git status --porcelain --untracked-files=all -- requirements.txt)" ]; then
+            echo "::error::backend/requirements.txt ficou diferente do gerado agora (ou foi apagado). Corrige com: cd backend && uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt — e faz commit do resultado NO MESMO PR: um PR do Dependabot no ecossistema uv nasce vermelho de propósito até esse commit, não é avaria do CI."
+            git status --porcelain --untracked-files=all -- requirements.txt
             exit 1
           fi
 
@@ -257,16 +265,28 @@ jobs:
             echo "| seguranca | ${RESULTADO_SEGURANCA} |"
           } >>"${GITHUB_STEP_SUMMARY}"
 
+          # Recusa por omissão, não aceita por omissão: o `resumo` é o
+          # único check obrigatório de branch protection, para sempre
+          # (ver o comentário no topo do ficheiro). Um `if:` ou um filtro
+          # de caminhos acrescentado mais tarde a um job pode deixá-lo
+          # `skipped`; listar só `failure | cancelled` como maus
+          # resultados deixaria esse job "skipped" contar como passagem,
+          # e o merge ficaria autorizado com esse guarda por correr. Só
+          # `success` conta como passagem; tudo o resto (`failure`,
+          # `cancelled`, `skipped`, ou qualquer valor novo que o GitHub
+          # venha a introduzir) falha o resumo.
           falhou=0
           for resultado in "${RESULTADO_BACKEND}" "${RESULTADO_FRONTEND}" "${RESULTADO_CONTRATO}" "${RESULTADO_SEGURANCA}"; do
             case "${resultado}" in
-              failure | cancelled)
+              success)
+                ;;
+              *)
                 falhou=1
                 ;;
             esac
           done
 
           if [ "${falhou}" -eq 1 ]; then
-            echo "::error::Pelo menos um job do CI falhou ou foi cancelado."
+            echo "::error::Pelo menos um job do CI não passou (falhou, foi cancelado, ou ficou skipped)."
             exit 1
           fi
