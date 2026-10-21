@@ -54,7 +54,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Quem:** Tomás, manual.
 - **Depende de:** F1-04.
 - **Faz:** confirmar a versão do Python; criar `novo.<domínio>`; Setup Python App; chave SSH como deploy key; Git Version Control na branch `deploy`; API token; secrets no ambiente `production`; `.env` e `.htaccess` à mão; regras de proteção da `main` e da `deploy`.
-- **Feito quando:** um merge na `main` aparece em `novo.<domínio>/api/health` com o SHA certo, sem passos manuais.
+- **Feito quando:** um merge na `main` aparece em `novo.<domínio>/api/health` com o SHA certo, sem passos manuais; e, com o `CLAUDE_CODE_OAUTH_TOKEN` já configurado, o `persist-credentials: false` no `claude.yml` foi testado com um `@claude` num PR descartável e ficou aplicado — é o único workflow com token de escrita, e sem essa linha o token fica em `.git/config` ao alcance de um `postinstall` durante um `npm ci` dentro da própria ação.
 
 ## Fase 2: backend e dados
 

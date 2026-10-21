@@ -116,7 +116,23 @@ conteudo_tem_instrucoes_dados() {
     return 0
   fi
 
-  grep -Eiq '^[[:space:]]*(INSERT|REPLACE|LOAD DATA|COPY)[[:space:]]' "$caminho_disco"
+  # A palavra-chave tem de estar no início da linha (só espaço em branco
+  # antes) — é o que um `mysqldump` real escreve, uma instrução por
+  # linha, por isso o caso que interessa fica apanhado; mas isto é uma
+  # rede, não uma prova: um "LOAD  DATA" com dois espaços, ou um INSERT
+  # que não começa a linha, escapam a este padrão.
+  #
+  # Não se pode usar o código de saída do `grep` tal e qual: ele sai 2
+  # (ou mais) quando não consegue ler o ficheiro — permissão, erro de
+  # I/O — e um código assim não é zero, por isso um `if` ingénuo lê-lo
+  # como "não encontrou a instrução" e concede a exceção ao ficheiro que
+  # nem sequer se conseguiu inspecionar. Por isso o estado é guardado e
+  # distinguido à mão.
+  local estado=0
+  grep -Eiq '^[[:space:]]*(INSERT|REPLACE|LOAD DATA|COPY)[[:space:]]' "$caminho_disco" || estado=$?
+  [ "$estado" -eq 0 ] && return 0  # tem instruções de dados
+  [ "$estado" -eq 1 ] && return 1  # lido até ao fim, sem dados
+  return 0                         # >= 2: não se conseguiu ler — falha fechado
 }
 
 eh_proibido() {
@@ -126,6 +142,11 @@ eh_proibido() {
   # $2 = caminho no disco do mesmo ficheiro, só para ler o conteúdo
   # quando a exceção por caminho se aplica (default: igual a $1 — é o
   # caso do modo `--pasta`, onde `find` já devolve um caminho no disco).
+  # Em modo `--git` este caminho lê a árvore de trabalho, não o blob do
+  # índice que o `git ls-files` acabou de listar — no CI são o mesmo
+  # ficheiro, e se divergirem (algo alterado sem `git add`) o pior que
+  # acontece é o caso sujo falhar fechado lá em cima, em
+  # `conteudo_tem_instrucoes_dados`.
   local caminho="$1"
   local caminho_disco="${2:-$1}"
   local nome_base
@@ -226,9 +247,11 @@ else
   # `\( -type f -o -type l \)`: com `-L`, uma ligação para um alvo que
   # não existe (ou inacessível) deixa de ser `-type f`; mantém-se aqui
   # como `-type l` para não desaparecer da procura em silêncio.
-  # `-xdev`: não atravessa para outro sistema de ficheiros. Sem isto,
-  # uma ligação tipo `dist/x -> /` faz o `find -L` percorrer a máquina
-  # inteira do runner até ao `timeout-minutes` do job.
+  # `-xdev`: não atravessa para outro sistema de ficheiros — fecha uma
+  # ligação tipo `dist/x -> /`. Não fecha `dist/x -> $HOME`, nem
+  # nenhuma ligação para dentro do mesmo sistema de ficheiros: essa é
+  # percorrida na mesma, `-xdev` ou não. Quem protege contra essa
+  # travessia desenfreada é o `timeout-minutes` do job, não isto.
   #
   # Grava para ficheiro pela mesma razão do modo `--git`: uma subpasta
   # sem permissão de leitura faz o `find` escrever "Permission denied"

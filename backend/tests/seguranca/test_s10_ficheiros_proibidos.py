@@ -685,6 +685,63 @@ def test_modo_pasta_subpasta_sem_permissao_sai_com_uso_errado(tmp_path: Path) ->
         subpasta.chmod(0o755)
 
 
+@pytest.mark.skipif(
+    _A_CORRER_COMO_ROOT,
+    reason="a correr como root, as permissões de ficheiros não bloqueiam a leitura",
+)
+def test_esquema_legado_com_insert_ilegivel_nunca_passa(tmp_path: Path) -> None:
+    """Um esquema legado com dados, mas ilegível, não pode ganhar a exceção por não se conseguir ler.
+
+    Par de `test_esquema_legado_com_insert_de_dados_falha`, acima: aquele
+    confirma que a exceção lê o conteúdo e apanha um `INSERT` quando
+    consegue ler o ficheiro; este confirma o outro lado — quando o guarda
+    NÃO consegue ler o ficheiro excecionado (`grep` falha com "Permission
+    denied" e sai com um código de saída não-zero, nunca `0`), esse "não
+    sei" não pode ser lido como "sem instruções de dados", e a exceção não
+    pode ser concedida. É a quinta vez que esta família de falha aparece
+    no projeto: um guarda que sai verde porque não conseguiu fazer o seu
+    trabalho — desta vez no único sítio em que este guarda abre uma porta
+    de propósito (a exceção do esquema legado).
+
+    Aceita `1` (apanhado como ficheiro proibido, tal como o par legível,
+    se a falha de leitura for tratada como "tem dados") ou `2` (uso
+    errado/procura incompleta, tal como os outros guardas de "não
+    consegui ler" deste ficheiro, se for tratada como erro fatal) —
+    qualquer um dos dois é uma falha fechada; só `0` (passa) é que nunca
+    pode acontecer.
+
+    A permissão volta a ser reposta no final (`finally`), senão o
+    `tmp_path` do pytest não se consegue limpar sozinho.
+    """
+    repo = _repositorio_git_vazio(tmp_path)
+    _adicionar_forcado(
+        repo,
+        tmp_path,
+        "docs/legado/esquema-bd-antiga.sql",
+        conteudo=(
+            "CREATE TABLE `tomazia_clientes` (\n"
+            "  `id` int NOT NULL AUTO_INCREMENT,\n"
+            "  PRIMARY KEY (`id`)\n"
+            ");\n"
+            "\n"
+            "INSERT INTO `tomazia_clientes` VALUES "
+            "(1,'Ana Silva','ana.silva@exemplo.test','912345678');\n"
+        ),
+    )
+
+    caminho_disco = repo / "docs" / "legado" / "esquema-bd-antiga.sql"
+    caminho_disco.chmod(0o000)
+
+    try:
+        resultado = _correr("--git", str(repo), cwd=repo, tmp_path=tmp_path)
+        assert resultado.returncode in (1, 2), (
+            f"saiu {resultado.returncode}, stdout={resultado.stdout!r}, "
+            f"stderr={resultado.stderr!r}"
+        )
+    finally:
+        caminho_disco.chmod(0o644)
+
+
 # --- Submódulos: o conteúdo tem de ser visto, não só o gitlink ---
 
 
