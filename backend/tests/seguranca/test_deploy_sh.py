@@ -18,7 +18,8 @@ O que este ficheiro prova (e o que não prova):
       `VERSION`, `tmp/restart.txt` (o sinal de reinício do Passenger).
     - `$HOME/repositories/tomazia/` — `ORIGEM`: o pacote que
       `deploy/montar.sh --saida` produz, com o código dentro de `api/`
-      (`api/app`, `api/migrations`, `api/scripts` quando existir,
+      (`api/app` — com um `main.py` lá dentro, que é precondição do
+      script —, `api/migrations`, `api/scripts` quando existir,
       `api/alembic.ini`, `api/passenger_wsgi.py`, `api/requirements.txt`,
       `api/VERSION`) e os estáticos dentro de `frontend/dist/` — nunca à
       solta na raiz do pacote.
@@ -149,6 +150,16 @@ def _preparar_instalacao_valida(tmp_path: Path) -> Instalacao:
     # pacote.
     (origem / "api" / "app").mkdir(parents=True)
     (origem / "api" / "app" / MARCADOR_NOVO).write_text("novo\n", encoding="utf-8")
+    # `api/app/main.py` é precondição do `deploy.sh` (ver
+    # `test_deploy_sh_recusa_antes_de_escrever.py`): um `api/app/` presente
+    # mas sem a app lá dentro faz o `rsync --delete` esvaziar o `$API/app`,
+    # e por isso é recusado antes de qualquer escrita. Numa instalação
+    # VÁLIDA tem de lá estar — senão todos os testes abaixo que esperam
+    # `returncode != 0` passariam por esta recusa em vez da que dizem
+    # testar, e os que esperam um deploy com sucesso falhariam.
+    (origem / "api" / "app" / "main.py").write_text(
+        "# aplicacao falsa\n", encoding="utf-8"
+    )
     (origem / "api" / "migrations").mkdir()
     (origem / "api" / "migrations" / "env.py").write_text(
         "# migrations falsas\n", encoding="utf-8"

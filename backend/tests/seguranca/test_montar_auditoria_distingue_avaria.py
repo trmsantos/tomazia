@@ -42,9 +42,9 @@ princípio dos stubs de `pip` e `alembic` em `test_deploy_sh.py`.
 
 O teste de controlo — sem avaria nenhuma injetada — é o que impede este
 ficheiro de ser decorativo: afirma que o `find` de teste foi mesmo usado,
-e que as TRÊS procuras da auditoria (diretorias, ficheiros, `.htaccess`)
-correram, uma vez cada. Sem ele, um `find` de teste que nunca fosse
-chamado faria os testes abaixo passar pela razão errada.
+e que as QUATRO procuras da auditoria (diretorias, ficheiros, `.htaccess`,
+ligações simbólicas) correram, uma vez cada. Sem ele, um `find` de teste que
+nunca fosse chamado faria os testes abaixo passar pela razão errada.
 
 Não está ligado a nenhum critério S-NN de `docs/ESPECIFICACAO.md`: vive em
 `tests/seguranca/` pela regra 5 do `CLAUDE.md` da raiz.
@@ -70,7 +70,7 @@ SHA_VALIDO = hashlib.sha1(
 ).hexdigest()
 assert len(SHA_VALIDO) == 40
 
-#: As três procuras da auditoria final, pela ordem em que `montar.sh` as
+#: As quatro procuras da auditoria final, pela ordem em que `montar.sh` as
 #: corre. Reconhecidas pelos argumentos, nunca por um contador de
 #: invocações: as procuras da EXCLUSÃO (mais acima no script) usam os
 #: mesmos nomes mas levam `-exec` ou `-delete`, e são essas que as
@@ -79,6 +79,7 @@ PROCURAS_DA_AUDITORIA = [
     "auditoria-dirs",
     "auditoria-ficheiros",
     "auditoria-htaccess",
+    "auditoria-links",
 ]
 
 STUB_FIND = """\
@@ -90,6 +91,8 @@ tem_exec=0
 tem_delete=0
 tem_claude_md=0
 tem_htaccess=0
+tem_tipo_ligacao=0
+anterior=""
 for argumento in "$@"; do
   case "$argumento" in
     -depth) tem_depth=1 ;;
@@ -97,7 +100,11 @@ for argumento in "$@"; do
     -delete) tem_delete=1 ;;
     claude.md) tem_claude_md=1 ;;
     .htaccess) tem_htaccess=1 ;;
+    # `-type l` (a procura por ligações simbólicas) só se reconhece pelo
+    # par: um `l` solto podia ser qualquer coisa.
+    l) if [ "$anterior" = "-type" ]; then tem_tipo_ligacao=1; fi ;;
   esac
+  anterior="$argumento"
 done
 
 # As procuras da auditoria são as que só LEEM: as da exclusão apagam o que
@@ -110,6 +117,8 @@ if [ "$tem_exec" -eq 0 ] && [ "$tem_delete" -eq 0 ]; then
     classe="auditoria-ficheiros"
   elif [ "$tem_htaccess" -eq 1 ]; then
     classe="auditoria-htaccess"
+  elif [ "$tem_tipo_ligacao" -eq 1 ]; then
+    classe="auditoria-links"
   fi
 fi
 
@@ -213,7 +222,7 @@ def _correr_montar_com_find_de_teste(
 def test_controlo_o_find_de_teste_e_mesmo_usado_e_a_auditoria_corre_inteira(
     tmp_path: Path,
 ) -> None:
-    """Sem avaria nenhuma injetada: o pacote monta, e as três procuras da auditoria passaram pelo `find` de teste."""
+    """Sem avaria nenhuma injetada: o pacote monta, e as quatro procuras da auditoria passaram pelo `find` de teste."""
     execucao = _correr_montar_com_find_de_teste(tmp_path, procura_avariada="nenhuma")
 
     assert execucao.processo.returncode == 0, (
@@ -221,7 +230,7 @@ def test_controlo_o_find_de_teste_e_mesmo_usado_e_a_auditoria_corre_inteira(
         f"stderr:\n{execucao.processo.stderr}"
     )
     assert execucao.procuras_da_auditoria == PROCURAS_DA_AUDITORIA, (
-        "O find de teste tem de ver as três procuras da auditoria final "
+        "O find de teste tem de ver as quatro procuras da auditoria final "
         f"(por esta ordem): {PROCURAS_DA_AUDITORIA!r}. Viu "
         f"{execucao.procuras_da_auditoria!r}. Sem isto, os testes de avaria "
         "deste ficheiro passariam sem nunca terem avariado nada."

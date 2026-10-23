@@ -273,11 +273,45 @@ arvore="$(GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" write-tree)"
 # `.git` aninhado entraria como gitlink, um erro de permissões deixaria
 # ficheiros para trás). O guarda é sobre o RESULTADO, não sobre a causa:
 # o que se publica tem de ser, ficheiro a ficheiro, o que se auditou.
-ficheiros_no_pacote="$(find "$pasta" \( -type f -o -type l \) | wc -l | tr -d ' ')"
-entradas_na_arvore="$(GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" \
-  ls-tree -r --name-only "$arvore" | wc -l | tr -d ' ')"
-if [ "$ficheiros_no_pacote" != "$entradas_na_arvore" ]; then
-  echo "publicar-branch.sh: a árvore a publicar tem ${entradas_na_arvore} entradas mas o pacote auditado tem ${ficheiros_no_pacote} ficheiros — recuso publicar uma árvore que não é a que foi auditada." >&2
+# Compara CONJUNTOS de caminhos, nunca contagens.
+#
+# Contar linhas não era inseguro — vale a pena ser exato sobre isto, para
+# a próxima pessoa não pensar que aqui houve um buraco. O `find` imprime
+# `N + E` linhas (E = newlines embutidos em nomes) e o `git ls-tree`
+# imprime `N - D` (D = ficheiros que não entraram na árvore, e os nomes
+# com `\n` vêm citados numa linha só). Para as contagens baterem certo
+# era preciso `E + D = 0`: as duas distorções empurram para lados
+# opostos, por isso o erro só podia dar falso POSITIVO (um nome com `\n`
+# recusava um pacote íntegro), nunca deixar passar um ficheiro em falta.
+#
+# Troca-se por conjuntos na mesma, por duas razões melhores do que o
+# medo: deixa de haver falsos positivos, e a mensagem passa a dizer QUAL
+# é o ficheiro em falta em vez de dois números que não ajudam ninguém às
+# duas da manhã.
+#
+# `ls-tree -z | tr` desliga a citação, para os dois lados partirem os
+# nomes da mesma maneira. Os caminhos saem relativos à raiz do pacote nos
+# dois casos (daí o `cd` e o corte do `./`).
+lista_pacote="${tmp_dir}/lista-pacote"
+lista_arvore="${tmp_dir}/lista-arvore"
+lista_erro="${tmp_dir}/lista-pacote.err"
+
+estado_find=0
+( cd "$pasta" && find . \( -type f -o -type l \) -print ) \
+  >"${lista_pacote}.bruta" 2>"$lista_erro" || estado_find=1
+if [ "$estado_find" -ne 0 ]; then
+  echo "publicar-branch.sh: não consegui percorrer '${pasta}' para confirmar o que vou publicar (regra 10: 'não encontrei' e 'não consegui procurar' nunca podem dar o mesmo resultado). Ver abaixo:" >&2
+  cat "$lista_erro" >&2
+  exit 1
+fi
+sed 's|^\./||' "${lista_pacote}.bruta" | LC_ALL=C sort >"$lista_pacote"
+
+GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" \
+  ls-tree -r -z --name-only "$arvore" | tr '\0' '\n' | LC_ALL=C sort >"$lista_arvore"
+
+if ! diff_caminhos="$(diff "$lista_pacote" "$lista_arvore")"; then
+  echo "publicar-branch.sh: a árvore a publicar não é a árvore que foi auditada — recuso publicar. '<' é o que está no pacote e falta na árvore; '>' é o contrário:" >&2
+  echo "$diff_caminhos" >&2
   exit 1
 fi
 

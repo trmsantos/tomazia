@@ -27,13 +27,43 @@ A correção tem duas camadas, e este ficheiro prega as duas:
 1. `add -A --force`, com `-c core.excludesFile=/dev/null`: nem um
    `.gitignore` do pacote nem um `.gitignore` global da máquina (que, num
    runner, nem sequer é nosso) podem tirar ficheiros da árvore.
-2. Um guarda sobre o RESULTADO, não sobre a causa: conta as entradas de
-   `git ls-tree -r` e compara com a contagem de ficheiros do pacote; se
-   divergirem, recusa publicar. É esta camada que interessa mais, porque o
-   `.gitignore` não é o único caminho para uma árvore incompleta — um
-   `.git` aninhado, um erro de permissões, um `add` que falhe a meio. O
-   guarda não precisa de conhecer a causa: o que se publica tem de ser, em
-   número de ficheiros, o que se auditou.
+2. Um guarda sobre o RESULTADO, não sobre a causa: lista os caminhos de
+   `git ls-tree -r` e compara-os, como CONJUNTO, com os caminhos dos
+   ficheiros do pacote; se divergirem, recusa publicar e diz quais
+   divergem. É esta camada que interessa mais, porque o `.gitignore` não
+   é o único caminho para uma árvore incompleta — um `.git` aninhado, um
+   erro de permissões, um `add` que falhe a meio. O guarda não precisa de
+   conhecer a causa: o que se publica tem de ser, caminho a caminho, o que
+   se auditou.
+
+## Conjuntos e não contagens (terceira ronda)
+
+O guarda comparou contagens de linhas durante uma ronda, e trocou-se por
+conjuntos. Vale a pena ser exato sobre o que isso corrigiu, porque a
+primeira versão desta nota dizia o contrário e estava errada: **não havia
+buraco nenhum**. O `find` imprime `N + E` linhas (E = newlines embutidos
+em nomes de ficheiro) e o `git ls-tree` imprime `N - D` (D = ficheiros que
+não entraram na árvore; os nomes com `\n` vinham citados, numa linha só).
+Para as contagens baterem certo com um ficheiro em falta era preciso
+`E + D = 0` — as duas distorções empurram para lados opostos, por isso o
+erro de contagem só podia dar falso POSITIVO, nunca deixar passar um
+ficheiro em falta.
+
+O que a troca corrige, então:
+
+- um pacote ÍNTEGRO com um nome com `\n` deixa de ser recusado (era o
+  falso positivo) — `test_pacote_integro_com_um_nome_com_newline_e_publicado`;
+- a recusa passa a dizer QUAL é o ficheiro que falta, em vez de dois
+  números que não ajudam ninguém às duas da manhã.
+
+O que a troca NÃO corrige, porque nunca esteve partido: um ficheiro fora
+da árvore continua a ser recusado, com ou sem nomes esquisitos à mistura.
+Esse é o teste central do guarda, e está parametrizado com as duas
+situações exatamente para o deixar escrito.
+
+`ls-tree -z | tr` desliga a citação do git: com ela, os dois lados partem
+os nomes com `\n` da mesma maneira (duas entradas cada), e por isso um
+pacote íntegro compara igual.
 
 ## O que NÃO está aqui, e porquê (para o Tomás)
 
@@ -69,9 +99,12 @@ Não está ligado a nenhum critério S-NN de `docs/ESPECIFICACAO.md`: vive em
 from __future__ import annotations
 
 import os
-import re
+import shutil
+import stat
 import subprocess
 from pathlib import Path
+
+import pytest
 
 RAIZ_REPO = Path(__file__).resolve().parents[3]
 SCRIPT = RAIZ_REPO / "deploy" / "publicar-branch.sh"
@@ -258,25 +291,43 @@ def test_a_contagem_de_ficheiros_publicados_bate_certo_com_a_do_pacote(
     assert len(_ficheiros_sem_git(publicado)) == len(_ficheiros_sem_git(pacote)) == 6
 
 
-# --- 2. O guarda de contagem: o resultado, não a causa --------------------
+# --- 2. O guarda do resultado: conjuntos de caminhos, não a causa ---------
+
+#: Dois ficheiros que o `git add` nunca vai indexar, porque estão por
+#: baixo de um componente `.git` — nem com `--force`, nem com aviso
+#: nenhum. Em disco existem e foram auditados; na árvore do commit não
+#: aparecem. É a causa mais limpa de reproduzir, e é exatamente por haver
+#: várias (um erro de permissões, um `add` que falhe a meio) que o guarda
+#: é sobre o RESULTADO.
+FICHEIROS_QUE_NAO_ENTRAM_NA_ARVORE = {
+    "frontend/dist/vendor/.git/HEAD": "ref: refs/heads/main\n",
+    "frontend/dist/vendor/.git/config": "[core]\n\trepositoryformatversion = 0\n",
+}
+
+#: Um nome de ficheiro com um newline embutido. Não é teórico: o nome vem
+#: do build, e um `\n` lá dentro é legal em qualquer sistema de ficheiros
+#: POSIX. Aqui serve de "nome esquisito à mistura" — o caso em que contar
+#: linhas dava números que não queriam dizer nada.
+NOME_COM_NEWLINE = "frontend/dist/assets/app\nmalicioso.js"
 
 
-def test_recusa_publicar_uma_arvore_com_menos_entradas_do_que_o_pacote(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "com_nome_esquisito",
+    [False, True],
+    ids=["sem_nome_esquisito", "com_nome_com_newline"],
+)
+def test_recusa_publicar_quando_um_ficheiro_do_pacote_nao_entra_na_arvore(
+    tmp_path: Path, com_nome_esquisito: bool
 ) -> None:
-    """O guarda que apanha as causas que o `--force` não cobre.
-
-    A causa usada aqui é uma das citadas no próprio script: um `.git`
-    aninhado dentro do pacote. O `git add` nunca indexa nada por baixo de um
-    componente `.git` — nem com `--force`, nem com aviso nenhum: esses
-    ficheiros somem-se da árvore em silêncio, e o `--force` não lhes toca.
-    É precisamente por isso que o guarda é sobre o RESULTADO (quantas
-    entradas tem a árvore vs quantos ficheiros tem o pacote) e não sobre
-    causas conhecidas.
+    """O teste central do guarda: o que foi auditado em disco tem de ser o que vai no commit.
 
     A publicação anterior, limpa, não é decoração: é ela que permite exigir
     que a branch `deploy` fique EXATAMENTE onde estava. "Recusou" sem "não
     mexeu em nada" não chega.
+
+    A variante com um nome com `\n` existe para deixar escrito que o
+    guarda não se desorienta com nomes esquisitos: um ficheiro a sair da
+    árvore tem de ser recusado na mesma, com ou sem eles à mistura.
     """
     bare = _preparar_bare(tmp_path)
     repo = _preparar_repo_origem(tmp_path, bare)
@@ -292,25 +343,21 @@ def test_recusa_publicar_uma_arvore_com_menos_entradas_do_que_o_pacote(
     tip_publicado = _rev_parse_no_bare(bare, tmp_path, "deploy")
     assert tip_publicado is not None
 
-    pacote_mau = _escrever(
-        tmp_path / "pacote-mau",
-        {
-            "api/VERSION": sha_mau,
-            "frontend/dist/index.html": "<html>2</html>\n",
-            # Dois ficheiros que o `git add` nunca vai indexar, porque estão
-            # por baixo de um componente `.git`. Em disco existem e foram
-            # auditados; na árvore do commit não aparecem.
-            "frontend/dist/vendor/.git/HEAD": "ref: refs/heads/main\n",
-            "frontend/dist/vendor/.git/config": "[core]\n\trepositoryformatversion = 0\n",
-        },
-    )
+    ficheiros = {
+        "api/VERSION": sha_mau,
+        "frontend/dist/index.html": "<html>2</html>\n",
+        **FICHEIROS_QUE_NAO_ENTRAM_NA_ARVORE,
+    }
+    if com_nome_esquisito:
+        ficheiros[NOME_COM_NEWLINE] = "console.log('nome esquisito')\n"
+    pacote_mau = _escrever(tmp_path / "pacote-mau", ficheiros)
 
     segunda = _correr_publicar(repo, tmp_path, pasta=pacote_mau, sha=sha_mau)
 
     assert segunda.returncode != 0, (
-        "O pacote tem 4 ficheiros em disco e a árvore git só consegue ter 2 "
-        "entradas: publicar isto seria publicar uma árvore que não é a que "
-        "foi auditada. Tinha de ser recusado.\n"
+        f"O pacote tem {len(ficheiros)} ficheiros em disco e dois deles não "
+        "conseguem entrar na árvore git: publicar isto seria publicar uma "
+        "árvore que não é a que foi auditada. Tinha de ser recusado.\n"
         f"stdout:\n{segunda.stdout}\nstderr:\n{segunda.stderr}"
     )
     assert _rev_parse_no_bare(bare, tmp_path, "deploy") == tip_publicado, (
@@ -318,18 +365,145 @@ def test_recusa_publicar_uma_arvore_com_menos_entradas_do_que_o_pacote(
         "servidor continuaria a puxar o que já lá estava."
     )
 
-    # A recusa tem de ser a do guarda de contagem, e não um `git push` que
-    # falhou por outra razão qualquer: a mensagem traz as DUAS contagens, e
-    # elas têm de ser diferentes entre si.
+    # A recusa tem de ser a do guarda, e não um `git push` que falhou por
+    # outra razão qualquer: a mensagem nomeia os ficheiros que ficaram de
+    # fora. É esta a vantagem concreta de comparar conjuntos — dois números
+    # diferentes não diziam QUAL.
     mensagem = segunda.stdout + segunda.stderr
-    entradas = re.search(r"(\d+)\s+entradas", mensagem)
-    ficheiros = re.search(r"(\d+)\s+ficheiros", mensagem)
-    assert entradas is not None and ficheiros is not None, (
-        "A recusa não diz quantas entradas tem a árvore nem quantos "
-        "ficheiros tem o pacote — sem isso não dá para distinguir este "
-        f"guarda de uma avaria qualquer do git:\n{mensagem}"
+    for caminho in FICHEIROS_QUE_NAO_ENTRAM_NA_ARVORE:
+        assert caminho in mensagem, (
+            f"A recusa não diz que {caminho!r} está no pacote e falta na "
+            "árvore. Sem o nome do ficheiro, o guarda é indistinguível de "
+            f"uma avaria qualquer do git:\n{mensagem}"
+        )
+
+
+def test_pacote_integro_com_um_nome_com_newline_e_publicado(tmp_path: Path) -> None:
+    """O caso que a troca de contagens por conjuntos resolve de facto: um pacote íntegro não pode ser recusado por um nome esquisito.
+
+    Com contagens, este pacote era recusado — falso positivo: o `find`
+    contava duas linhas para o nome com `\n` e o `git ls-tree` contava uma
+    (citada), e os números não batiam certo sem faltar ficheiro nenhum. Um
+    deploy perfeitamente bom morria no último passo, com uma mensagem
+    (`4 entradas` contra `5 ficheiros`) que não apontava para lado nenhum.
+
+    `ls-tree -z | tr` desliga a citação: os dois lados passam a partir o
+    nome da mesma maneira, e os conjuntos comparam iguais.
+    """
+    bare = _preparar_bare(tmp_path)
+    repo = _preparar_repo_origem(tmp_path, bare)
+    sha = _commit_vazio(repo, tmp_path, "commit falso")
+
+    pacote = _escrever(
+        tmp_path / "pacote",
+        {
+            "api/VERSION": sha,
+            "frontend/dist/index.html": "<html>ementa</html>\n",
+            NOME_COM_NEWLINE: "console.log('nome esquisito')\n",
+        },
     )
-    assert entradas.group(1) != ficheiros.group(1), (
-        "A mensagem de recusa diz que a árvore e o pacote têm o mesmo número "
-        f"de ficheiros — então não é esta a recusa esperada:\n{mensagem}"
+
+    resultado = _correr_publicar(repo, tmp_path, pasta=pacote, sha=sha)
+
+    assert resultado.returncode == 0, (
+        "Um pacote íntegro foi recusado por causa de um nome de ficheiro com "
+        "um newline. O guarda compara o que vai ser publicado com o que foi "
+        "auditado — e aqui são a mesma coisa; nenhum ficheiro ficou de fora "
+        f"da árvore.\nstdout:\n{resultado.stdout}\nstderr:\n{resultado.stderr}"
+    )
+
+    publicado = _arvore_da_branch(bare, tmp_path, "conferencia")
+    assert _ficheiros_sem_git(publicado) == _ficheiros_sem_git(pacote), (
+        "A árvore publicada não é a pasta auditada."
+    )
+    assert NOME_COM_NEWLINE in _ficheiros_sem_git(publicado), (
+        "O ficheiro com o nome esquisito tem de estar mesmo publicado, com o "
+        "nome que tinha em disco — não basta a publicação ter saído 0."
+    )
+
+
+# --- 3. E quando não se consegue percorrer o pacote (regra 10) ------------
+
+#: Um `find` de teste que falha a percorrer o pacote — exatamente como um
+#: `find` real que tropeça numa subpasta sem permissão de leitura: nada em
+#: stdout, a razão em stderr, estado 1. Qualquer outra invocação (não há
+#: nenhuma neste script, mas isso é um detalhe dele, não deste stub) é
+#: delegada no `find` verdadeiro.
+STUB_FIND_QUE_FALHA = """\
+#!/usr/bin/env bash
+set -u
+
+procura_do_pacote=0
+for argumento in "$@"; do
+  case "$argumento" in
+    -print) procura_do_pacote=1 ;;
+  esac
+done
+
+if [ "$procura_do_pacote" -eq 1 ]; then
+  echo "find: './uma-subpasta-ilegivel': Permission denied" >&2
+  exit 1
+fi
+
+exec "${TOMAZIA_TESTE_FIND_REAL}" "$@"
+"""
+
+
+def test_nao_conseguir_percorrer_o_pacote_aborta_a_publicacao(tmp_path: Path) -> None:
+    """Regra 10: "o pacote não tem mais ficheiros" e "não consegui procurar" nunca podem dar o mesmo resultado.
+
+    Sem o estado do `find` verificado à mão, uma procura que falhasse a
+    meio devolvia uma lista curta (ou vazia) — e uma lista curta do lado do
+    pacote faz o guarda concluir que está tudo bem, ou pior, que é a ÁRVORE
+    que tem ficheiros a mais. O pacote seria publicado sem nunca ter sido
+    percorrido por inteiro.
+
+    A avaria injeta-se onde ela existe no mundo real, com um `find` de
+    teste à frente no `PATH` — nunca com uma pasta sem permissões, que o
+    `_escrever` deste ficheiro teria de criar e a que o próprio teste
+    deixaria de conseguir aceder.
+    """
+    find_real = shutil.which("find")
+    assert find_real is not None, "Não há 'find' nesta máquina de testes."
+
+    bare = _preparar_bare(tmp_path)
+    repo = _preparar_repo_origem(tmp_path, bare)
+    sha = _commit_vazio(repo, tmp_path, "commit falso")
+
+    pacote = _escrever(
+        tmp_path / "pacote",
+        {"api/VERSION": sha, "frontend/dist/index.html": "<html>ementa</html>\n"},
+    )
+
+    pasta_stub = tmp_path / "bin-de-teste"
+    pasta_stub.mkdir()
+    stub = pasta_stub / "find"
+    stub.write_text(STUB_FIND_QUE_FALHA, encoding="utf-8")
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    ambiente = _ambiente(tmp_path)
+    ambiente["PATH"] = f"{pasta_stub}{os.pathsep}{ambiente['PATH']}"
+    ambiente["TOMAZIA_TESTE_FIND_REAL"] = find_real
+
+    resultado = subprocess.run(
+        [str(SCRIPT), "--pasta", str(pacote), "--sha", sha, "--branch", "deploy"],
+        cwd=repo,
+        env=ambiente,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert resultado.returncode != 0, (
+        "A procura pelos ficheiros do pacote falhou e a publicação seguiu em "
+        "frente. Um pacote que não se conseguiu percorrer não pode ser dado "
+        f"por igual à árvore.\nstdout:\n{resultado.stdout}"
+    )
+    assert _rev_parse_no_bare(bare, tmp_path, "deploy") is None, (
+        "A branch 'deploy' foi criada por uma publicação que abortou."
+    )
+    assert "Permission denied" in resultado.stderr, (
+        "A razão da avaria (o stderr do próprio find) tem de chegar a quem "
+        "corre o deploy — senão fica a saber que falhou, mas não porquê. "
+        f"stderr foi:\n{resultado.stderr}"
     )

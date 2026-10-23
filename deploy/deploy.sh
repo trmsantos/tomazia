@@ -135,9 +135,17 @@ home_real=$(realpath "$HOME")
 # WEB com `..` (p.ex. `$HOME/../../tmp/x`, um caminho que não existe, logo
 # o `realpath` falhava) passava intacto para o `case` abaixo — e o `*` do
 # padrão casa com barras, portanto `"$home_real"/*` dava-o por dentro do
-# `$HOME`. O `rsync -a --delete` lá em baixo escrevia então fora do
-# `$HOME`, à vontade. O `$WEB` tem de existir de qualquer maneira: poucas
-# linhas abaixo exige-se lá um `.htaccess`.
+# `$HOME`.
+#
+# O que isso provocava, exatamente: NÃO era escrita fora do `$HOME`. Para
+# o `realpath` falhar, o caminho tem de não existir ou não ser legível —
+# e nos dois casos o `[ ! -f "$WEB/.htaccess" ]` poucas linhas abaixo
+# recusa antes de qualquer escrita. O guarda do `.htaccess` era a rede
+# com que ninguém contava. O defeito real era a MENSAGEM: o deploy morria
+# a dizer "WEB não tem .htaccess" quando o que tinha acontecido era "não
+# consegui resolver o WEB" — uma avaria relatada como resposta, que é a
+# regra 10 na letra. Corrige-se à mesma: depender de um guarda posterior
+# por acaso não é desenho.
 if ! web_real=$(realpath "$web_bruto" 2>/dev/null); then
   echo "deploy.sh: não consegui resolver WEB ('${web_bruto}') — ou não existe, ou não é legível. Recuso continuar sem saber para onde ia sincronizar." >&2
   exit 1
@@ -185,6 +193,18 @@ PASSO_ATUAL="a validar o frontend no pacote (${ORIGEM}/frontend/dist/index.html)
 # em baixo e a pipeline toda verde. Aqui ainda não se escreveu nada.
 if [ ! -f "$ORIGEM/frontend/dist/index.html" ]; then
   echo "deploy.sh: ${ORIGEM}/frontend/dist/index.html não existe no pacote — recuso sincronizar o frontend, porque o --delete apagaria o site." >&2
+  exit 1
+fi
+
+PASSO_ATUAL="a validar a app no pacote (${ORIGEM}/api/app/main.py)"
+# A mesma rede, do lado do `api/`. O `VERSION` acima prova que o pacote
+# foi montado, não que o `app/` lá dentro traz alguma coisa: um
+# `api/app/` presente mas vazio fazia o `rsync --delete` limpar o
+# `$API/app`. O deploy abortava a seguir no alembic, antes do
+# `restart.txt` — por isso a app velha continuava a servir de memória —
+# mas o disco ficava destruído e o deploy seguinte partia de nada.
+if [ ! -f "$ORIGEM/api/app/main.py" ]; then
+  echo "deploy.sh: ${ORIGEM}/api/app/main.py não existe no pacote — recuso sincronizar a app, porque o --delete esvaziaria ${API}/app." >&2
   exit 1
 fi
 
@@ -243,7 +263,21 @@ PASSO_ATUAL="a sincronizar o frontend (WEB=${WEB})"
 # All`), e um padrão ancorado só à raiz deixava-o passar e sobrepor-se à
 # configuração real do servidor. `montar.sh` recusa, como rede adicional,
 # qualquer `.htaccess` dentro do próprio pacote (ver o comentário lá).
-rsync -a --delete \
+# `--safe-links`: uma ligação simbólica dentro do pacote a apontar para
+# fora dele (p.ex. `dist/logo.svg -> ../tomazia_api/.env`) seria copiada
+# tal e qual por um `rsync -a`, e o Apache serviria por HTTP o ficheiro
+# para onde ela aponta. Nenhum guarda acima a vê: o S-10/S-12 olha para
+# nomes, que são inocentes, e o guarda de contagem do `publicar-branch.sh`
+# não dispara, porque o git guarda a ligação como uma entrada (modo
+# 120000) e as contagens batem certo. Fecha-se aqui, no último sítio
+# antes do site.
+#
+# Só aqui, e de propósito: os `rsync` de `api/app/` e `api/migrations/`
+# acima não levam `--safe-links`. Esses ficheiros não são servidos por
+# HTTP — o perigo de uma ligação é o Apache entregar o destino a quem
+# pedir —, e o `montar.sh` recusa ligações no pacote inteiro, que é a
+# camada que os cobre.
+rsync -a --safe-links --delete \
   --exclude='/media' \
   --exclude='.htaccess' \
   --exclude='/.well-known' \

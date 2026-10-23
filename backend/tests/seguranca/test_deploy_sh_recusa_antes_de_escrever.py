@@ -1,9 +1,9 @@
-"""Dois guardas de `deploy/deploy.sh` que recusam ANTES de escrever (ronda de segurança da F1-04).
+"""Três guardas de `deploy/deploy.sh` que recusam ANTES de escrever (ronda de segurança da F1-04).
 
-Os dois achados são independentes um do outro, mas vivem no mesmo ficheiro
-porque exigem exatamente o mesmo mundo: uma instalação de servidor falsa,
-completa e válida, em que só a coisa testada está errada. Construir esse
-mundo duas vezes só multiplicava a cópia (já existem outras em
+Os três achados são independentes uns dos outros, mas vivem no mesmo
+ficheiro porque exigem exatamente o mesmo mundo: uma instalação de servidor
+falsa, completa e válida, em que só a coisa testada está errada. Construir
+esse mundo três vezes só multiplicava a cópia (já existem outras em
 `tests/seguranca/test_deploy_sh.py` e
 `tests/seguranca/test_deploy_sh_exclui_htaccess_em_profundidade.py`).
 
@@ -61,6 +61,21 @@ sítios) — e aí é o guarda do `$HOME` que o apanha, com ou sem fallback. Por
 isso nenhum teste aqui finge provar a escrita fora do `$HOME`: provam a
 recusa, a ausência de escrita, e que as duas avarias se distinguem uma da
 outra. Ver o relatório desta ronda.
+
+## Achado 3 — a mesma precondição em falta, do lado do `api/`
+
+Simétrico do achado 1, e encontrado por causa dele: o `rsync --delete` que
+espelha `$ORIGEM/api/app/` sobre `$API/app/` também não olhava para o lado
+da origem. O `VERSION`, validado mesmo acima no script, prova que o pacote
+foi montado — nunca que o `app/` lá dentro traz alguma coisa. Com um
+`api/app/` presente mas vazio, o `--delete` limpava o `$API/app`.
+
+A diferença em relação ao achado 1 é o que acontece a seguir, e é o que
+torna o estrago mais difícil de ver: o deploy abortava no `alembic`, antes
+do `touch tmp/restart.txt`, por isso o Passenger nunca reiniciava e a app
+velha continuava a servir — de memória. O site ficava de pé, o disco
+ficava destruído, e o deploy seguinte partia de nada. Por isso os testes
+afirmam as duas metades: recusar, e não ter escrito nada.
 
 ## O mundo dos testes
 
@@ -151,6 +166,12 @@ def _preparar_instalacao_valida(raiz: Path) -> Instalacao:
     # ORIGEM: o pacote montado, com a forma que `deploy/montar.sh` escreve.
     (origem / "api" / "app").mkdir(parents=True)
     (origem / "api" / "app" / MARCADOR_NOVO).write_text("novo\n", encoding="utf-8")
+    # `api/app/main.py`: precondição do script (achado 3, abaixo). Numa
+    # instalação VÁLIDA tem de lá estar — senão os testes dos achados 1 e 2
+    # passariam por esta recusa, e não pela que dizem exercitar.
+    (origem / "api" / "app" / "main.py").write_text(
+        "# aplicacao falsa\n", encoding="utf-8"
+    )
     (origem / "api" / "migrations").mkdir()
     (origem / "api" / "migrations" / "env.py").write_text(
         "# migrations falsas\n", encoding="utf-8"
@@ -433,4 +454,84 @@ def test_nao_conseguir_resolver_o_web_e_o_web_estar_fora_do_home_dizem_coisas_di
     assert "não consegui resolver" not in _mensagem(resultado_fora), (
         "Um WEB que se resolveu bem (só está no sítio errado) não pode ser "
         "relatado como um caminho irresolúvel — são avarias diferentes."
+    )
+
+
+# --- Achado 3: precondição da app, do lado do `api/` -----------------------
+
+#: Como é que um `api/app/` pode chegar ao servidor sem a app lá dentro.
+#: Simétrico do `ESTADOS_SEM_INDEX` acima, e igualmente destrutivo para o
+#: `rsync --delete` que espelha `$ORIGEM/api/app/` sobre `$API/app/`.
+ESTADOS_SEM_MAIN = {
+    "so_outro_ficheiro": [MARCADOR_NOVO],
+    "vazio": [],
+}
+
+
+@pytest.mark.parametrize(
+    "estado", sorted(ESTADOS_SEM_MAIN), ids=sorted(ESTADOS_SEM_MAIN)
+)
+def test_app_do_pacote_sem_main_py_e_recusada(tmp_path: Path, estado: str) -> None:
+    """Sem `api/app/main.py` na origem, o `rsync --delete` esvaziava o `$API/app`.
+
+    O `VERSION`, validado mesmo acima no script, prova que o pacote foi
+    montado — nunca que o `app/` lá dentro traz alguma coisa. Esta é a
+    mesma rede do `index.html`, do lado do `api/`.
+    """
+    instalacao = _preparar_instalacao_valida(tmp_path)
+    app_do_pacote = instalacao.origem / "api" / "app"
+    shutil.rmtree(app_do_pacote)
+    app_do_pacote.mkdir(parents=True)
+    for relativo in ESTADOS_SEM_MAIN[estado]:
+        (app_do_pacote / relativo).write_text("novo\n", encoding="utf-8")
+
+    resultado = _correr_deploy(instalacao)
+
+    assert resultado.returncode != 0, (
+        "Um pacote com api/app/ sem main.py tem de ser recusado: "
+        "sincronizá-lo com --delete apaga o código da app em produção.\n"
+        f"{_mensagem(resultado)}"
+    )
+    assert "main.py" in _mensagem(resultado), (
+        "A recusa tem de dizer o que falta no pacote — senão é "
+        "indistinguível de uma avaria qualquer do script:\n"
+        f"{_mensagem(resultado)}"
+    )
+
+
+@pytest.mark.parametrize(
+    "estado", sorted(ESTADOS_SEM_MAIN), ids=sorted(ESTADOS_SEM_MAIN)
+)
+def test_app_do_pacote_sem_main_py_nao_escreve_nada(
+    tmp_path: Path, estado: str
+) -> None:
+    """A metade que interessa: recusar depois do `rsync` deixava o disco destruído.
+
+    O deploy abortaria a seguir no alembic, antes do `restart.txt` — por
+    isso a app velha continuava a servir, de memória —, mas o `$API/app`
+    em disco já tinha ficado vazio, e o deploy seguinte partia de nada.
+    """
+    instalacao = _preparar_instalacao_valida(tmp_path)
+    app_do_pacote = instalacao.origem / "api" / "app"
+    shutil.rmtree(app_do_pacote)
+    app_do_pacote.mkdir(parents=True)
+    for relativo in ESTADOS_SEM_MAIN[estado]:
+        (app_do_pacote / relativo).write_text("novo\n", encoding="utf-8")
+
+    antes = _instantaneo(instalacao.web)
+    assert (instalacao.api / "app" / MARCADOR_VELHO).is_file(), (
+        "premissa do teste: a app antiga tem de estar em disco antes do deploy"
+    )
+
+    resultado = _correr_deploy(instalacao)
+
+    assert resultado.returncode != 0, _mensagem(resultado)
+    _assert_nada_escrito(instalacao, antes)
+    assert (instalacao.api / "app" / MARCADOR_VELHO).read_text(
+        encoding="utf-8"
+    ) == "velho\n", (
+        "O código antigo da API foi apagado por um deploy que acabou "
+        "recusado. É exatamente este o estrago: o `rsync --delete` espelha "
+        "`$ORIGEM/api/app/` sobre `$API/app/`, e uma origem vazia esvazia o "
+        "destino."
     )

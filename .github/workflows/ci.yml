@@ -156,6 +156,13 @@ jobs:
       # plantado em `backend/app/`, ou um `docs/`/`tests/`/`.claude/` que
       # sobreviva à cópia de `backend/`, nunca chegaria a aparecer num
       # guarda que só olhasse para `dist/`.
+      #
+      # Isto corre DEPOIS do `npm ci`, e de propósito — aqui o objetivo é
+      # exercitar o script e os guardas, e o pacote é deitado fora no fim.
+      # Não é o que o `deploy.yml` faz, nem pode passar a ser: lá a
+      # montagem vive no job `publicar`, a partir de um checkout que o npm
+      # nunca tocou (ADR 0005). Nunca levar este padrão de volta para o
+      # caminho que publica.
       - name: deploy/montar.sh (pacote de deploy, para os guardas S-12/S-10)
         working-directory: ${{ github.workspace }}
         run: deploy/montar.sh --sha "${{ github.sha }}" --saida "${{ runner.temp }}/pacote-ci"

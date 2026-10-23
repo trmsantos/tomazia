@@ -26,23 +26,43 @@ próprio atacante tinha acabado de escrever em `requirements.txt`.
 
 - `montar` só faz `npm ci && npm run build`, e publica um artefacto que
   carrega **só** `frontend/dist`.
-- `publicar` faz o seu próprio checkout, descarrega esse artefacto para
-  `frontend/dist` e corre lá `deploy/montar.sh`. Por isso `api/` e `deploy/`
-  saem do clone que o Actions acabou de fazer, nunca da árvore onde o `npm`
-  correu. O único produto que viaja do job `montar` são ficheiros servidos
-  a browsers, nunca importados pelo Passenger nem instalados pelo pip.
+- `publicar` faz o seu próprio checkout, extrai esse artefacto para
+  `${{ runner.temp }}` (FORA da árvore de trabalho), copia-o à mão para
+  `frontend/dist` e corre lá `deploy/montar.sh`. Por isso `api/` e
+  `deploy/` saem do clone que o Actions acabou de fazer, nunca da árvore
+  onde o `npm` correu. O único produto que viaja do job `montar` são
+  ficheiros servidos a browsers, nunca importados pelo Passenger nem
+  instalados pelo pip.
 - Os guardas S-12 e S-10 correm no `publicar`, sobre o pacote montado: têm
   de auditar exatamente os bytes que a seguir são publicados, nunca uma
   cópia anterior deles.
 
-O invariante que mais importa aqui, e o mais fácil de desfazer por
-distração num refactor, é **o artefacto não carregar nada para lá de
+São dois os invariantes que mais importam aqui, e os dois são fáceis de
+desfazer por distração num refactor.
+
+O primeiro é **o artefacto não carregar nada para lá de
 `frontend/dist`**: é essa a propriedade que impede o buraco de voltar.
 Alargar o `path` do `upload-artifact` para `.` (ou acrescentar-lhe uma
 segunda linha com `backend` ou `deploy`) repunha o canal inteiro sem mudar
 mais nada no ficheiro — por isso
 `test_o_artefacto_do_montar_nao_carrega_nada_para_la_de_frontend_dist`
 compara a lista de caminhos por igualdade, nunca por "contém".
+
+O segundo é **o artefacto não aterrar dentro da árvore de trabalho**. Essa
+árvore é a que tem o `GITHUB_TOKEN` em `.git/config` e é de onde sai o
+pacote; o zip vem de um job onde o `npm ci` correu, e um `postinstall`
+consegue reescrever o JS da própria ação de upload (as ações são
+descarregadas antes de os passos correrem) para fabricar entradas com
+`../` no nome. O `download-artifact` v4 recusa-as (CVE-2024-42471,
+corrigido na v4.1.7), mas isso é código de terceiros a proteger-nos de
+outro código de terceiros: extrair para `${{ runner.temp }}` e copiar à
+mão custa uma linha e deixa de depender dele. Um `path:` relativo é
+relativo a `github.workspace` — ou seja, para dentro da árvore —, e é
+essa a regressão que
+`test_o_artefacto_do_npm_nao_aterra_dentro_da_arvore_de_trabalho` apanha.
+A outra metade é que o build tem de acabar onde o `montar.sh` o lê, e a
+ligação entre os dois passos faz-se pelo caminho, nunca pela ordem
+sozinha.
 
 Tudo o que depende da ORDEM dos passos é comparado por ÍNDICE, nunca por
 presença: montar antes de auditar, auditar antes de publicar. A ordem é o
@@ -85,7 +105,27 @@ SHA_APROVADO = "${{ github.event.workflow_run.head_sha }}"
 #: O único caminho que o artefacto do job `montar` pode carregar.
 CAMINHO_DO_ARTEFACTO = "frontend/dist"
 
+#: Onde `deploy/montar.sh` vai buscar o build, dentro do checkout do job
+#: `publicar` (`cp -a frontend/dist "${saida}/frontend/dist"`). Coincide
+#: com o caminho acima só porque o `upload-artifact` guarda as entradas
+#: relativas ao `path` que lhe deram — são dois factos diferentes, e é por
+#: isso que têm nomes diferentes aqui.
+CAMINHO_LIDO_PELO_MONTAR = "frontend/dist"
+
 _PADRAO_ENV = re.compile(r"^\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$")
+
+#: As formas de escrever a pasta temporária do runner — a expressão do
+#: Actions (`${{ runner.temp }}`, só válida em interpolação) e a variável
+#: de ambiente equivalente (`${RUNNER_TEMP}`/`$RUNNER_TEMP`, a que um
+#: `run:` usa). São a mesma pasta, e os testes abaixo têm de poder ligar
+#: um passo ao outro sem tropeçar na diferença de notação.
+_PADRAO_TEMP_DO_RUNNER = re.compile(
+    r"\$\{\{\s*runner\.temp\s*\}\}|\$\{RUNNER_TEMP\}|\$RUNNER_TEMP\b"
+)
+
+
+def _normalizar_temp(texto: str) -> str:
+    return _PADRAO_TEMP_DO_RUNNER.sub("<TEMP>", texto)
 
 
 def _carregar() -> dict[str, Any]:
@@ -296,25 +336,53 @@ def test_o_job_montar_nao_monta_nem_publica_o_pacote() -> None:
         )
 
 
-def test_o_artefacto_descarregado_no_publicar_e_o_mesmo_e_aterra_em_frontend_dist() -> (
-    None
-):
-    """Um só artefacto, com o mesmo nome dos dois lados, a aterrar onde o `montar.sh` espera o build."""
-    upload = [passo for passo in _passos(_job("montar")) if _publica_artefacto(passo)]
+def _descarga_unica() -> tuple[dict[str, Any], str]:
+    """O único `download-artifact` do workflow, e o caminho para onde extrai."""
     descargas = [
         (nome_job, passo)
         for nome_job, job in _jobs().items()
         for passo in _passos(job)
         if _descarrega_artefacto(passo)
     ]
-    assert len(upload) == 1 and len(descargas) == 1, (
-        f"Esperava um upload-artifact e um download-artifact em deploy.yml "
-        f"(vi {len(upload)} e {len(descargas)})."
+    assert len(descargas) == 1, (
+        f"Esperava exatamente um download-artifact em deploy.yml (vi "
+        f"{len(descargas)}: {[(n, _nome(p)) for n, p in descargas]!r})."
     )
     nome_job, descarga = descargas[0]
     assert nome_job == "publicar", (
         f"O artefacto só pode ser descarregado no job 'publicar', não em {nome_job!r}."
     )
+    destinos = _linhas_de_caminho(
+        _com(descarga).get("path"), "O download-artifact do job 'publicar'"
+    )
+    assert len(destinos) == 1, (
+        f"O download-artifact tem de extrair para um só sítio (vi {destinos!r})."
+    )
+    return descarga, destinos[0]
+
+
+def test_o_artefacto_do_npm_nao_aterra_dentro_da_arvore_de_trabalho() -> None:
+    """O zip do job `montar` extrai-se para `runner.temp`, nunca para dentro do checkout do job `publicar`.
+
+    Essa árvore é a que tem o `GITHUB_TOKEN` em `.git/config` e é de onde
+    sai o pacote. O zip é produzido num job onde o `npm ci` correu, e um
+    `postinstall` consegue reescrever o JS da própria ação de upload (as
+    ações são descarregadas antes dos passos correrem) para fabricar
+    entradas com `../` no nome. O `download-artifact` v4 valida os caminhos
+    e recusa-as (CVE-2024-42471, corrigido na v4.1.7) — mas isso é código
+    de terceiros a proteger-nos de outro código de terceiros. Extrair para
+    fora da árvore e copiar à mão custa uma linha, e a contenção deixa de
+    depender de quem não somos nós.
+
+    Um `path:` relativo (como o `frontend/dist` que aqui esteve) é relativo
+    a `github.workspace`, ou seja, dentro da árvore: é exatamente a
+    regressão que este teste existe para apanhar.
+    """
+    upload = [passo for passo in _passos(_job("montar")) if _publica_artefacto(passo)]
+    assert len(upload) == 1, (
+        f"O job 'montar' tem de publicar exatamente um artefacto (vi {len(upload)})."
+    )
+    descarga, destino = _descarga_unica()
 
     nome_enviado = _com(upload[0]).get("name")
     nome_recebido = _com(descarga).get("name")
@@ -323,13 +391,61 @@ def test_o_artefacto_descarregado_no_publicar_e_o_mesmo_e_aterra_em_frontend_dis
         f"{nome_enviado!r} no upload e {nome_recebido!r} no download)."
     )
 
-    destino = _linhas_de_caminho(
-        _com(descarga).get("path"), "O download-artifact do job 'publicar'"
+    assert _normalizar_temp(destino).startswith("<TEMP>/"), (
+        f"O download-artifact extrai para {destino!r}. Tem de extrair para "
+        "uma pasta dentro de '${{ runner.temp }}' — fora da árvore de "
+        "trabalho do job 'publicar', que é a que tem o GITHUB_TOKEN em "
+        "'.git/config' e de onde sai o pacote. Um caminho relativo é "
+        "relativo a 'github.workspace', isto é, para dentro dessa árvore."
     )
-    assert destino == [CAMINHO_DO_ARTEFACTO], (
-        f"O artefacto tem de aterrar em '{CAMINHO_DO_ARTEFACTO}' dentro do "
-        f"checkout do job 'publicar' (vi {destino!r}) — é lá que "
-        "'deploy/montar.sh' vai buscar o build do frontend."
+
+
+def test_o_build_descarregado_e_copiado_para_onde_o_montar_sh_o_le() -> None:
+    """Extrair para fora da árvore só serve se o build acabar onde o `montar.sh` o vai buscar.
+
+    A ligação entre os dois passos é feita pelo CAMINHO, não pela ordem nem
+    pelo nome: o `run:` que copia tem de mencionar a mesma pasta de
+    `runner.temp` para onde o artefacto foi extraído (em qualquer das duas
+    notações) e o `frontend/dist` que o `montar.sh` lê. E tem de estar
+    entre o download e a montagem — copiar antes do download copia uma
+    pasta que ainda não existe, copiar depois da montagem chega tarde.
+    """
+    _, destino = _descarga_unica()
+    destino_normalizado = _normalizar_temp(destino)
+
+    publicar = _job("publicar")
+    passos = _passos(publicar)
+
+    indices_copia = [
+        indice
+        for indice, passo in enumerate(passos)
+        if isinstance(passo.get("run"), str)
+        and destino_normalizado in _normalizar_temp(passo["run"])
+        and CAMINHO_LIDO_PELO_MONTAR in passo["run"]
+    ]
+    assert len(indices_copia) == 1, (
+        f"Esperava exatamente um passo do job 'publicar' que copie {destino!r} "
+        f"para '{CAMINHO_LIDO_PELO_MONTAR}' (encontrei {len(indices_copia)}: "
+        f"{[_nome(passos[i]) for i in indices_copia]!r}). Sem esse passo, o "
+        "artefacto fica em 'runner.temp' e o 'deploy/montar.sh' monta um "
+        "pacote sem frontend nenhum — ou com o frontend do commit anterior."
+    )
+
+    indices_download = [
+        indice for indice, passo in enumerate(passos) if _descarrega_artefacto(passo)
+    ]
+    assert len(indices_download) == 1
+    indice_montagem = _indice_unico(
+        publicar,
+        "montar.sh",
+        "É aqui que o pacote é montado, e já com o build no sítio.",
+    )
+
+    assert indices_download[0] < indices_copia[0] < indice_montagem, (
+        "No job 'publicar' a ordem tem de ser: download-artifact (índice "
+        f"{indices_download[0]}) → copiar para '{CAMINHO_LIDO_PELO_MONTAR}' "
+        f"(índice {indices_copia[0]}) → 'deploy/montar.sh' (índice "
+        f"{indice_montagem})."
     )
 
 

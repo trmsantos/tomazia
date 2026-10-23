@@ -268,11 +268,28 @@ jobs:
       # estáticos compilados, o único produto que tem mesmo de vir de um
       # job onde o `npm ci` correu. Entra aqui dentro do checkout limpo,
       # e é a ÚNICA coisa do pacote que não vem do repositório.
+      # O artefacto extrai para `runner.temp`, NUNCA diretamente para
+      # dentro da árvore de trabalho — é esta a árvore que tem o
+      # `GITHUB_TOKEN` em `.git/config` e de onde sai o pacote. O zip é
+      # produzido num job onde o `npm ci` correu, e um `postinstall`
+      # consegue reescrever o JS da própria ação de upload (as ações são
+      # descarregadas antes dos passos correrem) para fabricar entradas
+      # `../../deploy/montar.sh`. O `download-artifact` v4 valida os
+      # caminhos e recusa-as (CVE-2024-42471, corrigido na v4.1.7), mas
+      # isso é um detalhe de implementação de terceiros: extrair para
+      # fora e copiar à mão custa uma linha e deixa de depender dele.
       - name: Descarregar o build do frontend (o único produto do npm)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: frontend-dist
-          path: frontend/dist
+          path: ${{ runner.temp }}/dist
+
+      - name: Pôr o build onde o montar.sh o lê
+        run: |
+          set -euo pipefail
+          rm -rf frontend/dist
+          mkdir -p frontend
+          cp -a "${RUNNER_TEMP}/dist" frontend/dist
 
       # A montagem corre AQUI, nunca no job `montar`, e é esse o ponto:
       # `montar.sh` lê `backend/app/`, `backend/passenger_wsgi.py`,

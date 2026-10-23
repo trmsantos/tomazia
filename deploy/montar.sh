@@ -99,9 +99,10 @@ if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 # Raiz do projeto a partir do PRÓPRIO caminho deste script — nunca
-# `git rev-parse`. `$0` é o caminho com que este script foi invocado
-# (sempre absoluto, nos testes e no CI); `dirname` dá a pasta `deploy/`,
-# e `/..` sobe para a raiz.
+# `git rev-parse`. `$0` é o caminho com que este script foi invocado —
+# absoluto nos testes, relativo nos workflows (`deploy/montar.sh`), e
+# tanto faz: o `cd` seguido de `pwd` normaliza os dois. `dirname` dá a
+# pasta `deploy/`, e `/..` sobe para a raiz.
 raiz_projeto="$(cd "$(dirname "$0")/.." && pwd)"
 
 raiz_backend="${raiz_projeto}/backend"
@@ -415,6 +416,35 @@ find "$saida" -type f -iname ".htaccess" \
 if [ "$estado_find_htaccess" -ne 0 ]; then
   echo "Erro: a procura por '.htaccess' falhou a percorrer '${saida}' — não é seguro assumir que não há nenhum. Ver abaixo:" >&2
   cat "$tmp_htaccess_err" >&2
+  exit 1
+fi
+
+# --- nenhuma ligação simbólica sai no pacote ---
+#
+# O `deploy.sh` sincroniza o pacote com `rsync -a`, que preserva links, e
+# o Apache do cPanel segue-os (`SymLinksIfOwnerMatch`). Uma ligação como
+# `frontend/dist/logo.svg -> ../tomazia_api/.env` seria servida por HTTP
+# com o conteúdo do destino. Nenhum guarda anterior a vê: o S-10/S-12
+# olha para NOMES, que aqui são inocentes, e as suas procuras são
+# `-type f`, portanto nem reparam nela. Hoje nada consegue pôr uma
+# ligação no pacote — o `upload-artifact` dereferencia-as — mas essa é
+# uma garantia de terceiros, não nossa, e não está escrita em lado
+# nenhum. O `deploy.sh` tem `--safe-links` como segunda camada; esta é a
+# primeira. Recusa-se o pacote inteiro, em voz alta.
+tmp_links="${tmp_auditoria}/links"
+tmp_links_err="${tmp_auditoria}/links.err"
+estado_find_links=0
+find "$saida" -type l >"$tmp_links" 2>"$tmp_links_err" || estado_find_links=1
+
+if [ "$estado_find_links" -ne 0 ]; then
+  echo "Erro: a procura por ligações simbólicas falhou a percorrer '${saida}' — não é seguro assumir que não há nenhuma. Ver abaixo:" >&2
+  cat "$tmp_links_err" >&2
+  exit 1
+fi
+
+if [ -s "$tmp_links" ]; then
+  echo "Erro: o pacote montado em '${saida}' contém pelo menos uma ligação simbólica — isto nunca pode acontecer (seria sincronizada para o site e servida com o conteúdo do destino):" >&2
+  cat "$tmp_links" >&2
   exit 1
 fi
 
