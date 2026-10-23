@@ -27,6 +27,33 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "build(frontend)"
+    # Tetos de versão. Cada um existe por uma razão escrita, e cada um tem
+    # uma condição para sair daqui — ver `docs/decisoes/0007-tetos-de-
+    # versao-do-frontend.md`. Um `ignore` sem data de validade transforma-
+    # se em dívida silenciosa; estas têm o critério de levantamento no ADR.
+    # São quatro entradas para três razões — o `eslint` e o `@eslint/js`
+    # sobem juntos e caem pelo mesmo motivo.
+    #
+    # Sem isto, o Dependabot propõe-nos todos num grupo só, o `npm ci`
+    # rebenta com ERESOLVE por causa do eslint, e essa falha esconde que
+    # os outros dois também não deviam entrar — foi o que aconteceu no
+    # PR #6.
+    ignore:
+      # O salto para a v4 não é uma atualização, é outra ferramenta: a
+      # configuração passa a ser em CSS e o `tailwind.config.ts` deixa de
+      # ser lido. Fica na 3.4 por decisão do Tomás.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+      # Os tipos acompanham o runtime: o `.nvmrc` diz 22, logo os tipos
+      # são de Node 22. Um major aqui descreve um Node que não corremos.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # O `eslint-plugin-jsx-a11y` declara `peer eslint@"^3 || ... || ^9"`.
+      # Com o eslint 10 o `npm ci` não resolve de todo.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
     groups:
       dependencias-de-desenvolvimento:
         dependency-type: "development"
