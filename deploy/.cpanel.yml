@@ -1,0 +1,27 @@
+# .cpanel.yml — a ÚNICA tarefa que o cPanel corre depois de puxar a
+# branch `deploy` (Git Version Control → "Update from Remote" / webhook /
+# UAPI, conforme configurado na F1-05).
+#
+# Este ficheiro é, de propósito, o menos inteligente de todo o pipeline de
+# deploy: não há testes possíveis para o que o cPanel faz com ele a não
+# ser sintaxe (um `.cpanel.yml` mal formado só se descobre no servidor, ao
+# vivo), por isso toda a lógica real vive em `deploy/deploy.sh`, testado à
+# parte com um `HOME` falso (ver `deploy/README.md`).
+#
+# Zero `export`, zero `cp`, zero caminho absoluto: tudo o que o deploy.sh
+# precisa de saber sobre onde ficam as coisas vem de `$HOME` (por
+# convenção, igual à árvore descrita em `docs/ESPECIFICACAO.md`, secção
+# Servidor) e do ficheiro de configuração `~/.tomazia-deploy.conf`
+# (persistente no servidor, fora deste pacote — nunca sincronizado por
+# deploy nenhum). Nada aqui tem nome de utilizador nem domínio reais: é
+# o mesmo ficheiro para qualquer conta cPanel que clone este repositório.
+#
+# NOTA PARA O TOMÁS: esta cópia em `deploy/.cpanel.yml` é a fonte,
+# versionada aqui como qualquer outro ficheiro. O `.cpanel.yml` que o
+# cPanel efetivamente lê é o que fica na RAIZ do pacote publicado na
+# branch `deploy` (`deploy/montar.sh` é quem o coloca lá) — nunca este
+# caminho dentro de `deploy/`.
+---
+deployment:
+  tasks:
+    - /bin/bash deploy/deploy.sh
