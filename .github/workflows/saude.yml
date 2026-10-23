@@ -2,7 +2,9 @@
 #
 # Um guarda que só verificasse HTTP 200 seria decorativo: uma página de
 # manutenção (ou um proxy a devolver uma página de erro genérica) também dá
-# 200. Por isso este workflow confirma quatro coisas, todas ao mesmo tempo:
+# 200. Por isso este workflow confirma cinco coisas, todas ao mesmo tempo
+# (as quatro primeiras no passo do `/api/health`, a quinta no passo dos
+# cabeçalhos de `/`):
 #
 #   1. `GET /api/health` responde (sem erro de ligação/TLS/timeout).
 #   2. `estado == "ok"` no corpo JSON.
@@ -145,10 +147,32 @@ jobs:
             "Permissions-Policy" \
             "X-Frame-Options"
           do
-            if ! printf '%s' "${cabecalhos}" | grep -qi "^${nome}:"; then
-              echo "::error::Falta o cabeçalho '${nome}' em '/'."
-              exit 1
-            fi
+            # Regra 10: "o cabeçalho não está lá" (grep sai 1) e "não
+            # consegui procurar" (grep sai 2: padrão inválido, erro de
+            # leitura) nunca podem dar o mesmo resultado — por isso o
+            # estado vem capturado à mão, nunca de um `if ! ... ; then`.
+            #
+            # Sem pipe, de propósito: com `pipefail`, o estado de
+            # `printf ... | grep -q ...` pode ser o do `printf` morto
+            # por SIGPIPE (141) quando o `grep -q` sai mais cedo — e aí
+            # nem o 1 nem o 2 do grep chegavam a ser vistos. O
+            # here-string deixa `$?` ser, sem ambiguidade, o do grep.
+            set +e
+            grep -q -i -- "^${nome}:" <<<"${cabecalhos}"
+            estado_grep=$?
+            set -e
+
+            case "${estado_grep}" in
+              0) ;;
+              1)
+                echo "::error::Falta o cabeçalho '${nome}' em '/'."
+                exit 1
+                ;;
+              *)
+                echo "::error::Não foi possível procurar o cabeçalho '${nome}' em '/': o grep saiu ${estado_grep}, que não é nem 0 (está lá) nem 1 (não está). Não se dá por bom o que não se chegou a verificar."
+                exit 1
+                ;;
+            esac
           done
 
           echo "Cabeçalhos de segurança confirmados em /."

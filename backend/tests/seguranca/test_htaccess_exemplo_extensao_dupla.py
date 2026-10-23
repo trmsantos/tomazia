@@ -13,6 +13,23 @@ site põe ficheiros (galeria, S-01/S-02). O padrão passou a terminar em
 `(\\.|$)`: a extensão perigosa é reconhecida no fim do nome **ou** seguida
 de outra extensão qualquer.
 
+## O segundo achado, pela outra variante: as maiúsculas
+
+A segunda ronda encontrou a mesma falha pelo outro lado. O `mod_mime`
+compara extensões **sem olhar à caixa** — `foto.PhP` é PHP para ele — mas
+um `<FilesMatch>` sem `(?i)` distingue maiúsculas de minúsculas, por isso
+o `Require all denied` passava-lhe ao lado. Num sistema de ficheiros que
+não distingue caixa (nem é preciso ir tão longe: o `media/` é escrito por
+visitantes, que escolhem o nome), `shell.PHP` e `foto.PHP.jpg` escapavam
+exatamente como `foto.php.jpg` escapava antes. O padrão passou a começar
+por `(?i)`.
+
+Os casos em maiúsculas vivem todos num teste só
+(`test_extensao_perigosa_em_maiusculas_e_apanhada`), em vez de
+espalhados pelos parametrizados já existentes: assim, tirar o `(?i)` do
+ficheiro derruba exatamente esse teste e mais nenhum, e fica claro, pelo
+nome do que falha, qual das duas variantes regrediu.
+
 ## Porque este ficheiro existe à parte de `tests/test_htaccess_exemplo.py`
 
 Os 19 testes desse ficheiro passavam, antes e depois desta correção, sem
@@ -29,7 +46,9 @@ O mesmo aviso de `tests/test_htaccess_exemplo.py`, que vale por inteiro:
 não há Apache nenhum nestes testes. O padrão é extraído do ficheiro e
 compilado com o módulo `re` do Python — uma aproximação ao PCRE do Apache
 que é fiel para a construção usada aqui (alternativa, classe de carateres,
-âncora de fim), e nada mais do que isso. Que o Apache aplique de facto o
+âncora de fim, e o modificador em linha `(?i)`, que o `re` e o PCRE leem da
+mesma maneira quando vem no início do padrão), e nada mais do que isso.
+Que o Apache aplique de facto o
 `Require all denied` ao ficheiro correspondente é verificação para a F5-01,
 com um Apache a sério em contentor.
 """
@@ -139,6 +158,34 @@ def test_extensao_perigosa_seguida_de_outra_extensao_e_apanhada(nome: str) -> No
 @pytest.mark.parametrize(
     "nome",
     [
+        # O caso simples, só com a caixa trocada.
+        "shell.PHP",
+        "foto.PhP",
+        "SCRIPT.SH",
+        "backdoor.PHAR",
+        "script.CGI",
+        # E a mesma coisa combinada com a extensão dupla do primeiro achado:
+        # é assim que um ficheiro chega a `media/`, carregado por um
+        # visitante que escolhe o nome.
+        "foto.PHP.jpg",
+        "copia.Php.Jpg",
+        "carregamento.PHP5.jpeg",
+    ],
+)
+def test_extensao_perigosa_em_maiusculas_e_apanhada(nome: str) -> None:
+    """O segundo achado: o `mod_mime` compara extensões sem olhar à caixa; um `<FilesMatch>` sem `(?i)` não."""
+    assert _corresponde(nome), (
+        f"{nome!r} não corresponde ao <FilesMatch> das extensões executáveis. "
+        "O mod_mime do Apache trata 'foto.PhP' como PHP — compara extensões "
+        "sem distinguir maiúsculas — mas um <FilesMatch> sem '(?i)' "
+        "distingue, e o 'Require all denied' passa ao lado. O padrão tem de "
+        "começar por '(?i)'."
+    )
+
+
+@pytest.mark.parametrize(
+    "nome",
+    [
         "backup.tar.gz",
         "phpmyadmin.txt",
         "foto.jpg",
@@ -148,6 +195,15 @@ def test_extensao_perigosa_seguida_de_outra_extensao_e_apanhada(nome: str) -> No
         "manual.shtml",
         "README.md",
         "app-a1b2c3.js",
+        # Os mesmos nomes inofensivos em maiúsculas: tornar o padrão
+        # insensível à caixa não pode ter alargado o que ele apanha. Um
+        # falso positivo aqui é um 403 em conteúdo legítimo do site.
+        "BACKUP.TAR.GZ",
+        "PHPMYADMIN.TXT",
+        "NOTAS.PYTHON",
+        "MANUAL.SHTML",
+        "FOTO.JPG",
+        "APP-A1B2C3.JS",
     ],
 )
 def test_nomes_inofensivos_nao_dao_falso_positivo(nome: str) -> None:

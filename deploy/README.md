@@ -28,15 +28,17 @@ que pode já ter andado entre o fim do CI e o início do deploy.
 
 | Script | Corre onde | Faz |
 | --- | --- | --- |
-| `montar.sh` | CI (job `montar`) | Monta a pasta que vai para o servidor. **A disposição do pacote não é a do repositório**: o backend inteiro fica debaixo de `api/` (`api/app`, `api/migrations`, `api/scripts` só a partir da F2-02, `api/alembic.ini`, `api/passenger_wsgi.py`, `api/requirements.txt`, `api/VERSION` com o SHA), o build do Vite em `frontend/dist/`, os próprios scripts em `deploy/`, e `.cpanel.yml` na raiz. `deploy.sh` lê exatamente estes caminhos — ler a tabela como se fossem `backend/...` foi o que partiu o primeiro deploy desta tarefa. `--sha <40 hex> --saida <pasta>`. |
+| `montar.sh` | CI (job `montar`) | Monta a pasta que vai para o servidor. **A disposição do pacote não é a do repositório**: o backend inteiro fica debaixo de `api/` (`api/app`, `api/migrations`, `api/scripts` só a partir da F2-02, `api/alembic.ini`, `api/passenger_wsgi.py`, `api/requirements.txt`, `api/VERSION` com o SHA), o build do Vite em `frontend/dist/`, os próprios scripts em `deploy/`, e `.cpanel.yml` na raiz. `deploy.sh` lê exatamente estes caminhos — ler a tabela como se fossem `backend/...` foi o que partiu o primeiro deploy desta tarefa. `--sha <40 hex> --saida <pasta>`. A pasta de `--saida` é apagada e recriada a cada corrida, por isso recusa-se a apontar para `/`, `$HOME`, a raiz do projeto, o que estiver dentro dela ou o que a contenha — a correr à mão, usar uma pasta descartável (`"$(mktemp -d)/pacote"`). |
 | `publicar-branch.sh` | CI (job `publicar`) | Põe a árvore da branch `deploy` igual à pasta montada e empurra `--ff-only` (nunca `--force`). `--pasta <pasta> --sha <sha> --branch deploy`. |
 | `pedir-deploy.sh` | CI (job `pedir`) | Pede à UAPI do cPanel para puxar `deploy` e correr `deploy.sh` no servidor. Sem argumentos — tudo por variável de ambiente (nunca na linha de comandos, para não ficar nos logs do Actions). |
 | `esperar-versao.sh` | CI (job `verificar`) | Faz polling a `/api/health` até a versão certa responder, de um processo arrancado depois do deploy ter começado. `<url-base> <sha-esperado> <timeout-s> <intervalo-s> <inicio-deploy-iso8601>`. |
 | `deploy.sh` | **No servidor**, chamado por `.cpanel.yml` | `pip install`, `rsync` do código e do frontend, `alembic upgrade head`, grava `VERSION`, sinaliza o reinício do Passenger (`tmp/restart.txt`). Nunca toca em `.htaccess`, `media/`, `.env` nem `tomazia_data/`. |
 
-Testados com `bash -n`, `shellcheck` e, no caso do `deploy.sh`, com um
-`HOME` falso (`HOME=$(mktemp -d) bash deploy/deploy.sh`) — nunca contra o
-servidor real.
+No CI, o job `seguranca` do `ci.yml` corre `shellcheck -x` sobre todos
+eles — e só isso: o `bash -n` faz-se à mão, no desenvolvimento, e não é
+um check do CI. O `deploy.sh` leva ainda um `HOME` falso
+(`HOME=$(mktemp -d) bash deploy/deploy.sh`) e, como os outros, os testes
+de `backend/tests/` — nunca contra o servidor real.
 
 ## `.cpanel.yml`
 
@@ -124,9 +126,16 @@ do Passenger com `PassengerFriendlyErrorPages Off`.
 
 ## Como se testou (sem nunca contactar o cPanel real)
 
-- `bash -n` e `shellcheck -x` sobre todos os `deploy/*.sh` e
-  `.github/scripts/*.sh` (job `seguranca` do `ci.yml`, com contagem
-  mínima de ficheiros — um glob vazio não pode passar a verde).
+- `shellcheck -x` sobre todos os `deploy/*.sh` e `.github/scripts/*.sh`
+  (job `seguranca` do `ci.yml`, com contagem mínima de ficheiros — um
+  glob vazio não pode passar a verde). É o único passo do `ci.yml` que
+  olha para os scripts em si.
+- `bash -n` sobre os mesmos ficheiros, à mão, por quem lhes mexer antes
+  de abrir o PR. Não é um check do CI — não contar com ele para apanhar
+  um erro de sintaxe que o `shellcheck` deixe passar.
+- Os quatro pontos a seguir são testes de `backend/tests/`, que correm no
+  `pytest` do job `backend`; nenhum deles escreve fora de uma pasta
+  temporária.
 - `deploy/deploy.sh` testado com `HOME=$(mktemp -d)`, `pip`/`alembic`
   substituídos por stubs no `PATH`, nunca a rede real nem o cPanel.
 - `deploy/pedir-deploy.sh` e `deploy/esperar-versao.sh` testados contra

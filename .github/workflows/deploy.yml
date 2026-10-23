@@ -15,12 +15,23 @@
 #   porteiro  → confirma que o CI acabou com sucesso, na main, para este
 #               SHA exato. Corre sempre (nunca com um `if:` a este nível —
 #               ver o comentário dentro do job).
-#   montar    → checkout do SHA aprovado, `npm ci && npm run build`,
-#               `deploy/montar.sh`, e os dois guardas (S-12, S-10) sobre o
-#               pacote. Sem token de escrita: corre código de terceiros.
-#   publicar  → empurra o pacote para a branch `deploy` (fast-forward). O
-#               único job com `contents: write`; não corre nenhum gestor de
-#               pacotes.
+#   montar    → checkout do SHA aprovado, `npm ci && npm run build`. O
+#               artefacto que publica carrega SÓ `frontend/dist`. Sem
+#               token de escrita: corre código de terceiros.
+#   publicar  → monta o pacote com `deploy/montar.sh` a partir do SEU
+#               checkout, corre os dois guardas (S-12, S-10) sobre ele e
+#               empurra para a branch `deploy` (fast-forward). O único job
+#               com `contents: write`; não corre nenhum gestor de pacotes.
+#
+#               A montagem vive AQUI, e não no `montar`, por causa da
+#               proveniência dos bytes: no job `montar` o `npm ci` corre
+#               com escrita em toda a árvore de trabalho, portanto tudo o
+#               que de lá saísse já tinha passado por código de terceiros
+#               — `backend/app/`, `passenger_wsgi.py`, `requirements.txt`
+#               incluídos. Nada disso precisa do npm para nada. O único
+#               produto que TEM mesmo de vir do build é `frontend/dist`,
+#               e é só isso que viaja no artefacto; são ficheiros servidos
+#               a browsers, nunca executados no servidor.
 #   pedir     → pede à UAPI do cPanel para puxar `deploy` e correr
 #               `deploy/deploy.sh` no servidor. `environment: production`.
 #   verificar → espera que `/api/health` sirva o SHA novo, de um processo
@@ -204,29 +215,24 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: deploy/montar.sh (monta o pacote de deploy)
-        run: deploy/montar.sh --sha "${SHA}" --saida "${{ runner.temp }}/pacote"
+      # Este job NÃO monta o pacote: só constrói o frontend. Tudo o que
+      # o `npm ci` tocou fica contido neste artefacto, e o artefacto leva
+      # só `frontend/dist` — o resto do pacote é montado no job
+      # `publicar`, do checkout limpo dele. Ver o comentário no topo.
+      - name: Verificador S-10 sobre o build do frontend (.db, .sqlite, .env)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta frontend/dist
 
-      - name: Verificador S-12 sobre o pacote (.claude/, CLAUDE.md, docs/, tests/, e2e/)
-        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s12 --pasta "${{ runner.temp }}/pacote"
-
-      - name: Verificador S-10 sobre o pacote (.db, .sqlite, .env)
-        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta "${{ runner.temp }}/pacote"
-
-      - name: Publicar o pacote como artefacto
+      - name: Publicar o build do frontend como artefacto
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: pacote-deploy
-          path: ${{ runner.temp }}/pacote
+          name: frontend-dist
+          path: frontend/dist
           if-no-files-found: error
           retention-days: 1
           # `actions/upload-artifact` exclui ficheiros OCULTOS por omissão
-          # desde a v4.4.0 — e o `.cpanel.yml` está na raiz do pacote e
-          # dentro de `deploy/`, ambos começam por ponto, ambos cairiam.
-          # Sem isto, a branch `deploy` publicada ficaria sem
-          # `.cpanel.yml` e o cPanel não correria tarefa nenhuma; pior, os
-          # bytes auditados pelo S-12/S-10 (acima, sobre o disco) deixariam
-          # de ser os bytes que de facto chegam ao job `publicar`.
+          # desde a v4.4.0, e um build pode produzi-los. O que o S-10
+          # auditou acima, em disco, tem de ser exatamente o que chega ao
+          # job `publicar` — senão audita-se uma coisa e publica-se outra.
           include-hidden-files: true
 
   publicar:
@@ -244,6 +250,8 @@ jobs:
     # branch.sh`, que só usa `git`.
     permissions:
       contents: write
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       # `fetch-depth: 0` (histórico completo): `publicar-branch.sh` recusa
       # publicar um SHA antepassado do já publicado (anti-retrocesso),
@@ -256,31 +264,44 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
-      - name: Descarregar o pacote montado
+      # O artefacto do job `montar` traz SÓ `frontend/dist` — os
+      # estáticos compilados, o único produto que tem mesmo de vir de um
+      # job onde o `npm ci` correu. Entra aqui dentro do checkout limpo,
+      # e é a ÚNICA coisa do pacote que não vem do repositório.
+      - name: Descarregar o build do frontend (o único produto do npm)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: pacote-deploy
-          path: ${{ runner.temp }}/pacote
+          name: frontend-dist
+          path: frontend/dist
 
-      # Achado crítico da ronda de segurança da F1-04: o pacote descarregado
-      # acima foi montado no job `montar`, DEPOIS de `npm ci` ter corrido
-      # (com escrita em toda a árvore de trabalho desse job, incluindo
-      # `deploy/`). Por isso `pacote/deploy/` e `pacote/.cpanel.yml` são
-      # SUBSTITUÍDOS aqui pelos do checkout feito acima — um clone novo,
-      # feito pelo próprio Actions a partir do GitHub, que nunca passou pela
-      # árvore de trabalho onde o `npm` correu. É isto que garante que os
-      # bytes publicados na branch `deploy` (e, mais tarde, executados no
-      # servidor como `deploy/deploy.sh`, ou pelo job `pedir` com o token do
-      # cPanel) são sempre os do próprio repositório, nunca algo que um
-      # `postinstall` malicioso tenha tocado. NUNCA remover este passo nem
-      # confiar só no S-12/S-10 do job `montar` — esse guarda olha para
-      # NOMES de caminho, nunca para a proveniência dos bytes.
-      - name: "deploy/ e .cpanel.yml do pacote vêm do checkout, nunca de bytes que o npm tocou"
-        run: |
-          set -euo pipefail
-          rm -rf "${{ runner.temp }}/pacote/deploy"
-          cp -a deploy "${{ runner.temp }}/pacote/deploy"
-          cp -f deploy/.cpanel.yml "${{ runner.temp }}/pacote/.cpanel.yml"
+      # A montagem corre AQUI, nunca no job `montar`, e é esse o ponto:
+      # `montar.sh` lê `backend/app/`, `backend/passenger_wsgi.py`,
+      # `backend/requirements.txt` e `deploy/` do checkout deste job — um
+      # clone novo, feito pelo Actions a partir do GitHub, que nunca
+      # passou pela árvore de trabalho onde o `npm ci` correu. Um
+      # `postinstall` malicioso no job `montar` consegue reescrever
+      # qualquer um desses caminhos lá, mas nada do que escrever chega
+      # aqui: só `frontend/dist` viaja, e esses bytes são servidos a
+      # browsers, nunca importados pelo Passenger nem instalados pelo pip.
+      #
+      # NUNCA mover esta montagem de volta para o job `montar`, nem
+      # alargar o artefacto para lá de `frontend/dist`. A versão anterior
+      # deste ficheiro montava o pacote todo lá e repunha só `deploy/` e
+      # `.cpanel.yml` aqui — `api/app/`, `api/passenger_wsgi.py` e
+      # `api/requirements.txt` continuavam a ser bytes que o npm podia ter
+      # tocado, e o `--require-hashes` do `deploy.sh` não ajudava nada,
+      # porque validaria contra os hashes que o próprio atacante escreveu.
+      - name: deploy/montar.sh (monta o pacote a partir DESTE checkout)
+        run: deploy/montar.sh --sha "${SHA}" --saida "${{ runner.temp }}/pacote"
+
+      # Os dois guardas correm sobre o pacote montado, aqui, e não no job
+      # `montar`: têm de auditar exatamente os bytes que a seguir são
+      # publicados, nunca uma cópia anterior deles.
+      - name: Verificador S-12 sobre o pacote (.claude/, CLAUDE.md, docs/, tests/, e2e/)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s12 --pasta "${{ runner.temp }}/pacote"
+
+      - name: Verificador S-10 sobre o pacote (.db, .sqlite, .env)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta "${{ runner.temp }}/pacote"
 
       - name: deploy/publicar-branch.sh (fast-forward para a branch deploy)
         run: |
@@ -334,7 +355,6 @@ jobs:
           TOMAZIA_CPANEL_USER: ${{ secrets.TOMAZIA_CPANEL_USER }}
           TOMAZIA_CPANEL_TOKEN: ${{ secrets.TOMAZIA_CPANEL_TOKEN }}
         run: |
-          chmod +x deploy/pedir-deploy.sh
           deploy/pedir-deploy.sh
 
   verificar:
@@ -372,7 +392,6 @@ jobs:
         env:
           TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
         run: |
-          chmod +x deploy/esperar-versao.sh
           deploy/esperar-versao.sh \
             "${TOMAZIA_API_BASE_URL}" \
             "${{ github.event.workflow_run.head_sha }}" \

@@ -116,7 +116,11 @@ DirectoryIndex index.html
 Options -ExecCGI -Indexes
 
 # O padrão de extensão perigosa tem de ser reconhecido em QUALQUER
-# posição do nome, nunca só no fim: um `FilesMatch` ancorado só em `$`
+# posição do nome, nunca só no fim, e sem distinguir maiúsculas: o
+# `mod_mime` compara extensões sem olhar à caixa, portanto `foto.PhP` é
+# PHP para ele — mas um `FilesMatch` sem `(?i)` não lhe toca, e o
+# `Require all denied` passa ao lado. É a mesma falha da extensão dupla,
+# pela outra variante. Um `FilesMatch` ancorado só em `$`
 # (como "\.(php|...)$") deixa passar uma extensão dupla do tipo
 # "foto.php.jpg" — não termina em ".php", por isso esse regex nunca
 # corresponde — mas o `mod_mime` do Apache olha para TODAS as extensões
@@ -128,7 +132,7 @@ Options -ExecCGI -Indexes
 RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
 RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
 
-<FilesMatch "\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh|fcgi)(\.|$)">
+<FilesMatch "(?i)\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh|fcgi)(\.|$)">
   # `SetHandler default-handler` força o Apache a servir o ficheiro como
   # estático, independentemente de qualquer handler herdado do vhost (ex.:
   # um `AddHandler`/`SetHandler` aplicado fora deste .htaccess) — defesa a

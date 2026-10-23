@@ -5,6 +5,12 @@ set -euo pipefail
 #
 # Uso: montar.sh --sha <40 hex> --saida <pasta>
 #
+# `--saida` é apagada e recriada do zero a cada corrida. Por isso é
+# validada antes de tudo o resto (ver "Sanidade de `--saida`", abaixo):
+# a raiz do sistema de ficheiros, `$HOME`, a raiz do projeto, o que
+# estiver dentro dela e o que a contenha são recusados em vez de
+# apagados.
+#
 # Resolve a sua PRÓPRIA raiz do projeto a partir do seu próprio caminho
 # (`dirname "$0"/..`), nunca via `git rev-parse` — isto é o que permite
 # correr `montar.sh` contra uma árvore de trabalho copiada (como fazem os
@@ -103,6 +109,132 @@ raiz_frontend_dist="${raiz_projeto}/frontend/dist"
 raiz_deploy="${raiz_projeto}/deploy"
 cpanel_yml_origem="${raiz_deploy}/.cpanel.yml"
 
+# --- Sanidade de `--saida`: o único passo destrutivo deste script ---
+#
+# Mais abaixo há um `rm -rf -- "$saida"`, e esse é o único comando aqui
+# que apaga alguma coisa. No CI o caminho vem fixo e descartável
+# (`${runner.temp}/pacote`), mas este script também se corre à mão — e
+# aí `--saida .`, `--saida "$HOME"` ou `--saida deploy` apagam o alvo
+# antes de o script sequer chegar a montar seja o que for (com `--saida
+# deploy`, apaga a própria pasta que ia copiar e só depois falha).
+#
+# Recusa-se, portanto: a raiz do sistema de ficheiros, a pasta pessoal
+# (`$HOME`), a raiz do projeto, qualquer caminho DENTRO dela e qualquer
+# caminho que a CONTENHA (um `--saida ~/Desktop` levaria o repositório
+# inteiro à frente). Esta verificação vem antes de todas as outras: as
+# que faltam só dizem "não há o que montar", esta diz "não se apaga
+# isto", e é a única cuja ordem importa.
+
+# normalizar_caminho <caminho>
+# Imprime o caminho absoluto e sem `.` nem `..` — sem exigir que exista
+# (a pasta de saída normalmente ainda não existe). Duas passagens:
+# primeiro lexical (resolve `.` e `..` sobre o texto, para um
+# `.../x/../trabalho/pacote` não escapar às comparações abaixo), depois
+# física (`cd -P`) sobre o prefixo que JÁ existe, com o resto colado de
+# volta no fim. Símbolos só se resolvem nesse prefixo: os componentes
+# que ainda não existem não podem ser símbolo nenhum. Sai 1 se nem o
+# prefixo se conseguir resolver — e aí não se apaga nada: um caminho que
+# não se consegue sequer nomear nunca pode ser tomado por seguro
+# (regra 10).
+normalizar_caminho() {
+  local entrada lexical resto_entrada componente cauda prefixo base
+
+  entrada="$1"
+  case "$entrada" in
+    /*) ;;
+    *) entrada="${PWD}/${entrada}" ;;
+  esac
+
+  lexical=""
+  resto_entrada="$entrada"
+  while [ -n "$resto_entrada" ]; do
+    componente="${resto_entrada%%/*}"
+    if [ "$componente" = "$resto_entrada" ]; then
+      resto_entrada=""
+    else
+      resto_entrada="${resto_entrada#*/}"
+    fi
+    case "$componente" in
+      "" | ".") ;;
+      "..") lexical="${lexical%/*}" ;;
+      *) lexical="${lexical}/${componente}" ;;
+    esac
+  done
+  [ -n "$lexical" ] || lexical="/"
+
+  cauda=""
+  prefixo="$lexical"
+  while [ ! -d "$prefixo" ] && [ "$prefixo" != "/" ]; do
+    cauda="${prefixo##*/}${cauda:+/}${cauda}"
+    prefixo="${prefixo%/*}"
+    [ -n "$prefixo" ] || prefixo="/"
+  done
+
+  base="$(CDPATH='' cd -P -- "$prefixo" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$base" ] || return 1
+
+  if [ -n "$cauda" ]; then
+    printf '%s' "${base%/}/${cauda}"
+  else
+    printf '%s' "$base"
+  fi
+}
+
+# Regra 10: o estado de `normalizar_caminho` é capturado à mão, nunca
+# dentro de um `if`. "Não consegui resolver o caminho" e "o caminho é
+# aceitável" não podem dar no mesmo — o passo a seguir é um `rm -rf`.
+#
+# O resultado sai por `$CAMINHO_NORMALIZADO`, de propósito, e nunca por
+# substituição de comando: um `exit 1` dentro de `$( )` só mata o
+# subshell, e o script continuaria em frente com a variável vazia — isto
+# é, com a recusa impressa no stderr e o `rm -rf` a correr à mesma.
+normalizar_ou_recusar() {
+  local estado_normalizacao
+  set +e
+  CAMINHO_NORMALIZADO="$(normalizar_caminho "$1")"
+  estado_normalizacao=$?
+  set -e
+  if [ "$estado_normalizacao" -ne 0 ] || [ -z "$CAMINHO_NORMALIZADO" ]; then
+    echo "Erro: não foi possível resolver o caminho '${1}' (${2}) — não é seguro continuar, porque este script começa por apagar a pasta de saída." >&2
+    exit 1
+  fi
+}
+
+recusar_saida() {
+  echo "Erro: --saida '${saida}' resolve para '${saida_real}', que é ${1}. Este script começa por apagar a pasta de saída ('rm -rf'), e isso nunca pode ser dirigido aí. Escolhe uma pasta descartável e fora da raiz do projeto (ex.: \"\$(mktemp -d)/pacote\")." >&2
+  exit 1
+}
+
+normalizar_ou_recusar "$saida" "--saida"
+saida_real="$CAMINHO_NORMALIZADO"
+
+normalizar_ou_recusar "$raiz_projeto" "raiz do projeto"
+raiz_projeto_real="$CAMINHO_NORMALIZADO"
+
+if [ "$saida_real" = "/" ]; then
+  recusar_saida "a raiz do sistema de ficheiros"
+fi
+
+if [ -n "${HOME:-}" ]; then
+  normalizar_ou_recusar "$HOME" "\$HOME"
+  home_real="$CAMINHO_NORMALIZADO"
+  if [ "$saida_real" = "$home_real" ]; then
+    recusar_saida "a pasta pessoal (\$HOME)"
+  fi
+fi
+
+if [ "$saida_real" = "$raiz_projeto_real" ]; then
+  recusar_saida "a raiz do projeto ('${raiz_projeto_real}')"
+fi
+
+if [ "${saida_real#"${raiz_projeto_real%/}/"}" != "$saida_real" ]; then
+  recusar_saida "um caminho dentro da raiz do projeto ('${raiz_projeto_real}')"
+fi
+
+if [ "${raiz_projeto_real#"${saida_real%/}/"}" != "$raiz_projeto_real" ]; then
+  recusar_saida "uma pasta que CONTÉM a raiz do projeto ('${raiz_projeto_real}')"
+fi
+
 if [ ! -f "${raiz_frontend_dist}/index.html" ]; then
   echo "Erro: '${raiz_frontend_dist}/index.html' não existe — o build do frontend ('npm run build') não correu." >&2
   exit 1
@@ -169,26 +301,50 @@ cp -- "$cpanel_yml_origem" "${saida}/.cpanel.yml"
 find "$saida" -depth -type d -name "__pycache__" -exec rm -rf -- {} +
 find "$saida" -type f -name "*.pyc" -delete
 
+# --- Os padrões do S-10/S-12, escritos uma única vez ---
+#
+# A exclusão (logo abaixo) e a auditoria final (mais abaixo) têm de
+# procurar EXATAMENTE a mesma coisa: no dia em que divergirem, a
+# auditoria deixa de ser uma rede por baixo da exclusão e passa a ser
+# uma segunda opinião sobre outro assunto — e a passagem que ficar para
+# trás é a que deixa sair o ficheiro. Com os predicados escritos aqui,
+# acrescentar um padrão novo é mexer num sítio só.
+#
+# Cada passagem acrescenta depois o que a distingue: a exclusão junta
+# `-exec rm -rf -- {} +` / `-delete`, a auditoria redireciona para
+# ficheiro. É também assim que se distinguem uma da outra nos testes.
+#
+# Duas listas, não uma: (1) diretorias proibidas do S-12, por COMPONENTE
+# de caminho (`.claude`, `docs`, `tests`, `e2e` — a qualquer
+# profundidade, vazias ou não: por isso é `-type d`, nunca só `-type f`),
+# com `-depth` porque as duas passagens o querem (apagar de dentro para
+# fora, listar na mesma ordem); (2) ficheiros proibidos, `CLAUDE.md`
+# (nome base, sem distinguir maiúsculas, a qualquer profundidade) e os
+# padrões do S-10.
+readonly -a PREDICADO_DIRETORIAS_PROIBIDAS=(
+  -depth -type d
+  '(' -name ".claude" -o -name "docs" -o -name "tests" -o -name "e2e" ')'
+)
+
+readonly -a PREDICADO_FICHEIROS_PROIBIDOS=(
+  -type f
+  '('
+  -iname "claude.md" -o
+  -iname "*.db" -o -iname "*.db-*" -o -iname "*.db.*" -o -iname "*.db3" -o
+  -iname "*.sqlite" -o -iname "*.sqlite-*" -o -iname "*.sqlite.*" -o -iname "*.sqlitedb" -o
+  -iname "*.sqlite3" -o -iname "*.sqlite3-*" -o -iname "*.sqlite3.*" -o
+  -iname "*.sql" -o -iname "*.sql.gz" -o -iname "*.dump" -o -iname "*.mysql" -o
+  -iname ".env" -o -iname ".env.*" -o -iname "*.env"
+  ')'
+  '!' -iname ".env.example"
+)
+
 # --- Exclusão em silêncio do que o S-10/S-12 nunca deixam passar ---
 #
-# Duas passagens, mais funda primeiro: (1) diretorias proibidas do S-12,
-# por COMPONENTE de caminho (`.claude`, `docs`, `tests`, `e2e` — a
-# qualquer profundidade, vazias ou não: por isso esta é uma procura
-# `-type d`, nunca só `-type f`); (2) ficheiros proibidos remanescentes,
-# `CLAUDE.md` (nome base, sem distinguir maiúsculas, a qualquer
-# profundidade) e os padrões do S-10.
-find "$saida" -depth -type d \
-  \( -name ".claude" -o -name "docs" -o -name "tests" -o -name "e2e" \) \
-  -exec rm -rf -- {} +
+# Mais funda primeiro (diretorias), ficheiros remanescentes a seguir.
+find "$saida" "${PREDICADO_DIRETORIAS_PROIBIDAS[@]}" -exec rm -rf -- {} +
 
-find "$saida" -type f \( \
-  -iname "claude.md" -o \
-  -iname "*.db" -o -iname "*.db-*" -o -iname "*.db.*" -o -iname "*.db3" -o \
-  -iname "*.sqlite" -o -iname "*.sqlite-*" -o -iname "*.sqlite.*" -o -iname "*.sqlitedb" -o \
-  -iname "*.sqlite3" -o -iname "*.sqlite3-*" -o -iname "*.sqlite3.*" -o \
-  -iname "*.sql" -o -iname "*.sql.gz" -o -iname "*.dump" -o -iname "*.mysql" -o \
-  -iname ".env" -o -iname ".env.*" -o -iname "*.env" \
-  \) ! -iname ".env.example" -delete
+find "$saida" "${PREDICADO_FICHEIROS_PROIBIDOS[@]}" -delete
 
 # --- Defesa em profundidade: audita o pacote já montado, não confia só
 # na exclusão acima ---
@@ -217,19 +373,13 @@ tmp_dirs_err="${tmp_auditoria}/dirs.err"
 tmp_ficheiros="${tmp_auditoria}/ficheiros"
 tmp_ficheiros_err="${tmp_auditoria}/ficheiros.err"
 
+# Os MESMOS predicados da exclusão acima (`PREDICADO_*_PROIBIDAS/OS`),
+# sem `-exec`/`-delete`: aqui só se lê e se relata.
 auditoria_falhou=0
-find "$saida" -depth -type d \
-  \( -name ".claude" -o -name "docs" -o -name "tests" -o -name "e2e" \) \
+find "$saida" "${PREDICADO_DIRETORIAS_PROIBIDAS[@]}" \
   >"$tmp_dirs" 2>"$tmp_dirs_err" || auditoria_falhou=1
 
-find "$saida" -type f \( \
-  -iname "claude.md" -o \
-  -iname "*.db" -o -iname "*.db-*" -o -iname "*.db.*" -o -iname "*.db3" -o \
-  -iname "*.sqlite" -o -iname "*.sqlite-*" -o -iname "*.sqlite.*" -o -iname "*.sqlitedb" -o \
-  -iname "*.sqlite3" -o -iname "*.sqlite3-*" -o -iname "*.sqlite3.*" -o \
-  -iname "*.sql" -o -iname "*.sql.gz" -o -iname "*.dump" -o -iname "*.mysql" -o \
-  -iname ".env" -o -iname ".env.*" -o -iname "*.env" \
-  \) ! -iname ".env.example" \
+find "$saida" "${PREDICADO_FICHEIROS_PROIBIDOS[@]}" \
   >"$tmp_ficheiros" 2>"$tmp_ficheiros_err" || auditoria_falhou=1
 
 if [ "$auditoria_falhou" -ne 0 ]; then

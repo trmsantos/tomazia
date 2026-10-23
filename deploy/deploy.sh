@@ -63,7 +63,7 @@ em_erro() {
   if [ "$REINICIADO" -eq 1 ]; then
     echo "deploy.sh: tmp/restart.txt já tinha sido escrito antes desta falha; o Passenger já reiniciou com o que lá estava." >&2
   else
-    echo "deploy.sh: tmp/restart.txt NÃO foi escrito; a app continua a correr o código e a configuração anteriores, em memória. Não há rollback automático — se o passo falhado for posterior ao alembic, há código novo em disco (e possivelmente uma migração já aplicada) com o processo antigo ainda a servir pedidos." >&2
+    echo "deploy.sh: tmp/restart.txt NÃO foi escrito; a app continua a correr o código e a configuração que já tinha em memória. Não há rollback automático, e o disco pode já não estar no estado antigo: a partir do passo do pip o virtualenv é o novo (e é partilhado com o processo que continua a servir), a partir dos rsyncs o código em disco é o novo, e a partir do alembic a base de dados pode já ter uma migração aplicada. O processo antigo aguenta-se porque tem o código carregado em memória, mas qualquer import tardio dele vai buscar o novo." >&2
   fi
   exit "$codigo"
 }
@@ -129,7 +129,19 @@ case "$web_bruto" in
 esac
 
 home_real=$(realpath "$HOME")
-web_real=$(realpath "$web_bruto" 2>/dev/null) || web_real="$web_bruto"
+# Regra 10, com consequência destrutiva: NUNCA um fallback aqui. O
+# `realpath` falhar quer dizer "não consegui resolver este caminho", e
+# isso não pode virar "resolve para si próprio". Com o fallback antigo, um
+# WEB com `..` (p.ex. `$HOME/../../tmp/x`, um caminho que não existe, logo
+# o `realpath` falhava) passava intacto para o `case` abaixo — e o `*` do
+# padrão casa com barras, portanto `"$home_real"/*` dava-o por dentro do
+# `$HOME`. O `rsync -a --delete` lá em baixo escrevia então fora do
+# `$HOME`, à vontade. O `$WEB` tem de existir de qualquer maneira: poucas
+# linhas abaixo exige-se lá um `.htaccess`.
+if ! web_real=$(realpath "$web_bruto" 2>/dev/null); then
+  echo "deploy.sh: não consegui resolver WEB ('${web_bruto}') — ou não existe, ou não é legível. Recuso continuar sem saber para onde ia sincronizar." >&2
+  exit 1
+fi
 case "$web_real" in
   "$home_real"/*) ;;
   *)
@@ -159,6 +171,20 @@ fi
 versao_pacote=$(cat "$ORIGEM/api/VERSION")
 if ! versao_valida "$versao_pacote"; then
   echo "deploy.sh: ${ORIGEM}/api/VERSION tem um formato inválido." >&2
+  exit 1
+fi
+
+PASSO_ATUAL="a validar o frontend no pacote (${ORIGEM}/frontend/dist/index.html)"
+# O `rsync --delete` do frontend, lá em baixo, é o único cujo lado de
+# ORIGEM não tinha precondição nenhuma — o do `api/` tem o `VERSION` logo
+# acima. Com um `frontend/dist/` presente mas vazio ou incompleto (um
+# `.gitignore` dentro do pacote a tirar ficheiros do commit publicado, um
+# `montar.sh` futuro com um erro), o `--delete` apagava `index.html` e
+# `assets/` do site em produção; e, pior, o deploy continuava e saía 0,
+# com o `esperar-versao.sh` a dar verde, porque a API fica de pé. O site
+# em baixo e a pipeline toda verde. Aqui ainda não se escreveu nada.
+if [ ! -f "$ORIGEM/frontend/dist/index.html" ]; then
+  echo "deploy.sh: ${ORIGEM}/frontend/dist/index.html não existe no pacote — recuso sincronizar o frontend, porque o --delete apagaria o site." >&2
   exit 1
 fi
 

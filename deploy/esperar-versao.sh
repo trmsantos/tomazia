@@ -24,7 +24,22 @@
 #     vezes seguidas (N = 2, decisão do qa a confirmar) -> sucesso;
 #   - 200 com HTML ou JSON inválido, HTTP 4xx exceto 429, ou erro de TLS,
 #     ou JSON sem `versao` útil / `estado` diferente de "ok" -> falha já,
-#     sem esperar pelo timeout.
+#     sem esperar pelo timeout;
+#   - qualquer OUTRO código HTTP -> falha já, pelo `*)` do `case` lá em
+#     baixo. A tabela da tarefa não os nomeia um a um, mas o `*)` apanha
+#     dois casos que convém não descobrir à bruta a meio de um deploy:
+#       * 5xx que não seja 502/503/504 — tipicamente um 500 do Passenger
+#         a não conseguir arrancar a app (import a rebentar, `.env` em
+#         falta). É falha imediata de propósito: ao contrário do 502/503
+#         da janela de reinício, isto não se cura por esperar mais, e
+#         mais vale o deploy ficar vermelho em segundos do que ao fim do
+#         timeout inteiro;
+#       * 3xx — este script não segue redireções (`curl` sem `-L`), por
+#         isso um 301/302 chega aqui como código, não como o destino. Uma
+#         redireção em `/api/health` quer dizer que o pedido não está
+#         sequer a chegar à app (um `.htaccess` a mandar para outro lado,
+#         um domínio mal apontado); também não é coisa que passe com o
+#         tempo.
 #
 # Regra 10: o estado do curl é sempre capturado à mão (nunca
 # `if curl ...; then`), e o estado do jq é sempre distinguido (JSON válido

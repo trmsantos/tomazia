@@ -254,10 +254,44 @@ fi
 indice_tmp="${tmp_dir}/indice"
 git_dir="$(git rev-parse --absolute-git-dir)"
 
-GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" --work-tree="$pasta" -C "$pasta" add -A
+# `--force` e `core.excludesFile=/dev/null` não são zelo a mais: sem eles,
+# um `.gitignore` DENTRO do pacote (por exemplo `frontend/dist/.gitignore`
+# com `*.js`, vindo de uma dependência de build ou lá posto de propósito)
+# faz o `add -A` deixar esses ficheiros de fora, e a árvore publicada
+# deixa de ser a árvore que o S-12/S-10 acabou de auditar em disco. O
+# resultado é o pior possível: audita-se uma coisa e publica-se outra, o
+# `deploy.sh` sincroniza com `--delete` o que recebeu, e o site desaparece
+# com a pipeline toda verde. `excludesFile` cobre o mesmo por um
+# `.gitignore` global da máquina, que no runner nem sequer é nosso.
+GIT_INDEX_FILE="$indice_tmp" git -c core.excludesFile=/dev/null \
+  --git-dir="$git_dir" --work-tree="$pasta" -C "$pasta" add -A --force
 arvore="$(GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" write-tree)"
 
+# E, mesmo com `--force`, confirma-se à mão que a árvore escrita tem
+# tantas entradas quantos os ficheiros do pacote. `--force` resolve o
+# `.gitignore`, mas não é o único caminho para uma árvore incompleta (um
+# `.git` aninhado entraria como gitlink, um erro de permissões deixaria
+# ficheiros para trás). O guarda é sobre o RESULTADO, não sobre a causa:
+# o que se publica tem de ser, ficheiro a ficheiro, o que se auditou.
+ficheiros_no_pacote="$(find "$pasta" \( -type f -o -type l \) | wc -l | tr -d ' ')"
+entradas_na_arvore="$(GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" \
+  ls-tree -r --name-only "$arvore" | wc -l | tr -d ' ')"
+if [ "$ficheiros_no_pacote" != "$entradas_na_arvore" ]; then
+  echo "publicar-branch.sh: a árvore a publicar tem ${entradas_na_arvore} entradas mas o pacote auditado tem ${ficheiros_no_pacote} ficheiros — recuso publicar uma árvore que não é a que foi auditada." >&2
+  exit 1
+fi
+
 mensagem_commit="$(printf 'deploy: publica %s\n\nSha-Origem: %s\n' "$sha" "$sha")"
+
+# Identidade explícita: `commit-tree` usa `IDENT_STRICT`, e num runner sem
+# `user.email` configurado nem FQDN detetável falhava com "unable to
+# auto-detect email address" — já depois do pacote montado e auditado. Os
+# commits da branch `deploy` são gerados, nunca de uma pessoa, e assim
+# dizem-no.
+export GIT_AUTHOR_NAME="deploy (automático)"
+export GIT_AUTHOR_EMAIL="deploy@tomazia.invalid"
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
 if [ -n "$novo_pai" ]; then
   novo_commit="$(git commit-tree "$arvore" -p "$novo_pai" -m "$mensagem_commit")"
