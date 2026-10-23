@@ -30,7 +30,7 @@ Fonte de verdade para pessoas e agentes. O plano completo, com diagramas, vive n
 
 - Durante a construção, o site novo vive em `novo.<domínio>` e o `WEB` do `deploy.sh` aponta para a pasta desse subdomínio.
 - O deploy nunca toca em `.htaccess`, `media/`, `.env`, `tomazia_data/` nem nas pastas do cPanel.
-- `GET /api/health` devolve `{"estado": "ok", "versao": "<sha>"}`; o deploy espera até a versão ser a do commit.
+- `GET /api/health` devolve `{"estado": "ok", "versao": "<sha>", "arrancado_em": "<ISO-8601 UTC>"}`. O `arrancado_em` é fixado à importação do processo, não por pedido. O deploy espera até ver a versão do commit **e** um `arrancado_em` posterior ao início do deploy: sem a segunda condição, um processo antigo que já servisse aquele `VERSION` daria o deploy por concluído sem ter reiniciado.
 
 ## Modelo de dados
 
@@ -52,7 +52,7 @@ Caminhos relativos a `/api`. Erros em JSON: `{"erro": "codigo", "mensagem": "Tex
 
 | Método e caminho | Para quê | Acesso |
 | --- | --- | --- |
-| `GET /health` | Estado e versão | Público |
+| `GET /health` | Estado, versão e instante de arranque | Público |
 | `GET /ementa` | Categorias visíveis com produtos disponíveis, por ordem; cache 60 s | Público |
 | `GET /eventos` | Eventos publicados a partir de hoje; cache 60 s | Público |
 | `GET /galeria` | Fotos aprovadas | Público |

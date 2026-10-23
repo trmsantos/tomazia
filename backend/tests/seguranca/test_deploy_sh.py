@@ -8,8 +8,7 @@ tocam numa rede nem instalam nada); `rsync` é o real do sistema — exceto
 num único teste, que substitui mesmo o `rsync` por um stub malicioso de
 propósito (ver `test_rsync_que_apaga_env_a_meio_e_apanhado_na_verificacao_pos_rsync`).
 
-Contrato assumido com o infra (ponto de extensão — a confirmar, descrito
-aqui porque ainda não existe código a ler):
+O que este ficheiro prova (e o que não prova):
 
 - Invocação: `HOME=<falso> bash deploy/deploy.sh`, sem argumentos — tudo
   deriva de `$HOME` por convenção, tal como a árvore do servidor descrita
@@ -17,9 +16,12 @@ aqui porque ainda não existe código a ler):
     - `$HOME/tomazia_api/` — `API`: `.env`, `passenger_wsgi.py`, `app/`,
       `migrations/`, `scripts/`, `alembic.ini`, `requirements.txt`,
       `VERSION`, `tmp/restart.txt` (o sinal de reinício do Passenger).
-    - `$HOME/repositories/tomazia/` — `ORIGEM`: o "pacote montado" (clone
-      da branch `deploy`), com os mesmos nomes de `API` à solta na raiz
-      mais uma pasta `frontend/` com os estáticos compilados.
+    - `$HOME/repositories/tomazia/` — `ORIGEM`: o pacote que
+      `deploy/montar.sh --saida` produz, com o código dentro de `api/`
+      (`api/app`, `api/migrations`, `api/scripts` quando existir,
+      `api/alembic.ini`, `api/passenger_wsgi.py`, `api/requirements.txt`,
+      `api/VERSION`) e os estáticos dentro de `frontend/dist/` — nunca à
+      solta na raiz do pacote.
     - `$HOME/virtualenv/tomazia_api/<versao>/bin/activate` — localizado
       por glob (`$HOME/virtualenv/tomazia_api/*/bin/activate`), nunca por
       um nome de versão fixo (o cPanel escolhe a versão).
@@ -28,16 +30,24 @@ aqui porque ainda não existe código a ler):
   sem aspas. É aqui que o Tomás aponta `WEB` para `novo.<domínio>` durante
   a construção e para `public_html` no corte final (F5-02) — persistente,
   fora do pacote sincronizado, para sobreviver a cada deploy automático.
-  Se o infra preferir outro mecanismo (variável de ambiente, outro
-  caminho), avisa o Tomás: todos os testes abaixo dependem só da
-  existência e do conteúdo deste ficheiro, nunca de como é lido.
 - `.env` (`API/.env`) é só a configuração da app. `deploy.sh` nunca lê o
   conteúdo, só confirma que existe — antes de mexer em nada, e outra vez
   depois dos `rsync`, antes de tocar em `tmp/restart.txt`.
 
-Se este contrato não bater certo com o que o infra escrever, os testes
-falham com mensagens claras (nunca um erro de importação) e descrevem o
-que esperavam — é o ponto de extensão a confirmar.
+Esta forma de `ORIGEM` já não é um "ponto de extensão a confirmar": é o
+que `deploy/montar.sh` produz de facto, e a instalação falsa fabricada
+abaixo (`_preparar_instalacao_valida`) tem de refletir isso byte a byte,
+nunca uma suposição à parte. Durante algum tempo não refletiu — a versão
+anterior deste ficheiro fabricava `ORIGEM` com o código e o `VERSION` à
+solta na raiz do pacote (sem o nível `api/`) e os estáticos em
+`frontend/` (sem o `dist/`), porque foi escrita em paralelo com
+`montar.sh`, sem o script real para conferir contra. Os testes AQUI
+passavam na mesma, porque testam só `deploy.sh` isoladamente, contra uma
+árvore que ESTE ficheiro controla — nunca provam que essa árvore é a
+mesma que `montar.sh` produz de verdade. Essa prova (os dois scripts
+reais, um a seguir ao outro, sobre o mesmo pacote) é
+`tests/seguranca/test_integracao_pacote_deploy.py`, não este ficheiro:
+é lá que fica presa a costura entre `montar.sh` e `deploy.sh`.
 """
 
 from __future__ import annotations
@@ -131,27 +141,38 @@ def _preparar_instalacao_valida(tmp_path: Path) -> Instalacao:
     (api / "app").mkdir()
     (api / "app" / MARCADOR_VELHO).write_text("velho\n", encoding="utf-8")
 
-    # ORIGEM: o pacote montado (ver docstring do módulo).
-    (origem / "app").mkdir()
-    (origem / "app" / MARCADOR_NOVO).write_text("novo\n", encoding="utf-8")
-    (origem / "migrations").mkdir()
-    (origem / "migrations" / "env.py").write_text(
+    # ORIGEM: o pacote montado (ver docstring do módulo e
+    # `tests/seguranca/test_integracao_pacote_deploy.py`, que corre
+    # `montar.sh` a sério e prova esta forma contra o script real, em vez
+    # de a fabricar aqui). `montar.sh` escreve o código dentro de `api/`
+    # e os estáticos dentro de `frontend/dist/` — nunca à solta na raiz do
+    # pacote.
+    (origem / "api" / "app").mkdir(parents=True)
+    (origem / "api" / "app" / MARCADOR_NOVO).write_text("novo\n", encoding="utf-8")
+    (origem / "api" / "migrations").mkdir()
+    (origem / "api" / "migrations" / "env.py").write_text(
         "# migrations falsas\n", encoding="utf-8"
     )
-    (origem / "scripts").mkdir()
-    (origem / "scripts" / "backup.py").write_text("# script falso\n", encoding="utf-8")
-    (origem / "alembic.ini").write_text("# alembic.ini falso\n", encoding="utf-8")
-    (origem / "passenger_wsgi.py").write_text(
+    (origem / "api" / "scripts").mkdir()
+    (origem / "api" / "scripts" / "backup.py").write_text(
+        "# script falso\n", encoding="utf-8"
+    )
+    (origem / "api" / "alembic.ini").write_text(
+        "# alembic.ini falso\n", encoding="utf-8"
+    )
+    (origem / "api" / "passenger_wsgi.py").write_text(
         "# passenger_wsgi falso\n", encoding="utf-8"
     )
-    (origem / "requirements.txt").write_text("fastapi==0.0.0\n", encoding="utf-8")
-    (origem / "VERSION").write_text("abc1234\n", encoding="utf-8")
-    (origem / "frontend").mkdir()
-    (origem / "frontend" / "index.html").write_text(
+    (origem / "api" / "requirements.txt").write_text(
+        "fastapi==0.0.0\n", encoding="utf-8"
+    )
+    (origem / "api" / "VERSION").write_text("abc1234\n", encoding="utf-8")
+    (origem / "frontend" / "dist").mkdir(parents=True)
+    (origem / "frontend" / "dist" / "index.html").write_text(
         "<html>novo</html>\n", encoding="utf-8"
     )
-    (origem / "frontend" / "assets").mkdir()
-    (origem / "frontend" / "assets" / "novo-cd34.js").write_text(
+    (origem / "frontend" / "dist" / "assets").mkdir()
+    (origem / "frontend" / "dist" / "assets" / "novo-cd34.js").write_text(
         "console.log('novo')\n", encoding="utf-8"
     )
 
@@ -524,7 +545,7 @@ def test_pip_a_falhar_nao_sincroniza_codigo_e_sai_com_erro(tmp_path: Path) -> No
 
 def test_version_ausente_no_pacote_recusa(tmp_path: Path) -> None:
     instalacao = _preparar_instalacao_valida(tmp_path)
-    (instalacao.origem / "VERSION").unlink()
+    (instalacao.origem / "api" / "VERSION").unlink()
 
     resultado = _correr_deploy(instalacao)
 
@@ -541,7 +562,9 @@ def test_version_fora_do_formato_no_pacote_recusa(
     tmp_path: Path, conteudo_invalido: str
 ) -> None:
     instalacao = _preparar_instalacao_valida(tmp_path)
-    (instalacao.origem / "VERSION").write_text(conteudo_invalido, encoding="utf-8")
+    (instalacao.origem / "api" / "VERSION").write_text(
+        conteudo_invalido, encoding="utf-8"
+    )
 
     resultado = _correr_deploy(instalacao)
 

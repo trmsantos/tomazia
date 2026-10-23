@@ -6,7 +6,14 @@
 # secção Servidor:
 #
 #   API      = $HOME/tomazia_api            (passenger_wsgi.py, .env, app/, ...)
-#   ORIGEM   = $HOME/repositories/tomazia    (o pacote montado, com frontend/)
+#   ORIGEM   = $HOME/repositories/tomazia    (o pacote montado por `deploy/montar.sh`,
+#              com a MESMA árvore que ele escreve em `--saida`: `api/app`,
+#              `api/migrations`, `api/scripts` (quando existir),
+#              `api/alembic.ini`, `api/passenger_wsgi.py`,
+#              `api/requirements.txt`, `api/VERSION`, e `frontend/dist/`
+#              com os estáticos compilados — nunca `$ORIGEM/app` nem
+#              `$ORIGEM/frontend/` diretamente, falta sempre o nível `api/`
+#              e `dist/`)
 #   WEB      = lido de $HOME/.tomazia-deploy.conf (linha "WEB=<caminho>")
 #   virtualenv do Passenger: $HOME/virtualenv/tomazia_api/*/bin/activate
 #
@@ -144,14 +151,14 @@ fi
 PASSO_ATUAL="a verificar o ficheiro de ambiente (antes de tudo)"
 verificar_env "$API/.env"
 
-PASSO_ATUAL="a validar VERSION no pacote (${ORIGEM}/VERSION)"
-if [ ! -f "$ORIGEM/VERSION" ]; then
-  echo "deploy.sh: ${ORIGEM}/VERSION não existe no pacote." >&2
+PASSO_ATUAL="a validar VERSION no pacote (${ORIGEM}/api/VERSION)"
+if [ ! -f "$ORIGEM/api/VERSION" ]; then
+  echo "deploy.sh: ${ORIGEM}/api/VERSION não existe no pacote." >&2
   exit 1
 fi
-versao_pacote=$(cat "$ORIGEM/VERSION")
+versao_pacote=$(cat "$ORIGEM/api/VERSION")
 if ! versao_valida "$versao_pacote"; then
-  echo "deploy.sh: ${ORIGEM}/VERSION tem um formato inválido." >&2
+  echo "deploy.sh: ${ORIGEM}/api/VERSION tem um formato inválido." >&2
   exit 1
 fi
 
@@ -174,28 +181,47 @@ PASSO_ATUAL="a ativar o virtualenv (${venv_activate})"
 source "$venv_activate"
 
 PASSO_ATUAL="a instalar dependências (pip install --require-hashes)"
-pip install --require-hashes -r "$ORIGEM/requirements.txt"
+pip install --require-hashes -r "$ORIGEM/api/requirements.txt"
 
-PASSO_ATUAL="a sincronizar o código (app/, migrations/)"
+PASSO_ATUAL="a sincronizar o código (api/app/, api/migrations/)"
 # `--delete` só nestas duas pastas — nunca na raiz de tomazia_api/, onde
 # vive o `.env`. O resto copia-se individualmente, sem `--delete`.
-rsync -a --delete "$ORIGEM/app/" "$API/app/"
-rsync -a --delete "$ORIGEM/migrations/" "$API/migrations/"
-rsync -a "$ORIGEM/scripts/" "$API/scripts/"
-cp -f "$ORIGEM/alembic.ini" "$API/alembic.ini"
-cp -f "$ORIGEM/passenger_wsgi.py" "$API/passenger_wsgi.py"
-cp -f "$ORIGEM/requirements.txt" "$API/requirements.txt"
+rsync -a --delete "$ORIGEM/api/app/" "$API/app/"
+rsync -a --delete "$ORIGEM/api/migrations/" "$API/migrations/"
+# `scripts/` só nasce na F2-02 (ver `deploy/montar.sh`): `montar.sh` só a
+# copia para o pacote `if [ -d ]`. Sem esta condição, um pacote sem
+# `scripts/` (todo deploy antes da F2-02) fazia o `rsync` falhar com
+# "No such file or directory" (código 23) — o deploy inteiro morria aqui
+# por uma pasta que nem era suposta existir ainda.
+if [ -d "$ORIGEM/api/scripts" ]; then
+  rsync -a "$ORIGEM/api/scripts/" "$API/scripts/"
+fi
+cp -f "$ORIGEM/api/alembic.ini" "$API/alembic.ini"
+cp -f "$ORIGEM/api/passenger_wsgi.py" "$API/passenger_wsgi.py"
+cp -f "$ORIGEM/api/requirements.txt" "$API/requirements.txt"
 
 PASSO_ATUAL="a sincronizar o frontend (WEB=${WEB})"
 # media/, .htaccess e .well-known/ sobrevivem: nunca apagados, nunca
 # sobrescritos. Um ficheiro antigo do frontend que já não está no pacote
 # desaparece — por isso o --delete aqui, à raiz de WEB (nunca tocou em
-# tomazia_api/, que é outra árvore).
+# tomazia_api/, que é outra árvore). A ORIGEM é `frontend/dist/`, não
+# `frontend/` — `montar.sh` escreve o build do Vite dentro de `dist/`
+# (`cp -a frontend/dist "${saida}/frontend/dist"`); sincronizar a partir
+# de `frontend/` (sem o `dist/`) punha `WEB/dist/index.html` em vez de
+# `WEB/index.html`.
+#
+# `--exclude='.htaccess'` SEM âncora (nunca `/.htaccess` sozinho): um
+# `.htaccess` dentro de uma subpasta do build (ex.: `dist/assets/
+# .htaccess`, vindo de uma dependência ou de um erro de build) também tem
+# de ficar de fora — o Apache honra-o (o cPanel deixa `AllowOverride
+# All`), e um padrão ancorado só à raiz deixava-o passar e sobrepor-se à
+# configuração real do servidor. `montar.sh` recusa, como rede adicional,
+# qualquer `.htaccess` dentro do próprio pacote (ver o comentário lá).
 rsync -a --delete \
   --exclude='/media' \
-  --exclude='/.htaccess' \
+  --exclude='.htaccess' \
   --exclude='/.well-known' \
-  "$ORIGEM/frontend/" "$WEB/"
+  "$ORIGEM/frontend/dist/" "$WEB/"
 
 PASSO_ATUAL="a verificar o ficheiro de ambiente outra vez (depois do rsync, antes de alembic e do reinício)"
 # O caso que esta tarefa descreve: um rsync (nunca devia, mas pode, por bug
@@ -208,7 +234,7 @@ PASSO_ATUAL="a correr migrações (alembic upgrade head)"
 (cd "$API" && alembic -c "$API/alembic.ini" upgrade head)
 
 PASSO_ATUAL="a escrever VERSION (penúltimo passo)"
-cp -f "$ORIGEM/VERSION" "$API/VERSION"
+cp -f "$ORIGEM/api/VERSION" "$API/VERSION"
 
 PASSO_ATUAL="a sinalizar o reinício (tmp/restart.txt, sempre o último passo)"
 mkdir -p "$API/tmp"

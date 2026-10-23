@@ -97,20 +97,43 @@ DirectoryIndex index.html
 #         AllowOverride None
 #     </Directory>
 #
-# ENQUANTO ESSE PEDIDO NÃO FOR ATENDIDO: as diretivas abaixo bloqueiam a
-# EXECUÇÃO de scripts em todo o site (incluindo media/), mas — e isto é
-# importante escrever claramente — NÃO IMPEDEM que um .htaccess colocado
-# dentro de media/ seja honrado pelo Apache e reponha outra configuração
-# qualquer (um SetEnv, um handler novo, etc.). Só o AllowOverride None,
-# aplicado pelo suporte no contexto de servidor, fecha essa porta por
-# completo. Não ler o <FilesMatch> abaixo como se resolvesse o problema
-# todo — resolve só a execução de scripts, não a possibilidade de um
-# .htaccess filho reescrever as regras.
+# ENQUANTO ESSE PEDIDO NÃO FOR ATENDIDO: as diretivas abaixo reduzem muito
+# a superfície de execução de scripts em todo o site (incluindo media/) —
+# mas, e isto é importante escrever claramente, NÃO é uma garantia
+# absoluta, por DOIS motivos:
+#
+#   1. Um .htaccess colocado dentro de media/ continua a ser honrado pelo
+#      Apache e pode repor outra configuração qualquer (um SetEnv, um
+#      handler novo, etc.) por cima destas diretivas. Só o AllowOverride
+#      None, aplicado pelo suporte no contexto de servidor (pedido acima),
+#      fecha essa porta por completo.
+#   2. Um SetHandler/AddHandler aplicado num <Location> ou <VirtualHost>
+#      do vhost (fora do alcance de qualquer .htaccess) também não é
+#      coberto por nada do que está aqui — só o suporte do alojamento,
+#      fora deste ficheiro, controla esse nível.
+#
+# Não ler o <FilesMatch> abaixo como se resolvesse o problema todo.
 Options -ExecCGI -Indexes
 
+# O padrão de extensão perigosa tem de ser reconhecido em QUALQUER
+# posição do nome, nunca só no fim: um `FilesMatch` ancorado só em `$`
+# (como "\.(php|...)$") deixa passar uma extensão dupla do tipo
+# "foto.php.jpg" — não termina em ".php", por isso esse regex nunca
+# corresponde — mas o `mod_mime` do Apache olha para TODAS as extensões
+# do nome do ficheiro, não só a última, e continuaria a tratar
+# "foto.php.jpg" como PHP se o `AddHandler` estivesse ligado no vhost.
+# `(\.|$)` a seguir ao grupo das extensões apanha tanto o caso ancorado
+# (extensão perigosa no fim) como o caso de extensão dupla (extensão
+# perigosa seguida de outra extensão qualquer).
 RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
 
-<FilesMatch "\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh|fcgi)$">
+<FilesMatch "\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh|fcgi)(\.|$)">
+  # `SetHandler default-handler` força o Apache a servir o ficheiro como
+  # estático, independentemente de qualquer handler herdado do vhost (ex.:
+  # um `AddHandler`/`SetHandler` aplicado fora deste .htaccess) — defesa a
+  # mais, a par do `Require all denied`, nunca um substituto para ele.
+  SetHandler default-handler
   Require all denied
 </FilesMatch>
 

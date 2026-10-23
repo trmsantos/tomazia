@@ -6,14 +6,17 @@ sem precisar de correr `montar.sh`) e empurra fast-forward para `origin`.
 Um `git init --bare`, dentro de `tmp_path`, faz de `origin` — nunca tocamos
 no repositório real, nem na branch `deploy` real.
 
-`deploy/publicar-branch.sh` ainda não existe — é o infra que o escreve a
-seguir. Por isso estes testes falham agora com um `FileNotFoundError`
-claro (nunca o importamos, invocamo-lo sempre por subprocesso, direto do
-seu caminho real em `deploy/`: ao contrário de `montar.sh`,
-`publicar-branch.sh` não precisa de nenhum ficheiro irmão relativo ao seu
-próprio caminho — só de `--pasta` e de operações git em `cwd` — por isso
-não há necessidade de copiar `deploy/` para uma árvore de trabalho falsa
-aqui).
+`deploy/publicar-branch.sh` já existe, e os testes abaixo confirmam-no a
+sério: cada um invoca o script real por subprocesso (nunca o importa),
+sempre a partir do seu caminho verdadeiro dentro do checkout do
+repositório — nunca copiamos `deploy/` para uma árvore de trabalho falsa
+aqui, ao contrário de `test_montar.py`. É por correr do seu caminho real
+que o script encontra sozinho os seus ficheiros irmãos reais, incluindo
+`.github/scripts/verificar-ficheiros-proibidos.sh` (resolvido a partir de
+`dirname "$0"`, para o guarda S-12/S-10 interno) — nunca porque não
+dependa de nenhum. O que cada teste fabrica é só `cwd` (um `repo_origem`
+git a sério, construído na hora) e as variáveis de ambiente, nunca o
+próprio script nem os seus irmãos.
 
 ## Dois repositórios git, dois papéis (nenhum é o repositório real)
 

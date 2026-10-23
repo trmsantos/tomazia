@@ -27,11 +27,30 @@
 #               arrancado depois deste deploy ter começado. `environment:
 #               production`.
 #
-# `pedir` e `verificar` nunca fazem checkout do repositório: vão buscar os
-# scripts de `deploy/` ao artefacto que `montar` publicou (o mesmo pacote
-# já verificado pelo S-12/S-10), por isso `permissions: {}` chega mesmo —
-# `actions/download-artifact` dentro da mesma run não depende do
-# `GITHUB_TOKEN` nem do bloco `permissions:`.
+# `pedir` e `verificar` NUNCA usam o artefacto do job `montar` para ir
+# buscar `deploy/pedir-deploy.sh`/`deploy/esperar-versao.sh` (troca feita
+# na ronda de segurança da F1-04, achado crítico — ver também o comentário
+# dentro de cada um destes dois jobs, abaixo). Esse artefacto é montado
+# DEPOIS de `npm ci` correr no job `montar` — código de terceiros, com
+# escrita em TODA a árvore de trabalho, incluindo `deploy/`. Um
+# `postinstall` malicioso podia reescrever `pedir-deploy.sh` ali mesmo, e
+# `montar.sh` copiá-lo-ia para o pacote sem dar por isso; o artefacto
+# chegaria depois ao job `pedir`, que tem o token do cPanel no ambiente —
+# o artefacto seria, na prática, um canal de contrabando do `npm ci` para
+# o servidor.
+#
+# Em vez disso, cada um destes dois jobs faz o seu PRÓPRIO
+# `actions/checkout` (sparse, só de `deploy/`) do MESMO SHA que o
+# `porteiro` confirmou, com `persist-credentials: false`: é um clone novo,
+# feito pelo próprio Actions a partir do GitHub, que nunca passa pela
+# árvore de trabalho onde o `npm` correu — por isso os bytes de
+# `deploy/*.sh` lidos aqui são sempre os do repositório. Isto custa
+# `permissions: contents: read` em vez de `permissions: {}` — mais
+# permissão do que o mínimo absoluto, mas muito menos exposição do que
+# executar bytes que o `npm` tocou. NUNCA "otimizar" isto de volta para o
+# artefacto só porque `permissions: {}` parece mais seguro no papel: foi
+# exatamente esse raciocínio (permissões mínimas, sem olhar à
+# proveniência dos BYTES) que criou o achado crítico original.
 #
 # Concurrency com um grupo CONSTANTE (`deploy-producao`), nunca derivado do
 # ref ou do SHA: há um servidor só, nunca dois deploys ao mesmo tempo.
@@ -201,6 +220,14 @@ jobs:
           path: ${{ runner.temp }}/pacote
           if-no-files-found: error
           retention-days: 1
+          # `actions/upload-artifact` exclui ficheiros OCULTOS por omissão
+          # desde a v4.4.0 — e o `.cpanel.yml` está na raiz do pacote e
+          # dentro de `deploy/`, ambos começam por ponto, ambos cairiam.
+          # Sem isto, a branch `deploy` publicada ficaria sem
+          # `.cpanel.yml` e o cPanel não correria tarefa nenhuma; pior, os
+          # bytes auditados pelo S-12/S-10 (acima, sobre o disco) deixariam
+          # de ser os bytes que de facto chegam ao job `publicar`.
+          include-hidden-files: true
 
   publicar:
     name: publicar
@@ -235,6 +262,26 @@ jobs:
           name: pacote-deploy
           path: ${{ runner.temp }}/pacote
 
+      # Achado crítico da ronda de segurança da F1-04: o pacote descarregado
+      # acima foi montado no job `montar`, DEPOIS de `npm ci` ter corrido
+      # (com escrita em toda a árvore de trabalho desse job, incluindo
+      # `deploy/`). Por isso `pacote/deploy/` e `pacote/.cpanel.yml` são
+      # SUBSTITUÍDOS aqui pelos do checkout feito acima — um clone novo,
+      # feito pelo próprio Actions a partir do GitHub, que nunca passou pela
+      # árvore de trabalho onde o `npm` correu. É isto que garante que os
+      # bytes publicados na branch `deploy` (e, mais tarde, executados no
+      # servidor como `deploy/deploy.sh`, ou pelo job `pedir` com o token do
+      # cPanel) são sempre os do próprio repositório, nunca algo que um
+      # `postinstall` malicioso tenha tocado. NUNCA remover este passo nem
+      # confiar só no S-12/S-10 do job `montar` — esse guarda olha para
+      # NOMES de caminho, nunca para a proveniência dos bytes.
+      - name: "deploy/ e .cpanel.yml do pacote vêm do checkout, nunca de bytes que o npm tocou"
+        run: |
+          set -euo pipefail
+          rm -rf "${{ runner.temp }}/pacote/deploy"
+          cp -a deploy "${{ runner.temp }}/pacote/deploy"
+          cp -f deploy/.cpanel.yml "${{ runner.temp }}/pacote/.cpanel.yml"
+
       - name: deploy/publicar-branch.sh (fast-forward para a branch deploy)
         run: |
           deploy/publicar-branch.sh \
@@ -247,18 +294,34 @@ jobs:
     needs: publicar
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    # Sem checkout nenhum: `deploy/pedir-deploy.sh` vem do pacote que
-    # `montar` já verificou (S-12/S-10) e publicou como artefacto — por
-    # isso `permissions: {}` chega mesmo. `actions/download-artifact`
-    # dentro da mesma run não depende do `GITHUB_TOKEN`.
-    permissions: {}
+    # Troca deliberada (achado crítico da ronda de segurança da F1-04): já
+    # não se descarrega o artefacto do job `montar` para ir buscar
+    # `deploy/pedir-deploy.sh` — esse artefacto é montado DEPOIS de `npm
+    # ci` correr (código de terceiros, com escrita em toda a árvore de
+    # trabalho desse job, incluindo `deploy/`); um `postinstall` malicioso
+    # podia reescrever este script ali, e chegaria aqui já comprometido,
+    # precisamente no job que tem o token do cPanel no ambiente. Em vez
+    # disso, um `actions/checkout` sparse (só `deploy/`), do MESMO SHA que
+    # o `porteiro` confirmou, com `persist-credentials: false`: um clone
+    # novo, feito pelo Actions a partir do GitHub, que nunca passa pela
+    # árvore de trabalho onde o `npm` correu. Isto custa `contents: read`
+    # em vez de `permissions: {}` — mais permissão do que o mínimo
+    # absoluto, mas muito menos exposição do que executar bytes que o npm
+    # tocou. NUNCA "otimizar" isto de volta para o artefacto (ou para
+    # `permissions: {}`) só porque parece mais seguro no papel.
+    permissions:
+      contents: read
     environment: production
     steps:
-      - name: Descarregar o pacote (só para ir buscar deploy/pedir-deploy.sh)
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - name: Checkout de deploy/ (sparse), do SHA aprovado — nunca o artefacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: pacote-deploy
-          path: ${{ runner.temp }}/pacote
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            deploy
+          sparse-checkout-cone-mode: false
 
       # A UAPI do cPanel responde sempre 200, mesmo quando falha — por
       # isso quem decide sucesso/falha é o `status` do corpo JSON, lido
@@ -271,24 +334,33 @@ jobs:
           TOMAZIA_CPANEL_USER: ${{ secrets.TOMAZIA_CPANEL_USER }}
           TOMAZIA_CPANEL_TOKEN: ${{ secrets.TOMAZIA_CPANEL_TOKEN }}
         run: |
-          chmod +x "${{ runner.temp }}/pacote/deploy/pedir-deploy.sh"
-          "${{ runner.temp }}/pacote/deploy/pedir-deploy.sh"
+          chmod +x deploy/pedir-deploy.sh
+          deploy/pedir-deploy.sh
 
   verificar:
     name: verificar
     needs: [pedir, porteiro]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # Mesma razão do job `pedir`: `deploy/esperar-versao.sh` vem do pacote
-    # artefacto, nunca de um checkout — `permissions: {}` chega.
-    permissions: {}
+    # Mesma troca deliberada do job `pedir` (ver o comentário lá, e o
+    # achado crítico da ronda de segurança da F1-04): checkout sparse de
+    # `deploy/`, do SHA aprovado, nunca o artefacto do job `montar` — os
+    # bytes de `deploy/esperar-versao.sh` aqui nunca passaram pela árvore
+    # de trabalho onde o `npm ci` correu. `contents: read`, nunca
+    # `permissions: {}`: NUNCA "otimizar" isto de volta para o artefacto.
+    permissions:
+      contents: read
     environment: production
     steps:
-      - name: Descarregar o pacote (só para ir buscar deploy/esperar-versao.sh)
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - name: Checkout de deploy/ (sparse), do SHA aprovado — nunca o artefacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: pacote-deploy
-          path: ${{ runner.temp }}/pacote
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            deploy
+          sparse-checkout-cone-mode: false
 
       # Um guarda que só verificasse HTTP 200 seria decorativo (uma
       # página de manutenção dá 200). `esperar-versao.sh` exige: a versão
@@ -300,8 +372,8 @@ jobs:
         env:
           TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
         run: |
-          chmod +x "${{ runner.temp }}/pacote/deploy/esperar-versao.sh"
-          "${{ runner.temp }}/pacote/deploy/esperar-versao.sh" \
+          chmod +x deploy/esperar-versao.sh
+          deploy/esperar-versao.sh \
             "${TOMAZIA_API_BASE_URL}" \
             "${{ github.event.workflow_run.head_sha }}" \
             300 \

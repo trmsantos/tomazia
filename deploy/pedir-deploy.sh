@@ -31,12 +31,51 @@
 # `curl` é sempre capturado à mão, nunca com `if curl ...; then`; o estado
 # do `jq` é sempre distinguido (sucesso / erro de JSON), nunca com
 # `if jq ...; then`.
+#
+# --- TOMAZIA_CPANEL_BASE_URL tem de ser https:// ---
+#
+# O cabeçalho `Authorization: cpanel <utilizador>:<token>` dá acesso à
+# conta cPanel INTEIRA — se a base fosse gravada com `http://`, esse
+# cabeçalho viajaria em claro, e quem estivesse na rota ficava com o
+# token todo. Por isso se recusa qualquer base que não comece por
+# `https://`, com UMA exceção documentada: `http://127.0.0.1` (com ou sem
+# porta a seguir), porque é isso que os testes deste script usam (um
+# `http.server` local, nunca a rede a sério). `--proto '=https'` no
+# `curl`, mais abaixo, é a mesma regra outra vez, ao nível do próprio
+# pedido HTTP — nunca se confia só na verificação de string.
+#
+# --- O cabeçalho Authorization nunca entra no argv do curl ---
+#
+# `-H "Authorization: cpanel ${TOMAZIA_CPANEL_USER}:${TOMAZIA_CPANEL_TOKEN}"`
+# punha o token na linha de comandos do processo `curl` — visível para
+# qualquer coisa que consiga listar processos na mesma máquina (`ps aux`,
+# `/proc/<pid>/cmdline`) enquanto o pedido está em curso. Por isso o
+# cabeçalho passa a entrar por `--config -`: a linha `header = "..."` é
+# escrita por um `printf` (bash builtin, nunca um processo próprio — não
+# aparece em `ps` de qualquer forma) e lida por `curl` do seu próprio
+# stdin, nunca escrita em disco nenhum.
 
 set -euo pipefail
 
 : "${TOMAZIA_CPANEL_BASE_URL:?TOMAZIA_CPANEL_BASE_URL em falta}"
 : "${TOMAZIA_CPANEL_USER:?TOMAZIA_CPANEL_USER em falta}"
 : "${TOMAZIA_CPANEL_TOKEN:?TOMAZIA_CPANEL_TOKEN em falta}"
+
+# TOMAZIA_CPANEL_BASE_URL tem de ser https:// — exceção única e
+# documentada: http://127.0.0.1 (com ou sem porta a seguir), usado só
+# pelos testes deste script (um http.server local, nunca a rede a
+# sério). Nunca uma heurística mais larga (nenhum outro "http://" passa).
+protocolo_permitido="https"
+case "$TOMAZIA_CPANEL_BASE_URL" in
+  https://*) ;;
+  http://127.0.0.1 | http://127.0.0.1:* | http://127.0.0.1/*)
+    protocolo_permitido="http"
+    ;;
+  *)
+    echo "pedir-deploy.sh: TOMAZIA_CPANEL_BASE_URL tem de começar por 'https://' (exceção documentada: 'http://127.0.0.1', só para os testes) — recebi '${TOMAZIA_CPANEL_BASE_URL}'." >&2
+    exit 1
+    ;;
+esac
 
 repositorio="/home/${TOMAZIA_CPANEL_USER}/repositories/tomazia"
 url="${TOMAZIA_CPANEL_BASE_URL%/}/execute/VersionControlDeployment/create"
@@ -51,17 +90,29 @@ trap "rm -f '${corpo_tmp}'" EXIT
 # porque isso escondia qual dos dois falhou — a ligação, ou o próprio
 # pedido HTTP. `--max-time` corta um servidor lento ou pendurado; a
 # verificação de TLS nunca se desliga, de propósito: um erro de TLS é um
-# erro a sério, nunca se ignora.
+# erro a sério, nunca se ignora. `--proto "=${protocolo_permitido}"` é a
+# mesma regra do `case` acima, outra vez, ao nível do próprio curl — nunca
+# confiar só na verificação de string sobre a variável de ambiente.
+#
+# O cabeçalho Authorization entra por `--config -` (stdin), nunca por `-H`
+# (ver o comentário no topo do ficheiro): a linha é escrita por um
+# `printf` (builtin do bash, nunca um processo próprio) para dentro do
+# `curl`, nunca para um ficheiro em disco, e nunca aparece no argv do
+# processo `curl` (visível, de outra forma, a qualquer coisa que consiga
+# listar processos nesta máquina enquanto o pedido está em curso).
 set +e
 codigo_http=$(
-  curl -sS \
-    --connect-timeout 10 \
-    --max-time 15 \
-    -o "$corpo_tmp" \
-    -w '%{http_code}' \
-    -H "Authorization: cpanel ${TOMAZIA_CPANEL_USER}:${TOMAZIA_CPANEL_TOKEN}" \
-    --data-urlencode "repository_root=${repositorio}" \
-    "$url"
+  printf 'header = "Authorization: cpanel %s:%s"\n' \
+    "$TOMAZIA_CPANEL_USER" "$TOMAZIA_CPANEL_TOKEN" \
+    | curl -sS \
+      --connect-timeout 10 \
+      --max-time 15 \
+      --proto "=${protocolo_permitido}" \
+      --config - \
+      -o "$corpo_tmp" \
+      -w '%{http_code}' \
+      --data-urlencode "repository_root=${repositorio}" \
+      "$url"
 )
 estado_curl=$?
 set -e

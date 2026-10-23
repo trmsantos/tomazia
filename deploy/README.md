@@ -28,7 +28,7 @@ que pode já ter andado entre o fim do CI e o início do deploy.
 
 | Script | Corre onde | Faz |
 | --- | --- | --- |
-| `montar.sh` | CI (job `montar`) | Monta a pasta que vai para o servidor: `backend/app`, `backend/migrations`, `backend/scripts`, `backend/alembic.ini`, `backend/passenger_wsgi.py`, `backend/requirements.txt`, `frontend/dist`, `deploy/`, e `api/VERSION` com o SHA. `--sha <40 hex> --saida <pasta>`. |
+| `montar.sh` | CI (job `montar`) | Monta a pasta que vai para o servidor. **A disposição do pacote não é a do repositório**: o backend inteiro fica debaixo de `api/` (`api/app`, `api/migrations`, `api/scripts` só a partir da F2-02, `api/alembic.ini`, `api/passenger_wsgi.py`, `api/requirements.txt`, `api/VERSION` com o SHA), o build do Vite em `frontend/dist/`, os próprios scripts em `deploy/`, e `.cpanel.yml` na raiz. `deploy.sh` lê exatamente estes caminhos — ler a tabela como se fossem `backend/...` foi o que partiu o primeiro deploy desta tarefa. `--sha <40 hex> --saida <pasta>`. |
 | `publicar-branch.sh` | CI (job `publicar`) | Põe a árvore da branch `deploy` igual à pasta montada e empurra `--ff-only` (nunca `--force`). `--pasta <pasta> --sha <sha> --branch deploy`. |
 | `pedir-deploy.sh` | CI (job `pedir`) | Pede à UAPI do cPanel para puxar `deploy` e correr `deploy.sh` no servidor. Sem argumentos — tudo por variável de ambiente (nunca na linha de comandos, para não ficar nos logs do Actions). |
 | `esperar-versao.sh` | CI (job `verificar`) | Faz polling a `/api/health` até a versão certa responder, de um processo arrancado depois do deploy ter começado. `<url-base> <sha-esperado> <timeout-s> <intervalo-s> <inicio-deploy-iso8601>`. |
@@ -68,7 +68,11 @@ do Passenger com `PassengerFriendlyErrorPages Off`.
    workflows, mas é uma rede extra barata.
 2. **Secrets no environment `production`:**
    - `TOMAZIA_CPANEL_BASE_URL` — base da UAPI do cPanel (ex.:
-     `https://<host>:2083`).
+     `https://<host>:2083`). **Tem mesmo de começar por `https://`**:
+     `pedir-deploy.sh` recusa-se a correr com qualquer outra coisa (a
+     única exceção é `http://127.0.0.1`, que só os testes usam). Com o
+     secret mal preenchido, o deploy falha de propósito no job `pedir` em
+     vez de mandar o token do cPanel por uma ligação em claro.
    - `TOMAZIA_CPANEL_USER` — utilizador do cPanel.
    - `TOMAZIA_CPANEL_TOKEN` — token da API do cPanel (nunca a password
      da conta).
@@ -84,6 +88,11 @@ do Passenger com `PassengerFriendlyErrorPages Off`.
 4. Confirmar que `CLAUDE_CODE_OAUTH_TOKEN` (usado por `claude.yml`) e os
    quatro secrets acima só existem nos sítios certos — nenhum deles no
    ambiente por omissão do repositório.
+5. **Workflow permissions** (Settings → Actions → General) não podem
+   estar mais restritivas do que `contents: read`. Os jobs `pedir` e
+   `verificar` deixaram de ir buscar os scripts ao artefacto e fazem
+   agora o seu próprio checkout — se a organização tiver essa permissão
+   desligada globalmente, esses dois jobs falham no checkout.
 
 ### No cPanel (F1-05, manual, descrito em `docs/TAREFAS.md`)
 

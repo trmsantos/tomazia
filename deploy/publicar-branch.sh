@@ -153,20 +153,60 @@ trap 'rm -rf "${tmp_dir}"' EXIT
 
 branch_existe=0
 tip_remoto=""
-if git fetch --quiet origin "$branch" 2>"${tmp_dir}/fetch.err"; then
-  branch_existe=1
+
+# Regra 10 (um guarda tem de distinguir vazio de avaria): a existência da
+# branch e uma avaria de rede/credenciais são coisas diferentes, e não
+# podem produzir a mesma reação. `git ls-remote --exit-code` tem três
+# saídas possíveis (ver `git-ls-remote(1)`): 0 (encontrou a referência —
+# a branch existe), 2 (não encontrou nenhuma — a branch ainda não
+# existe), e qualquer outra coisa (avaria: rede em baixo, autenticação
+# recusada, `origin` mal configurado, ...). Só o 2 pode ser lido como
+# "primeira publicação"; tudo o resto tem de abortar — um guarda que
+# tratasse uma avaria de rede como "a branch ainda não existe" publicaria
+# às cegas por cima de histórico que nem chegou a conseguir ler.
+set +e
+git ls-remote --exit-code --heads origin "$branch" >"${tmp_dir}/ls-remote.out" 2>"${tmp_dir}/ls-remote.err"
+estado_ls_remote=$?
+set -e
+
+case "$estado_ls_remote" in
+  0) branch_existe=1 ;;
+  2) branch_existe=0 ;;
+  *)
+    echo "Erro: não foi possível confirmar se a branch '${branch}' existe no remoto (git ls-remote saiu com o código ${estado_ls_remote}); ver abaixo. Publicação recusada — nunca se trata uma avaria de rede/autenticação como \"a branch ainda não existe\"." >&2
+    cat "${tmp_dir}/ls-remote.err" >&2
+    exit 1
+    ;;
+esac
+
+if [ "$branch_existe" -eq 1 ]; then
+  # A existência já está confirmada acima; isto só traz os objetos para
+  # o repositório local. Corre sem guarda manual de propósito: com
+  # `set -euo pipefail` ainda ativo, uma falha AQUI (depois de já
+  # sabermos que a branch existe) é sempre uma avaria a sério, e tem de
+  # abortar o script — nunca ser confundida com "a branch não existe".
+  git fetch --quiet origin "$branch"
   tip_remoto="$(git rev-parse FETCH_HEAD)"
 fi
 
 novo_pai=""
 if [ "$branch_existe" -eq 1 ]; then
   mensagem_anterior="$(git log -1 --format=%B "$tip_remoto")"
+  # Regra 10, outra vez: com `pipefail`, um `grep` sem correspondência
+  # (branch existente, mas sem a linha `Sha-Origem:`) faz a pipeline
+  # inteira sair com código 1, e `set -e` apanhava isso ANTES da
+  # mensagem clara abaixo — abortava com um código de saída vazio e sem
+  # explicação nenhuma, em vez de dizer que o histórico não é
+  # reconhecido. `set +e`/`set -e` à volta só da extração garante que é
+  # sempre o `if [ -z "$sha_anterior" ]`, a seguir, que decide e explica.
+  set +e
   sha_anterior="$(
     printf '%s\n' "$mensagem_anterior" \
       | grep -E '^Sha-Origem: [0-9a-f]{40}$' \
       | tail -n1 \
       | awk '{print $2}'
   )"
+  set -e
 
   if [ -z "$sha_anterior" ]; then
     echo "Erro: a branch '${branch}' já existe no remoto, mas o commit de topo (${tip_remoto}) não tem a linha 'Sha-Origem: <sha>' — histórico que este script não reconhece como seu (publicado à mão, ou por outra coisa qualquer). Confirma o estado da branch antes de tentar outra vez; publicação recusada." >&2
@@ -174,10 +214,32 @@ if [ "$branch_existe" -eq 1 ]; then
   fi
 
   if [ "$sha" != "$sha_anterior" ]; then
-    if git merge-base --is-ancestor "$sha" "$sha_anterior"; then
-      echo "Erro: --sha '${sha}' é antepassado do já publicado ('${sha_anterior}') — recuso publicar um retrocesso. Publicação recusada." >&2
-      exit 1
-    fi
+    # Regra 10, outra vez: `git merge-base --is-ancestor` tem TRÊS saídas
+    # possíveis (ver `git-merge-base(1)`), não duas — 0 (é antepassado),
+    # 1 (não é antepassado) e qualquer outro código (tipicamente 128,
+    # quando falta um objeto: um dos dois commits não está presente no
+    # repositório local, p. ex. por um `fetch-depth` raso). Um `if git
+    # merge-base --is-ancestor ...; then` lê 128 exatamente como lê 1 —
+    # "não é antepassado" — e deixa passar em silêncio o cenário para que
+    # este guarda existe: sem o commit antigo localmente, não há como
+    # confirmar se há ou não retrocesso, e isso tem de abortar, nunca
+    # assumir que está tudo bem.
+    set +e
+    git merge-base --is-ancestor "$sha" "$sha_anterior"
+    estado_merge_base=$?
+    set -e
+
+    case "$estado_merge_base" in
+      0)
+        echo "Erro: --sha '${sha}' é antepassado do já publicado ('${sha_anterior}') — recuso publicar um retrocesso. Publicação recusada." >&2
+        exit 1
+        ;;
+      1) ;; # não é antepassado: segue para publicar com o commit atual como pai.
+      *)
+        echo "Erro: não foi possível confirmar se '${sha}' é antepassado de '${sha_anterior}' (git merge-base --is-ancestor saiu com o código ${estado_merge_base}, não 0 nem 1 — provavelmente falta algum objeto localmente, por exemplo por um checkout com 'fetch-depth' raso). Publicação recusada: sem essa confirmação não há como garantir que isto não é um retrocesso." >&2
+        exit 1
+        ;;
+    esac
   fi
 
   novo_pai="$tip_remoto"

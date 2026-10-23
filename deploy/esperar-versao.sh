@@ -215,9 +215,19 @@ while true; do
                 classificacao="ainda-nao"
                 ultima_observacao="versao='${versao_campo}' mas arrancado_em='${arrancado_campo}' não é posterior ao início do deploy"
                 ;;
-              *)
+              2)
                 classificacao="falha"
                 ultima_observacao="arrancado_em='${arrancado_campo}' não é um instante válido"
+                ;;
+              *)
+                # Regra 10: aqui o `arrancado_e_posterior` nem chegou a
+                # dar um veredito — o `python3` não correu (em falta,
+                # morto pelo OOM, sem permissões). Falha à mesma, mas
+                # nunca a dizer que a data do servidor está malformada:
+                # mandava quem estivesse a depurar o deploy olhar para o
+                # sítio errado.
+                classificacao="falha"
+                ultima_observacao="não foi possível comparar arrancado_em='${arrancado_campo}' com o início do deploy (o próprio comparador saiu ${estado_comparacao})"
                 ;;
             esac
           fi
@@ -255,10 +265,26 @@ while true; do
       ;;
   esac
 
-  if tempo_esgotado "$inicio_espera_epoch" "$timeout_segundos"; then
-    echo "esperar-versao.sh: esgotou o tempo (${timeout_segundos}s) à espera da versão ${sha_esperado}. Última observação: ${ultima_observacao}" >&2
-    exit 1
-  fi
+  # Regra 10: `tempo_esgotado` sai 0 (esgotou), 1 (ainda não) ou outra
+  # coisa (não chegou a saber — o `python3` não correu). Num `if` simples,
+  # essa terceira hipótese caía no ramo do "ainda não" e o laço ficava a
+  # girar para sempre sem nunca poder terminar: "não consegui medir o
+  # tempo" é exatamente o caso em que mais interessa parar.
+  set +e
+  tempo_esgotado "$inicio_espera_epoch" "$timeout_segundos"
+  estado_tempo=$?
+  set -e
+  case "$estado_tempo" in
+    0)
+      echo "esperar-versao.sh: esgotou o tempo (${timeout_segundos}s) à espera da versão ${sha_esperado}. Última observação: ${ultima_observacao}" >&2
+      exit 1
+      ;;
+    1) ;;
+    *)
+      echo "esperar-versao.sh: não foi possível medir o tempo decorrido (o comparador saiu ${estado_tempo}) — a desistir em vez de esperar indefinidamente. Última observação: ${ultima_observacao}" >&2
+      exit 1
+      ;;
+  esac
 
   sleep "$intervalo_segundos"
 done

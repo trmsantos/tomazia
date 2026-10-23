@@ -9,8 +9,21 @@ aleatória, para provar isso — nunca contactam o cPanel verdadeiro (regra 3
 do `CLAUDE.md`). A base do URL entra pela variável de ambiente
 `TOMAZIA_CPANEL_BASE_URL`, apontada para este servidor local em cada teste.
 
-Contrato assumido com o infra (ponto de extensão — a confirmar na
-implementação, descrito aqui porque ainda não existe código a ler):
+`deploy/pedir-deploy.sh` já existe, e os testes abaixo confirmam-no a
+sério: cada um invoca o script real por subprocesso (nunca o importa)
+contra o `http.server` local acima — nunca uma segunda árvore fabricada
+que precisasse de alinhar com outro script real. É essa diferença que
+torna esta frase inofensiva aqui, ao contrário do que aconteceu em
+`tests/seguranca/test_deploy_sh.py` antes da correção: lá, o que ficava
+por confirmar não era como invocar o script, era a FORMA DO PACOTE que um
+segundo script real (`deploy/montar.sh`) entrega — só correr os dois
+scripts a sério, um a seguir ao outro, podia desmentir essa suposição (é
+o que prova `tests/seguranca/test_integracao_pacote_deploy.py`). Aqui não
+há segundo script: o "servidor" é este próprio `http.server` de teste, por
+isso os testes abaixo, a passar contra o script real, já confirmam tudo o
+que havia para confirmar.
+
+O contrato que fica provado:
 
 - `TOMAZIA_CPANEL_BASE_URL`: base do URL da UAPI (ex.: `http://127.0.0.1:PORTA`).
 - `TOMAZIA_CPANEL_USER`: utilizador do cPanel, para o cabeçalho

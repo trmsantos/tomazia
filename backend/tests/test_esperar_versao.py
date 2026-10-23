@@ -6,8 +6,21 @@ mas aqui com uma **sequência programada** de respostas, porque o script faz
 polling: pede, espera, pede outra vez, até a versão certa aparecer ou o
 tempo esgotar.
 
-Contrato assumido com o infra (ponto de extensão, a confirmar — descrito
-aqui porque o script ainda não existe):
+`deploy/esperar-versao.sh` já existe, e os testes abaixo confirmam-no a
+sério: cada um invoca o script real por subprocesso (nunca o importa)
+contra o `http.server` local acima — nunca uma segunda árvore fabricada
+que precisasse de alinhar com outro script real. É essa diferença que
+torna esta frase inofensiva aqui, ao contrário do que aconteceu em
+`tests/seguranca/test_deploy_sh.py` antes da correção: lá, o que ficava
+por confirmar não era como invocar o script, era a FORMA DO PACOTE que um
+segundo script real (`deploy/montar.sh`) entrega — só correr os dois
+scripts a sério, um a seguir ao outro, podia desmentir essa suposição (é
+o que prova `tests/seguranca/test_integracao_pacote_deploy.py`). Aqui não
+há segundo script: o "servidor" é este próprio `http.server` de teste, por
+isso os testes abaixo, a passar contra o script real, já confirmam tudo o
+que havia para confirmar.
+
+O contrato que fica provado:
 
     deploy/esperar-versao.sh <url-base> <sha-esperado> \\
         <timeout-segundos> <intervalo-segundos> <inicio-deploy-iso8601>
