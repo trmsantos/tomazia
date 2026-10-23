@@ -1,0 +1,163 @@
+# htaccess.exemplo — MODELO para o `.htaccess` real de `public_html/`.
+#
+# ATENÇÃO: isto NUNCA é o `.htaccess` do servidor. O `.htaccess` real é
+# mantido à mão, fora deste repositório (ver `docs/ESPECIFICACAO.md`,
+# secção Servidor) — o deploy nunca lhe toca. Este ficheiro é só o
+# modelo versionado para o Tomás copiar e adaptar, substituindo os
+# placeholders (`<...>`) por valores reais. Não tem domínio nem
+# utilizador reais, de propósito — é um ficheiro público, versionado.
+#
+# Esta é apenas uma verificação de texto (ver `backend/tests/
+# test_htaccess_exemplo.py`): nenhuma destas diretivas foi interpretada
+# por um Apache a sério. A verificação com um Apache real, em contentor,
+# fica para a F5-01.
+
+# ============================================================
+# SPA: tudo o que não for um ficheiro/pasta real, e não for /api, cai em
+# index.html. O RewriteCond de /api TEM de vir antes do fallback, senão
+# o fallback engolia a API (devolvia sempre index.html para pedidos a
+# /api/...).
+# ============================================================
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  RewriteCond %{REQUEST_URI} !^/api
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+DirectoryIndex index.html
+
+# ============================================================
+# Cabeçalhos de segurança, em todas as respostas.
+# ============================================================
+<IfModule mod_headers.c>
+  # CSP decidida pelo Tomás: `style-src 'self'` ESTRITO, sem
+  # 'unsafe-inline' — isto vai proibir style="..." inline (o React faz
+  # isto com naturalidade). As redes para isto ficam na F3-01 (regra de
+  # ESLint) e na F3-07 (Playwright vê violações na consola, no CI). Um
+  # enfraquecimento desta CSP (um 'unsafe-inline', um '*') nunca mais se
+  # aperta sozinho — por isso os testes em test_htaccess_exemplo.py
+  # prendem isto de propósito.
+  Header always set Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
+
+  # max-age=86400 (um dia) SEM includeSubDomains e SEM preload, até à
+  # F5-02: o site novo vive em novo.<dominio> enquanto o PHP antigo vive
+  # no apex do mesmo domínio, e o `preload` é irreversível na prática
+  # (fica em listas de browsers durante meses/anos, mesmo depois de se
+  # remover o cabeçalho). Só se reconsidera isto depois do corte final.
+  Header always set Strict-Transport-Security "max-age=86400"
+
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+  Header always set X-Frame-Options "DENY"
+
+  # Cache-Control: os ficheiros de /assets/ saem do build do Vite com
+  # hash no nome (ex.: app-a1b2c3.js) — nunca mudam de conteúdo sob o
+  # mesmo nome, por isso podem ser "immutable" durante um ano. O
+  # index.html é o oposto: tem de ser revalidado SEMPRE, senão um deploy
+  # pode parecer não ter acontecido no browser do dono (a terceira ou
+  # quarta vez que ele carrega F5 continua a ver a versão antiga,
+  # servida da cache do próprio browser).
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_setenvif.c>
+  SetEnvIf Request_URI "^/assets/" TOMAZIA_ASSET_IMUTAVEL
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set Cache-Control "public, max-age=31536000, immutable" env=TOMAZIA_ASSET_IMUTAVEL
+</IfModule>
+
+# ============================================================
+# media/ — fotos enviadas por qualquer visitante (galeria, S-01/S-02).
+# É a única pasta do site escrita por conteúdo de terceiros; por isso é
+# a que mais interessa fechar contra execução de scripts.
+#
+# O que seria mesmo à prova de bala aqui é `AllowOverride None` no
+# contexto de SERVIDOR para media/ — mas isso NÃO é uma diretiva que se
+# possa pôr dentro de um .htaccess (só é válida em <Directory>/
+# <VirtualHost> na configuração principal do Apache); num cPanel
+# partilhado como este, só o suporte do alojamento consegue aplicar
+# isto. Fica aqui, em comentário, o texto do pedido já escrito — item da
+# tarefa F1-05 (manual, do Tomás):
+#
+#   Pedimos, por favor, que apliquem no contexto de SERVIDOR (nunca
+#   dentro de um .htaccess) a seguinte diretiva para a pasta media/ da
+#   nossa conta, para impedir que um .htaccess colocado dentro dessa
+#   pasta consiga repor outra configuração qualquer:
+#
+#     <Directory "/caminho/para/public_html/media">
+#         AllowOverride None
+#     </Directory>
+#
+# ENQUANTO ESSE PEDIDO NÃO FOR ATENDIDO: as diretivas abaixo reduzem muito
+# a superfície de execução de scripts em todo o site (incluindo media/) —
+# mas, e isto é importante escrever claramente, NÃO é uma garantia
+# absoluta, por DOIS motivos:
+#
+#   1. Um .htaccess colocado dentro de media/ continua a ser honrado pelo
+#      Apache e pode repor outra configuração qualquer (um SetEnv, um
+#      handler novo, etc.) por cima destas diretivas. Só o AllowOverride
+#      None, aplicado pelo suporte no contexto de servidor (pedido acima),
+#      fecha essa porta por completo.
+#   2. Um SetHandler/AddHandler aplicado num <Location> ou <VirtualHost>
+#      do vhost (fora do alcance de qualquer .htaccess) também não é
+#      coberto por nada do que está aqui — só o suporte do alojamento,
+#      fora deste ficheiro, controla esse nível.
+#
+# Não ler o <FilesMatch> abaixo como se resolvesse o problema todo.
+Options -ExecCGI -Indexes
+
+# O padrão de extensão perigosa tem de ser reconhecido em QUALQUER
+# posição do nome, nunca só no fim, e sem distinguir maiúsculas: o
+# `mod_mime` compara extensões sem olhar à caixa, portanto `foto.PhP` é
+# PHP para ele — mas um `FilesMatch` sem `(?i)` não lhe toca, e o
+# `Require all denied` passa ao lado. É a mesma falha da extensão dupla,
+# pela outra variante. Um `FilesMatch` ancorado só em `$`
+# (como "\.(php|...)$") deixa passar uma extensão dupla do tipo
+# "foto.php.jpg" — não termina em ".php", por isso esse regex nunca
+# corresponde — mas o `mod_mime` do Apache olha para TODAS as extensões
+# do nome do ficheiro, não só a última, e continuaria a tratar
+# "foto.php.jpg" como PHP se o `AddHandler` estivesse ligado no vhost.
+# `(\.|$)` a seguir ao grupo das extensões apanha tanto o caso ancorado
+# (extensão perigosa no fim) como o caso de extensão dupla (extensão
+# perigosa seguida de outra extensão qualquer).
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .sh
+
+<FilesMatch "(?i)\.(php|phtml|php[0-9]|phar|cgi|pl|py|sh|fcgi)(\.|$)">
+  # `SetHandler default-handler` força o Apache a servir o ficheiro como
+  # estático, independentemente de qualquer handler herdado do vhost (ex.:
+  # um `AddHandler`/`SetHandler` aplicado fora deste .htaccess) — defesa a
+  # mais, a par do `Require all denied`, nunca um substituto para ele.
+  SetHandler default-handler
+  Require all denied
+</FilesMatch>
+
+# ============================================================
+# BLOCO DO PASSENGER — GERADO/REESCRITO PELO CPANEL (Setup Python App).
+#
+# ATENÇÃO, EM MAIÚSCULAS DE PROPÓSITO: sempre que se mexe na app Python
+# pelo painel do cPanel (reiniciar, mudar a versão do Python, etc.), o
+# CPANEL REESCREVE ESTE BLOCO INTEIRO E DEIXA CAIR A LINHA
+# "PassengerFriendlyErrorPages Off" A SEGUIR. Isto NÃO se corrige uma
+# vez só: é manutenção manual recorrente — confirmar e repor esta linha
+# a cada alteração feita no painel, para um erro de configuração nunca
+# mostrar caminhos do servidor no browser.
+#
+# O deploy automático (deploy.sh) NUNCA toca neste bloco nem no resto do
+# .htaccess — só o cPanel (pelo painel) e o Tomás (à mão) mexem aqui.
+# ============================================================
+<IfModule Phusion_Passenger_module>
+  PassengerAppRoot "<caminho-para-tomazia_api>"
+  PassengerBaseURI "/api"
+  PassengerPython "<caminho-para-o-virtualenv>/bin/python"
+  PassengerFriendlyErrorPages Off
+</IfModule>

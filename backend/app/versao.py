@@ -1,10 +1,14 @@
 """Leitura da versão da aplicação, a partir do ficheiro `VERSION`.
 
-O `deploy.sh` da F1-04 escreve o SHA curto do commit em `VERSION`, ao lado
-de `passenger_wsgi.py`. `obter_versao()` lê-o, sem cache (nunca
-`lru_cache`), com o caminho resolvido a cada chamada — nunca capturado
-antes, à importação — para que o `GET /health` reflita sempre o ficheiro
-atual, mesmo que um processo Passenger sobreviva a um deploy que o
+O `deploy.sh` da F1-04 escreve o SHA completo do commit (40 carateres) em
+`VERSION`, ao lado de `passenger_wsgi.py` — nunca o SHA abreviado ("curto"):
+o git aumenta o comprimento do SHA abreviado à medida que o repositório
+cresce, e se o `deploy.sh` e o `esperar-versao.sh` o calculassem em
+momentos diferentes a comparação entre os dois nunca casaria, e o
+`esperar-versao.sh` esperaria para sempre. `obter_versao()` lê-o, sem cache
+(nunca `lru_cache`), com o caminho resolvido a cada chamada — nunca
+capturado antes, à importação — para que o `GET /health` reflita sempre o
+ficheiro atual, mesmo que um processo Passenger sobreviva a um deploy que o
 reescreva.
 
 Nunca propaga exceção: qualquer erro de leitura, ou um conteúdo fora do

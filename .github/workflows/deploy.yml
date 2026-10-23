@@ -1,0 +1,425 @@
+# Deploy do Bar da Tomazia: `main` verde → pacote montado → branch `deploy`
+# → cPanel (UAPI) → `deploy/deploy.sh` no servidor.
+#
+# Gatilho: `workflow_run` do `CI`, nunca `push` nem `pull_request`
+# diretamente. Razão: o SHA que queremos publicar tem de ser o SHA que o
+# `ci.yml` já validou por inteiro (backend, frontend, contrato, segurança),
+# nunca um SHA novo que ainda não correu nada. `workflow_run` dá-nos isso de
+# graça (`github.event.workflow_run.head_sha`) — ao contrário de `github.sha`
+# neste tipo de evento, que é sempre o tip ATUAL da `main`, e pode já ter
+# andado para a frente entre o fim do CI e o início deste workflow. Por
+# isso `github.sha` nunca aparece neste ficheiro: cada passo usa
+# `github.event.workflow_run.head_sha` explicitamente.
+#
+# Cinco jobs, em cadeia por `needs`, cada um com só a permissão que precisa:
+#   porteiro  → confirma que o CI acabou com sucesso, na main, para este
+#               SHA exato. Corre sempre (nunca com um `if:` a este nível —
+#               ver o comentário dentro do job).
+#   montar    → checkout do SHA aprovado, `npm ci && npm run build`. O
+#               artefacto que publica carrega SÓ `frontend/dist`. Sem
+#               token de escrita: corre código de terceiros.
+#   publicar  → monta o pacote com `deploy/montar.sh` a partir do SEU
+#               checkout, corre os dois guardas (S-12, S-10) sobre ele e
+#               empurra para a branch `deploy` (fast-forward). O único job
+#               com `contents: write`; não corre nenhum gestor de pacotes.
+#
+#               A montagem vive AQUI, e não no `montar`, por causa da
+#               proveniência dos bytes: no job `montar` o `npm ci` corre
+#               com escrita em toda a árvore de trabalho, portanto tudo o
+#               que de lá saísse já tinha passado por código de terceiros
+#               — `backend/app/`, `passenger_wsgi.py`, `requirements.txt`
+#               incluídos. Nada disso precisa do npm para nada. O único
+#               produto que TEM mesmo de vir do build é `frontend/dist`,
+#               e é só isso que viaja no artefacto; são ficheiros servidos
+#               a browsers, nunca executados no servidor.
+#   pedir     → pede à UAPI do cPanel para puxar `deploy` e correr
+#               `deploy/deploy.sh` no servidor. `environment: production`.
+#   verificar → espera que `/api/health` sirva o SHA novo, de um processo
+#               arrancado depois deste deploy ter começado. `environment:
+#               production`.
+#
+# `pedir` e `verificar` NUNCA usam o artefacto do job `montar` para ir
+# buscar `deploy/pedir-deploy.sh`/`deploy/esperar-versao.sh` (troca feita
+# na ronda de segurança da F1-04, achado crítico — ver também o comentário
+# dentro de cada um destes dois jobs, abaixo). Esse artefacto é montado
+# DEPOIS de `npm ci` correr no job `montar` — código de terceiros, com
+# escrita em TODA a árvore de trabalho, incluindo `deploy/`. Um
+# `postinstall` malicioso podia reescrever `pedir-deploy.sh` ali mesmo, e
+# `montar.sh` copiá-lo-ia para o pacote sem dar por isso; o artefacto
+# chegaria depois ao job `pedir`, que tem o token do cPanel no ambiente —
+# o artefacto seria, na prática, um canal de contrabando do `npm ci` para
+# o servidor.
+#
+# Em vez disso, cada um destes dois jobs faz o seu PRÓPRIO
+# `actions/checkout` (sparse, só de `deploy/`) do MESMO SHA que o
+# `porteiro` confirmou, com `persist-credentials: false`: é um clone novo,
+# feito pelo próprio Actions a partir do GitHub, que nunca passa pela
+# árvore de trabalho onde o `npm` correu — por isso os bytes de
+# `deploy/*.sh` lidos aqui são sempre os do repositório. Isto custa
+# `permissions: contents: read` em vez de `permissions: {}` — mais
+# permissão do que o mínimo absoluto, mas muito menos exposição do que
+# executar bytes que o `npm` tocou. NUNCA "otimizar" isto de volta para o
+# artefacto só porque `permissions: {}` parece mais seguro no papel: foi
+# exatamente esse raciocínio (permissões mínimas, sem olhar à
+# proveniência dos BYTES) que criou o achado crítico original.
+#
+# Concurrency com um grupo CONSTANTE (`deploy-producao`), nunca derivado do
+# ref ou do SHA: há um servidor só, nunca dois deploys ao mesmo tempo.
+# `cancel-in-progress: false` é a parte que à primeira vista parece
+# errada: um deploy a meio nunca é cancelado por um mais recente. Se B e C
+# chegarem enquanto A ainda corre, o GitHub põe B e C em fila (pela ordem
+# de chegada); quando A acaba, B arranca — mas como B e C visam o MESMO
+# grupo e `cancel-in-progress: false` só impede cancelar o que já está a
+# CORRER, B fica à espera atrás de A, nunca corre concorrentemente com A,
+# e C fica atrás de B. O efeito prático (confirmado pelo comportamento
+# documentado do GitHub para filas de `concurrency`: no máximo uma corrida
+# WAITING por grupo, cada nova substitui a anterior em fila) é que, quando
+# A termina, o que corre a seguir é C (o mais recente), não B — C
+# substituiu B na fila. Nunca se perde o SHA mais recente e nunca há dois
+# deploys a escrever no servidor ao mesmo tempo.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  porteiro:
+    name: porteiro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      inicio_deploy: ${{ steps.marcar_inicio.outputs.inicio_deploy }}
+    steps:
+      # Nunca um `if:` ao nível do job (nem sequer `if: github.event.
+      # workflow_run.conclusion == 'success'`): isso deixaria o workflow
+      # inteiro `skipped` sempre que o CI corresse vermelho — sem X, sem
+      # email, sem notificação nenhuma. É a mesma lição que o `resumo` do
+      # `ci.yml` já aprendeu (ver o comentário lá): `skipped` não é
+      # passagem, e um guarda que desaparece em vez de falhar não protege
+      # nada. Este job corre sempre e falha em voz alta, com um `exit 1`
+      # bem visível, sempre que algo não bate certo.
+      - name: CI terminou com sucesso, na main, e o SHA é o que vamos publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOME_WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSAO: ${{ github.event.workflow_run.conclusion }}
+          RAMO: ${{ github.event.workflow_run.head_branch }}
+          REPOSITORIO_CABECA: ${{ github.event.workflow_run.head_repository.full_name }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          if [ "${NOME_WORKFLOW}" != "CI" ]; then
+            echo "::error::workflow_run não é do workflow 'CI' (foi '${NOME_WORKFLOW}')."
+            exit 1
+          fi
+
+          if [ "${RAMO}" != "main" ]; then
+            echo "::error::workflow_run não terminou na branch 'main' (foi '${RAMO}')."
+            exit 1
+          fi
+
+          if [ "${REPOSITORIO_CABECA}" != "${GITHUB_REPOSITORY}" ]; then
+            echo "::error::workflow_run não é deste repositório (foi '${REPOSITORIO_CABECA}')."
+            exit 1
+          fi
+
+          if [ "${CONCLUSAO}" != "success" ]; then
+            echo "::error::O CI não terminou com sucesso (conclusão: '${CONCLUSAO}'). Sem deploy."
+            exit 1
+          fi
+
+          if ! [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_sha do workflow_run não parece um SHA de commit ('${SHA}')."
+            exit 1
+          fi
+
+          # Não confia só no payload do evento (podia, em teoria, estar
+          # desatualizado face ao estado atual da corrida): pergunta à API
+          # pela própria corrida do CI, pelo id, e confirma que o SHA e a
+          # conclusão batem certo com o que o evento disse. É esta
+          # confirmação independente que prova "o SHA que o CI verificou
+          # é o que se vai publicar".
+          resposta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+          sha_confirmado="$(printf '%s' "${resposta}" | jq -r '.head_sha')"
+          conclusao_confirmada="$(printf '%s' "${resposta}" | jq -r '.conclusion')"
+          estado_confirmado="$(printf '%s' "${resposta}" | jq -r '.status')"
+
+          if [ "${estado_confirmado}" != "completed" ]; then
+            echo "::error::A corrida do CI ainda não está 'completed' segundo a API (está '${estado_confirmado}')."
+            exit 1
+          fi
+
+          if [ "${conclusao_confirmada}" != "success" ]; then
+            echo "::error::A API confirma que o CI não teve sucesso (conclusão: '${conclusao_confirmada}')."
+            exit 1
+          fi
+
+          if [ "${sha_confirmado}" != "${SHA}" ]; then
+            echo "::error::O SHA devolvido pela API para esta corrida ('${sha_confirmado}') não bate com o SHA do evento ('${SHA}')."
+            exit 1
+          fi
+
+          echo "CI confirmado: sucesso, na main, SHA ${SHA}."
+
+      - name: Marcar o instante em que este deploy começou
+        id: marcar_inicio
+        run: echo "inicio_deploy=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"${GITHUB_OUTPUT}"
+
+  montar:
+    name: montar
+    needs: porteiro
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # `persist-credentials: false`: o passo seguinte corre `npm ci`,
+      # código de terceiros — um `postinstall` malicioso não pode ter o
+      # `GITHUB_TOKEN` ao alcance em `.git/config` (a mesma ameaça já
+      # identificada no `claude.yml`). Este job só tem `contents: read` de
+      # qualquer forma, mas a credencial nem chega a ficar escrita em disco.
+      - name: Checkout do SHA exato que o CI aprovou (nunca o tip da main)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Instalar o Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci (código de terceiros)
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm run build
+        working-directory: frontend
+        run: npm run build
+
+      # Este job NÃO monta o pacote: só constrói o frontend. Tudo o que
+      # o `npm ci` tocou fica contido neste artefacto, e o artefacto leva
+      # só `frontend/dist` — o resto do pacote é montado no job
+      # `publicar`, do checkout limpo dele. Ver o comentário no topo.
+      - name: Verificador S-10 sobre o build do frontend (.db, .sqlite, .env)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta frontend/dist
+
+      - name: Publicar o build do frontend como artefacto
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+          retention-days: 1
+          # `actions/upload-artifact` exclui ficheiros OCULTOS por omissão
+          # desde a v4.4.0, e um build pode produzi-los. O que o S-10
+          # auditou acima, em disco, tem de ser exatamente o que chega ao
+          # job `publicar` — senão audita-se uma coisa e publica-se outra.
+          include-hidden-files: true
+
+  publicar:
+    name: publicar
+    needs: montar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # O único job com `contents: write` (ver `test_job_publicar_e_o_unico_
+    # com_contents_write`, em backend/tests/test_workflows.py). Por isso é
+    # também o único que NUNCA pode correr código de terceiros: nada de
+    # `npm`/`npx`/`pip`/`uv`/`yarn`/`pnpm` aqui (ver `test_job_publicar_
+    # nao_corre_gestor_de_pacotes_nenhum`, no mesmo ficheiro) — é a mesma
+    # ameaça do `claude.yml`, um `postinstall` malicioso a ler o
+    # `GITHUB_TOKEN` de `.git/config`. Este job só corre `deploy/publicar-
+    # branch.sh`, que só usa `git`.
+    permissions:
+      contents: write
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # `fetch-depth: 0` (histórico completo): `publicar-branch.sh` recusa
+      # publicar um SHA antepassado do já publicado (anti-retrocesso),
+      # comparando com `git merge-base --is-ancestor` — isso só funciona
+      # se os objetos dos commits relevantes (o antigo e o novo) estiverem
+      # mesmo presentes localmente, nunca com um clone raso.
+      - name: Checkout do SHA exato que o CI aprovou, com histórico completo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # O artefacto do job `montar` traz SÓ `frontend/dist` — os
+      # estáticos compilados, o único produto que tem mesmo de vir de um
+      # job onde o `npm ci` correu. Entra aqui dentro do checkout limpo,
+      # e é a ÚNICA coisa do pacote que não vem do repositório.
+      # O artefacto extrai para `runner.temp`, NUNCA diretamente para
+      # dentro da árvore de trabalho — é esta a árvore que tem o
+      # `GITHUB_TOKEN` em `.git/config` e de onde sai o pacote. O zip é
+      # produzido num job onde o `npm ci` correu, e um `postinstall`
+      # consegue reescrever o JS da própria ação de upload (as ações são
+      # descarregadas antes dos passos correrem) para fabricar entradas
+      # `../../deploy/montar.sh`. O `download-artifact` v4 valida os
+      # caminhos e recusa-as (CVE-2024-42471, corrigido na v4.1.7), mas
+      # isso é um detalhe de implementação de terceiros. Extrair para
+      # `runner.temp` encurta muito o raio e tira o caso trivial; não
+      # elimina a dependência, porque `${RUNNER_TEMP}` e a árvore de
+      # trabalho são vizinhos debaixo de `/home/runner/work` e um `../`
+      # suficientemente longo ainda lá chegaria. Quem fecha isso de vez
+      # continua a ser a validação de caminhos da própria ação.
+      - name: Descarregar o build do frontend (o único produto do npm)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: frontend-dist
+          path: ${{ runner.temp }}/dist
+
+      - name: Pôr o build onde o montar.sh o lê
+        run: |
+          set -euo pipefail
+          # O `rm -rf` e o `cp -a` andam juntos: o `cp -a <origem> <destino>`
+          # com o destino JÁ existente copiaria para dentro dele e daria
+          # `frontend/dist/dist`. Quem arrumar uma destas linhas um dia
+          # tem de arrumar a outra.
+          rm -rf frontend/dist
+          mkdir -p frontend
+          cp -a "${RUNNER_TEMP}/dist" frontend/dist
+
+      # A montagem corre AQUI, nunca no job `montar`, e é esse o ponto:
+      # `montar.sh` lê `backend/app/`, `backend/passenger_wsgi.py`,
+      # `backend/requirements.txt` e `deploy/` do checkout deste job — um
+      # clone novo, feito pelo Actions a partir do GitHub, que nunca
+      # passou pela árvore de trabalho onde o `npm ci` correu. Um
+      # `postinstall` malicioso no job `montar` consegue reescrever
+      # qualquer um desses caminhos lá, mas nada do que escrever chega
+      # aqui: só `frontend/dist` viaja, e esses bytes são servidos a
+      # browsers, nunca importados pelo Passenger nem instalados pelo pip.
+      #
+      # NUNCA mover esta montagem de volta para o job `montar`, nem
+      # alargar o artefacto para lá de `frontend/dist`. A versão anterior
+      # deste ficheiro montava o pacote todo lá e repunha só `deploy/` e
+      # `.cpanel.yml` aqui — `api/app/`, `api/passenger_wsgi.py` e
+      # `api/requirements.txt` continuavam a ser bytes que o npm podia ter
+      # tocado, e o `--require-hashes` do `deploy.sh` não ajudava nada,
+      # porque validaria contra os hashes que o próprio atacante escreveu.
+      - name: deploy/montar.sh (monta o pacote a partir DESTE checkout)
+        run: deploy/montar.sh --sha "${SHA}" --saida "${{ runner.temp }}/pacote"
+
+      # Os dois guardas correm sobre o pacote montado, aqui, e não no job
+      # `montar`: têm de auditar exatamente os bytes que a seguir são
+      # publicados, nunca uma cópia anterior deles.
+      - name: Verificador S-12 sobre o pacote (.claude/, CLAUDE.md, docs/, tests/, e2e/)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s12 --pasta "${{ runner.temp }}/pacote"
+
+      - name: Verificador S-10 sobre o pacote (.db, .sqlite, .env)
+        run: .github/scripts/verificar-ficheiros-proibidos.sh --conjunto s10 --pasta "${{ runner.temp }}/pacote"
+
+      - name: deploy/publicar-branch.sh (fast-forward para a branch deploy)
+        run: |
+          deploy/publicar-branch.sh \
+            --pasta "${{ runner.temp }}/pacote" \
+            --sha "${{ github.event.workflow_run.head_sha }}" \
+            --branch deploy
+
+  pedir:
+    name: pedir
+    needs: publicar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Troca deliberada (achado crítico da ronda de segurança da F1-04): já
+    # não se descarrega o artefacto do job `montar` para ir buscar
+    # `deploy/pedir-deploy.sh` — esse artefacto é montado DEPOIS de `npm
+    # ci` correr (código de terceiros, com escrita em toda a árvore de
+    # trabalho desse job, incluindo `deploy/`); um `postinstall` malicioso
+    # podia reescrever este script ali, e chegaria aqui já comprometido,
+    # precisamente no job que tem o token do cPanel no ambiente. Em vez
+    # disso, um `actions/checkout` sparse (só `deploy/`), do MESMO SHA que
+    # o `porteiro` confirmou, com `persist-credentials: false`: um clone
+    # novo, feito pelo Actions a partir do GitHub, que nunca passa pela
+    # árvore de trabalho onde o `npm` correu. Isto custa `contents: read`
+    # em vez de `permissions: {}` — mais permissão do que o mínimo
+    # absoluto, mas muito menos exposição do que executar bytes que o npm
+    # tocou. NUNCA "otimizar" isto de volta para o artefacto (ou para
+    # `permissions: {}`) só porque parece mais seguro no papel.
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - name: Checkout de deploy/ (sparse), do SHA aprovado — nunca o artefacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            deploy
+          sparse-checkout-cone-mode: false
+
+      # A UAPI do cPanel responde sempre 200, mesmo quando falha — por
+      # isso quem decide sucesso/falha é o `status` do corpo JSON, lido
+      # dentro do próprio `pedir-deploy.sh` (nunca este passo). O token
+      # nunca aparece na linha de comandos (ficaria nos logs do Actions):
+      # entra só por variável de ambiente, lida pelo script.
+      - name: Pedir ao cPanel para puxar a branch deploy e correr deploy.sh
+        env:
+          TOMAZIA_CPANEL_BASE_URL: ${{ secrets.TOMAZIA_CPANEL_BASE_URL }}
+          TOMAZIA_CPANEL_USER: ${{ secrets.TOMAZIA_CPANEL_USER }}
+          TOMAZIA_CPANEL_TOKEN: ${{ secrets.TOMAZIA_CPANEL_TOKEN }}
+        run: |
+          deploy/pedir-deploy.sh
+
+  verificar:
+    name: verificar
+    needs: [pedir, porteiro]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Mesma troca deliberada do job `pedir` (ver o comentário lá, e o
+    # achado crítico da ronda de segurança da F1-04): checkout sparse de
+    # `deploy/`, do SHA aprovado, nunca o artefacto do job `montar` — os
+    # bytes de `deploy/esperar-versao.sh` aqui nunca passaram pela árvore
+    # de trabalho onde o `npm ci` correu. `contents: read`, nunca
+    # `permissions: {}`: NUNCA "otimizar" isto de volta para o artefacto.
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - name: Checkout de deploy/ (sparse), do SHA aprovado — nunca o artefacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          sparse-checkout: |
+            deploy
+          sparse-checkout-cone-mode: false
+
+      # Um guarda que só verificasse HTTP 200 seria decorativo (uma
+      # página de manutenção dá 200). `esperar-versao.sh` exige: a versão
+      # certa, DUAS leituras seguidas, e um `arrancado_em` posterior ao
+      # instante em que este deploy começou (marcado pelo job `porteiro`)
+      # — é o que prova "código novo a correr", não só "o VERSION mudou
+      # no disco".
+      - name: Esperar que /api/health sirva o SHA novo, de um processo novo
+        env:
+          TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
+        run: |
+          deploy/esperar-versao.sh \
+            "${TOMAZIA_API_BASE_URL}" \
+            "${{ github.event.workflow_run.head_sha }}" \
+            300 \
+            5 \
+            "${{ needs.porteiro.outputs.inicio_deploy }}"

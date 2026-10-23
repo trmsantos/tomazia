@@ -11,5 +11,5 @@
 - SQLite em modo WAL com `busy_timeout` de 5000 ms.
 - Erros em JSON: `{"erro": "codigo_curto", "mensagem": "Texto em PT-PT."}`.
 - Testes: pytest com o `TestClient`. Testes de segurança em `tests/seguranca/test_sNN_*.py`, um por critério S-NN.
-- `requirements.txt` gera-se com `uv export --no-dev --no-hashes --format requirements-txt -o requirements.txt`.
+- `requirements.txt` gera-se com `uv export --no-dev --format requirements-txt -o requirements.txt` — **com** hashes. O servidor instala com `pip install --require-hashes`, e é o único ponto da cadeia onde os artefactos vêm da rede sem mais nada a verificá-los. O passo de deriva do CI usa exatamente este comando: regenerar sem hashes deixa-o vermelho.
 - `python -m app.openapi` escreve o OpenAPI em `../frontend/openapi.json`.

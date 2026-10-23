@@ -18,6 +18,7 @@ dev = [
     "httpx",
     "ruff",
     "mypy",
+    "pyyaml>=6.0.3",
 ]
 
 [tool.uv]

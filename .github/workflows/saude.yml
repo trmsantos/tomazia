@@ -1,0 +1,178 @@
+# Verificação de saúde do Bar da Tomazia em produção, de hora a hora.
+#
+# Um guarda que só verificasse HTTP 200 seria decorativo: uma página de
+# manutenção (ou um proxy a devolver uma página de erro genérica) também dá
+# 200. Por isso este workflow confirma cinco coisas, todas ao mesmo tempo
+# (as quatro primeiras no passo do `/api/health`, a quinta no passo dos
+# cabeçalhos de `/`):
+#
+#   1. `GET /api/health` responde (sem erro de ligação/TLS/timeout).
+#   2. `estado == "ok"` no corpo JSON.
+#   3. `versao` não é `"dev"` — `"dev"` é o valor de omissão de
+#      `app/versao.py` quando o ficheiro `VERSION` não existe; em produção
+#      isso só acontece se o `VERSION` tiver desaparecido do servidor, o
+#      que é, por si só, um sinal real de avaria do deploy.
+#   4. `versao` é exatamente o SHA que decidimos publicar por último — lido
+#      do trailer `Sha-Origem: <sha>` que `deploy/publicar-branch.sh`
+#      escreve na mensagem do commit de topo da branch `deploy`, NUNCA do
+#      SHA desse commit em si (`git/ref/heads/deploy`): o commit de topo é
+#      criado por `commit-tree` no momento da publicação, e o seu próprio
+#      SHA nunca é igual ao `VERSION` publicado — comparar com ele faria
+#      esta verificação ficar vermelha para sempre, a partir do primeiro
+#      deploy a sério.
+#   5. Os cabeçalhos de segurança de `GET /` continuam lá (um `.htaccess`
+#      reescrito à mão, ou repost pelo cPanel ao mexer na app Python, pode
+#      silenciosamente perder a CSP ou o HSTS sem que ninguém veja).
+#
+# `cron: '0 * * * *'` (de hora a hora) mais `workflow_dispatch`, para o
+# Tomás poder correr isto à mão depois de uma alteração manual no cPanel
+# (ex.: depois de mexer no `.htaccess` ou na app Python pelo painel).
+#
+# A base do URL de produção nunca entra em texto no repositório: é um
+# domínio real, e "zero domínio real" é a mesma norma de `.cpanel.yml` e
+# de `deploy/htaccess.exemplo` (aqui aplicada via secret, em vez de
+# placeholder). Entra só como `secrets.TOMAZIA_API_BASE_URL`, o que faz
+# deste o único job do ficheiro a precisar de `environment: production`.
+name: Saude
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# Grupo constante: nunca duas verificações de saúde concorrentes (não há
+# razão para isso, e evita confundir qual delas escreveu que linha no
+# resumo). `cancel-in-progress: false` pela mesma razão do `deploy.yml`:
+# uma verificação a meio nunca é cancelada por uma mais recente — fica
+# em fila.
+concurrency:
+  group: saude-producao
+  cancel-in-progress: false
+
+jobs:
+  saude:
+    name: saude
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # `contents: read`: só para perguntar à API do GitHub qual é o tip
+    # atual da branch `deploy` (`gh api .../git/ref/heads/deploy`). Nenhum
+    # checkout, nenhuma escrita.
+    permissions:
+      contents: read
+    environment: production
+    steps:
+      - name: /api/health — estado, versão (nunca "dev") e versão == tip da branch deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          base_url="${TOMAZIA_API_BASE_URL%/}"
+
+          resposta="$(curl --fail --silent --show-error --max-time 15 "${base_url}/api/health")"
+
+          if ! printf '%s' "${resposta}" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::/api/health não devolveu um objeto JSON válido: ${resposta}"
+            exit 1
+          fi
+
+          estado="$(printf '%s' "${resposta}" | jq -r '.estado // empty')"
+          versao="$(printf '%s' "${resposta}" | jq -r '.versao // empty')"
+
+          if [ "${estado}" != "ok" ]; then
+            echo "::error::/api/health.estado não é 'ok' (foi '${estado}'). Uma página de manutenção também dá 200 — isto confirma que é mesmo a API a responder."
+            exit 1
+          fi
+
+          if [ -z "${versao}" ]; then
+            echo "::error::/api/health.versao está vazia ou ausente."
+            exit 1
+          fi
+
+          if [ "${versao}" = "dev" ]; then
+            echo "::error::/api/health.versao é 'dev' — o ficheiro VERSION desapareceu do servidor."
+            exit 1
+          fi
+
+          # O commit de topo de `deploy` é criado por `commit-tree` em
+          # `deploy/publicar-branch.sh`, e o SHA desse commit NUNCA é o
+          # SHA da `main` publicado — por isso lê-se o trailer
+          # 'Sha-Origem: <sha>' da MENSAGEM do commit, nunca
+          # `git/ref/heads/deploy` (que dá o SHA do commit em si).
+          mensagem_deploy="$(gh api "repos/${GITHUB_REPOSITORY}/commits/deploy" --jq '.commit.message')"
+
+          # Regra 10: com `pipefail`, um `grep` sem correspondência faz a
+          # pipeline sair com código diferente de zero; captura-se o
+          # estado à mão para a falta do trailer nunca abortar em
+          # silêncio, antes da mensagem clara abaixo.
+          set +e
+          sha_origem="$(
+            printf '%s\n' "${mensagem_deploy}" \
+              | grep -E '^Sha-Origem: [0-9a-f]{40}$' \
+              | tail -n1 \
+              | awk '{print $2}'
+          )"
+          set -e
+
+          if [ -z "${sha_origem}" ]; then
+            echo "::error::Não consegui ler o trailer 'Sha-Origem: <sha>' da mensagem do commit de topo da branch 'deploy' — deploy/publicar-branch.sh escreve-o em cada commit que cria; sem ele não há com que comparar /api/health.versao."
+            exit 1
+          fi
+
+          if [ "${versao}" != "${sha_origem}" ]; then
+            echo "::error::/api/health.versao ('${versao}') não bate com o 'Sha-Origem' do commit de topo da branch deploy ('${sha_origem}')."
+            exit 1
+          fi
+
+          echo "/api/health: estado=ok, versao=${versao} (== Sha-Origem do topo de deploy)."
+
+      - name: Cabeçalhos de segurança de / continuam lá
+        env:
+          TOMAZIA_API_BASE_URL: ${{ secrets.TOMAZIA_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          base_url="${TOMAZIA_API_BASE_URL%/}"
+
+          cabecalhos="$(curl --fail --silent --show-error --max-time 15 -D - -o /dev/null "${base_url}/")"
+
+          for nome in \
+            "Content-Security-Policy" \
+            "Strict-Transport-Security" \
+            "X-Content-Type-Options" \
+            "Referrer-Policy" \
+            "Permissions-Policy" \
+            "X-Frame-Options"
+          do
+            # Regra 10: "o cabeçalho não está lá" (grep sai 1) e "não
+            # consegui procurar" (grep sai 2: padrão inválido, erro de
+            # leitura) nunca podem dar o mesmo resultado — por isso o
+            # estado vem capturado à mão, nunca de um `if ! ... ; then`.
+            #
+            # Sem pipe, de propósito: com `pipefail`, o estado de
+            # `printf ... | grep -q ...` pode ser o do `printf` morto
+            # por SIGPIPE (141) quando o `grep -q` sai mais cedo — e aí
+            # nem o 1 nem o 2 do grep chegavam a ser vistos. O
+            # here-string deixa `$?` ser, sem ambiguidade, o do grep.
+            set +e
+            grep -q -i -- "^${nome}:" <<<"${cabecalhos}"
+            estado_grep=$?
+            set -e
+
+            case "${estado_grep}" in
+              0) ;;
+              1)
+                echo "::error::Falta o cabeçalho '${nome}' em '/'."
+                exit 1
+                ;;
+              *)
+                echo "::error::Não foi possível procurar o cabeçalho '${nome}' em '/': o grep saiu ${estado_grep}, que não é nem 0 (está lá) nem 1 (não está). Não se dá por bom o que não se chegou a verificar."
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "Cabeçalhos de segurança confirmados em /."
