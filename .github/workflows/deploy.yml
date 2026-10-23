@@ -276,8 +276,12 @@ jobs:
       # descarregadas antes dos passos correrem) para fabricar entradas
       # `../../deploy/montar.sh`. O `download-artifact` v4 valida os
       # caminhos e recusa-as (CVE-2024-42471, corrigido na v4.1.7), mas
-      # isso é um detalhe de implementação de terceiros: extrair para
-      # fora e copiar à mão custa uma linha e deixa de depender dele.
+      # isso é um detalhe de implementação de terceiros. Extrair para
+      # `runner.temp` encurta muito o raio e tira o caso trivial; não
+      # elimina a dependência, porque `${RUNNER_TEMP}` e a árvore de
+      # trabalho são vizinhos debaixo de `/home/runner/work` e um `../`
+      # suficientemente longo ainda lá chegaria. Quem fecha isso de vez
+      # continua a ser a validação de caminhos da própria ação.
       - name: Descarregar o build do frontend (o único produto do npm)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -287,6 +291,10 @@ jobs:
       - name: Pôr o build onde o montar.sh o lê
         run: |
           set -euo pipefail
+          # O `rm -rf` e o `cp -a` andam juntos: o `cp -a <origem> <destino>`
+          # com o destino JÁ existente copiaria para dentro dele e daria
+          # `frontend/dist/dist`. Quem arrumar uma destas linhas um dia
+          # tem de arrumar a outra.
           rm -rf frontend/dist
           mkdir -p frontend
           cp -a "${RUNNER_TEMP}/dist" frontend/dist

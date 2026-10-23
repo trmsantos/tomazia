@@ -1,10 +1,17 @@
 """O bit de execução dos scripts de `deploy/` (F1-04, infra).
 
-`deploy.yml` invoca-os diretamente — `deploy/montar.sh --sha ... --saida
-...`, `deploy/publicar-branch.sh ...` — e o `deploy.sh` é invocado pelo
-cPanel a partir de `.cpanel.yml`, também pelo caminho. Nenhum deles passa
-por `bash <script>`, por isso o modo em disco é o que decide se o passo
-corre ou dá "Permission denied".
+`deploy.yml` invoca quatro deles diretamente, sem `bash` à frente —
+`deploy/montar.sh --sha ... --saida ...`, `deploy/publicar-branch.sh
+...`, `deploy/pedir-deploy.sh`, `deploy/esperar-versao.sh ...` — por isso
+nesses o modo em disco é o que decide se o passo corre ou dá "Permission
+denied".
+
+O `deploy.sh` é a exceção, e vale a pena dizê-lo em vez de o arrumar na
+mesma frase: o `.cpanel.yml` corre `/bin/bash deploy/deploy.sh`, com o
+interpretador explícito, portanto para ESSE o bit é indiferente no
+caminho que conta. Fica na varredura à mesma, por duas razões honestas —
+consistência entre os cinco, e quem o corra à mão a partir da shell do
+servidor, que é como se depura um deploy falhado.
 
 O `deploy.yml` já teve um `chmod +x` antes desses passos. Deixou de o ter
 quando o modo passou a estar em git (os cinco estão a `100755`), que é o
@@ -68,11 +75,13 @@ def test_a_pasta_deploy_tem_os_scripts_conhecidos() -> None:
     "script", _scripts(), ids=lambda caminho: str(Path(caminho).name)
 )
 def test_script_de_deploy_tem_o_bit_de_execucao(script: Path) -> None:
-    """`deploy.yml` e o cPanel invocam-nos pelo caminho: sem o bit, o passo morre com "Permission denied"."""
+    """`deploy.yml` invoca-os pelo caminho: sem o bit, o passo morre com "Permission denied"."""
     assert os.access(script, os.X_OK), (
         f"{script.relative_to(RAIZ_REPO)} não tem o bit de execução (modo "
         f"{script.stat().st_mode & 0o777:o}). O `deploy.yml` invoca estes "
-        "scripts pelo caminho, sem `bash` à frente, e o cPanel faz o mesmo ao "
-        "`deploy.sh` — o modo tem de estar em git (`git update-index "
-        "--chmod=+x`), nunca num `chmod +x` do workflow."
+        "scripts pelo caminho, sem `bash` à frente (a exceção é o "
+        "`deploy.sh`, que o `.cpanel.yml` corre com `/bin/bash` explícito, "
+        "mas que se corre à mão no servidor a depurar um deploy falhado) — "
+        "o modo tem de estar em git (`git update-index --chmod=+x`), nunca "
+        "num `chmod +x` do workflow."
     )

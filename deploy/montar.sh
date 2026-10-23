@@ -243,6 +243,7 @@ fi
 
 for obrigatorio in \
   "${raiz_backend}/app" \
+  "${raiz_backend}/app/main.py" \
   "${raiz_backend}/migrations" \
   "${raiz_backend}/alembic.ini" \
   "${raiz_backend}/passenger_wsgi.py" \
@@ -419,6 +420,12 @@ if [ "$estado_find_htaccess" -ne 0 ]; then
   exit 1
 fi
 
+if [ -s "$tmp_htaccess" ]; then
+  echo "Erro: o pacote montado em '${saida}' contém pelo menos um ficheiro '.htaccess' — isto nunca pode acontecer (o .htaccess real do servidor é mantido à mão, fora deste repositório; ver deploy/htaccess.exemplo):" >&2
+  cat "$tmp_htaccess" >&2
+  exit 1
+fi
+
 # --- nenhuma ligação simbólica sai no pacote ---
 #
 # O `deploy.sh` sincroniza o pacote com `rsync -a`, que preserva links, e
@@ -445,12 +452,6 @@ fi
 if [ -s "$tmp_links" ]; then
   echo "Erro: o pacote montado em '${saida}' contém pelo menos uma ligação simbólica — isto nunca pode acontecer (seria sincronizada para o site e servida com o conteúdo do destino):" >&2
   cat "$tmp_links" >&2
-  exit 1
-fi
-
-if [ -s "$tmp_htaccess" ]; then
-  echo "Erro: o pacote montado em '${saida}' contém pelo menos um ficheiro '.htaccess' — isto nunca pode acontecer (o .htaccess real do servidor é mantido à mão, fora deste repositório; ver deploy/htaccess.exemplo):" >&2
-  cat "$tmp_htaccess" >&2
   exit 1
 fi
 

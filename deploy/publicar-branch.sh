@@ -306,14 +306,41 @@ if [ "$estado_find" -ne 0 ]; then
 fi
 sed 's|^\./||' "${lista_pacote}.bruta" | LC_ALL=C sort >"$lista_pacote"
 
+# O lado da árvore leva a mesma verificação de estado do lado do `find`:
+# com `pipefail` uma falha aqui abortava o script, mas em silêncio — e
+# "não consegui ler a árvore" tem de se distinguir de "a árvore está
+# vazia", que é a mesma regra 10 outra vez.
+estado_ls_tree=0
 GIT_INDEX_FILE="$indice_tmp" git --git-dir="$git_dir" \
-  ls-tree -r -z --name-only "$arvore" | tr '\0' '\n' | LC_ALL=C sort >"$lista_arvore"
-
-if ! diff_caminhos="$(diff "$lista_pacote" "$lista_arvore")"; then
-  echo "publicar-branch.sh: a árvore a publicar não é a árvore que foi auditada — recuso publicar. '<' é o que está no pacote e falta na árvore; '>' é o contrário:" >&2
-  echo "$diff_caminhos" >&2
+  ls-tree -r -z --name-only "$arvore" >"${lista_arvore}.bruta" 2>"${lista_arvore}.err" \
+  || estado_ls_tree=1
+if [ "$estado_ls_tree" -ne 0 ]; then
+  echo "publicar-branch.sh: não consegui ler a árvore que ia publicar (git ls-tree falhou). Ver abaixo:" >&2
+  cat "${lista_arvore}.err" >&2
   exit 1
 fi
+tr '\0' '\n' <"${lista_arvore}.bruta" | LC_ALL=C sort >"$lista_arvore"
+
+# Regra 10, como no `grep` do `saude.yml`: o `diff` sai 0 (iguais), 1
+# (diferem) ou 2 (não conseguiu comparar). Os três ramos estão separados
+# mesmo com dois deles a recusar — quem ler a mensagem às duas da manhã
+# precisa de saber se o pacote está mal ou se a ferramenta é que falhou.
+set +e
+diff_caminhos="$(diff "$lista_pacote" "$lista_arvore")"
+estado_diff=$?
+set -e
+case "$estado_diff" in
+  0) ;;
+  1)
+    echo "publicar-branch.sh: a árvore a publicar não é a árvore que foi auditada — recuso publicar. '<' é o que está no pacote e falta na árvore; '>' é o contrário:" >&2
+    echo "$diff_caminhos" >&2
+    exit 1
+    ;;
+  *)
+    echo "publicar-branch.sh: não foi possível comparar o pacote com a árvore a publicar (o diff saiu ${estado_diff}). Não se dá por boa uma árvore que não se chegou a verificar." >&2
+    exit 1
+    ;;
+esac
 
 mensagem_commit="$(printf 'deploy: publica %s\n\nSha-Origem: %s\n' "$sha" "$sha")"
 
