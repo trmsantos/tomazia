@@ -20,9 +20,9 @@ anyio==4.15.1 \
     --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101 \
     --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
     # via starlette
-fastapi==0.153.0 \
-    --hash=sha256:5dbf5dcf6cf86388326c147566077c56a14c55b0f1bef370195da98e724a503f \
-    --hash=sha256:77fbc9f41d2e5cd81f0c0a20482e627f8ebbb9b9005ac7586e415ee69dfea4ec
+fastapi==0.161.1 \
+    --hash=sha256:4076b88434452e20289379068e976c4a04c65ffc8e6be31510106e150a422f0f \
+    --hash=sha256:a1363080cf9aeedecd99f4e1a23669d7e77542227f6536f4d7bbd59f07ecaa94
     # via tomazia-backend
 idna==3.20 \
     --hash=sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44 \
