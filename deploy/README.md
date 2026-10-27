@@ -96,33 +96,85 @@ do Passenger com `PassengerFriendlyErrorPages Off`.
    agora o seu próprio checkout — se a organização tiver essa permissão
    desligada globalmente, esses dois jobs falham no checkout.
 
-### No cPanel (F1-05, manual, descrito em `docs/TAREFAS.md`)
+### No cPanel e no servidor (F1-05, manual)
 
-1. Confirmar a versão do Python (3.11+) disponível no Setup Python App.
-2. Criar o subdomínio `novo.<domínio>` durante a construção.
-3. Setup Python App, apontado para `~/tomazia_api/` — é aqui que o
-   cPanel cria `~/virtualenv/tomazia_api/<versão>/`.
-4. Git Version Control, a clonar este repositório na branch `deploy`,
-   em `~/repositories/tomazia/`.
-5. Chave SSH do deploy (deploy key) com acesso de leitura ao
-   repositório, para o Git Version Control do cPanel conseguir clonar.
-6. Gerar o API Token do cPanel (UAPI) e guardá-lo só no secret
-   `TOMAZIA_CPANEL_TOKEN`.
-7. `~/.tomazia-deploy.conf`, com uma única linha `WEB=<caminho
-   absoluto>` — sem aspas. Aponta para a pasta do subdomínio
-   `novo.<domínio>` durante a construção; muda para `public_html` só no
-   corte final (F5-02). É o ficheiro de configuração do `deploy.sh` em
-   si (nunca o `.env` da app), e fica fora do pacote sincronizado — por
-   isso sobrevive a cada deploy automático.
-8. `~/tomazia_api/.env` à mão, a partir de `backend/.env.example`
-   (nunca o repositório escreve isto).
-9. `.htaccess` do servidor à mão, a partir de `deploy/htaccess.exemplo`
-   — substituir os placeholders por valores reais.
-10. **Pedido ao suporte da dominios.pt** (texto já escrito em
-    `deploy/htaccess.exemplo`, secção `media/`): aplicar `AllowOverride
-    None` no contexto de servidor para a pasta `media/` — não é uma
-    diretiva que se possa pôr num `.htaccess`, só o suporte do
-    alojamento consegue aplicar isto num cPanel partilhado.
+Por esta ordem: cada passo depende do anterior. Os pontos de verificação
+existem para não se descobrir no fim que alguma coisa ficou para trás.
+
+**1. Subdomínio.** Criar `novo.<domínio>` enquanto o site PHP antigo
+continua no `public_html`. **Anotar o caminho da pasta que o cPanel cria**
+(algo como `/home/<utilizador>/novo.dominio.pt`) — é o valor do passo 5.
+
+**2. Setup Python App.** Python **3.11 ou superior**; *application root*
+`tomazia_api`; *application URL* o subdomínio do passo 1; *startup file*
+`passenger_wsgi.py`. Cria `~/tomazia_api/` e o virtualenv em
+`~/virtualenv/tomazia_api/<versão>/`.
+
+**3. Deploy key.** Gerar o par de chaves no cPanel e pôr a **pública** no
+GitHub, em *Settings → Deploy keys* do repositório, **só com leitura**. É
+o que deixa o passo 4 clonar um repositório privado.
+
+**4. Git Version Control.** Clonar este repositório para
+`~/repositories/tomazia/`, na branch **`deploy`** — nunca na `main`. Essa
+branch já existe e já traz o pacote montado pelo CI.
+
+> **Verificação.** `ls -a ~/repositories/tomazia/` tem de mostrar `api/`,
+> `frontend/`, `deploy/` e `.cpanel.yml`. Se faltar o `.cpanel.yml`, o
+> cPanel não corre tarefa nenhuma — e a causa mais provável é o
+> `include-hidden-files` do `upload-artifact` ter deixado de funcionar
+> numa subida de versão da ação.
+
+**5. `~/.tomazia-deploy.conf`**, uma linha, sem aspas:
+
+```
+WEB=/home/<utilizador>/novo.dominio.pt
+```
+
+O caminho do passo 1. No corte final (F5-02) muda para `public_html`. É a
+configuração do `deploy.sh`, nunca a da app, e fica **fora** da pasta
+sincronizada — por isso sobrevive a cada deploy.
+
+**6. Ficheiro de ambiente da app**, em `~/tomazia_api/`, copiado de
+`backend/.env.example` e preenchido à mão. O repositório nunca o escreve.
+O segredo de sessão gera-se no servidor:
+
+```
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+E a pasta de dados tem de ser criada à mão — o SQLite não cria a pasta do
+ficheiro.
+
+A app **recusa arrancar** em produção com o segredo por omissão, com um
+valor com menos de 32 caracteres, ou com o placeholder do exemplo. É um
+guarda da F1-01, não um erro de configuração.
+
+**7. `.htaccess`** do subdomínio, à mão, a partir de
+`deploy/htaccess.exemplo`, com os `<...>` substituídos. O deploy nunca lhe
+toca.
+
+**8. API Token do cPanel.** *Security → Manage API Tokens*. **Copiar no
+momento** — não volta a aparecer. Vai só para o secret
+`TOMAZIA_CPANEL_TOKEN`, nunca para o repositório.
+
+**9. Pedido ao suporte da dominios.pt.** Aplicar `AllowOverride None` ao
+contexto de servidor da pasta `media/`. **Não é uma diretiva que se possa
+pôr num `.htaccess`** — num cPanel partilhado só o suporte do alojamento a
+consegue aplicar. O texto do pedido está em `deploy/htaccess.exemplo`,
+secção `media/`. Sem isto, quem consiga escrever um `.htaccess` nessa
+pasta desfaz as proteções todas dela.
+
+> **Verificação final.** Fazer um merge qualquer na `main` e seguir o
+> `deploy.yml`: `porteiro` → `montar` → `publicar` → `pedir` →
+> `verificar`. Os três primeiros já passam sem servidor nenhum; o
+> **`pedir`** é o primeiro que fala com o cPanel, e é aí que se vê se os
+> secrets estão certos. No fim, `https://novo.<domínio>/api/health`
+> devolve `estado`, `versao` (igual ao SHA do commit) e `arrancado_em`. A
+> partir daqui o `saude.yml` fica verde sozinho, de hora a hora.
+
+**Enquanto a F1-05 não estiver feita**, o `deploy.yml` falha no `pedir` e o
+`saude.yml` falha no primeiro `curl`, os dois por falta de secrets e com a
+mensagem a dizê-lo. É o comportamento esperado, não uma avaria.
 
 ## Como se testou (sem nunca contactar o cPanel real)
 
