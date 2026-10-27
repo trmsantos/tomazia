@@ -106,6 +106,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-01.
 - **Faz:** `POST /novidades` com consentimento obrigatório e versão dos termos; `POST /novidades/cancelar` com token.
 - **Feito quando:** S-08; sem consentimento devolve 422; cancelar apaga o registo.
+- **Herança da F2-01, para não se descobrir a meio:** o `clientes.email` é único mas **sensível a maiúsculas** — `Ana@exemplo.pt` e `ana@exemplo.pt` entram como duas linhas, e aí o cancelamento de uma delas não cala a outra. Fica por decidir aqui, que é onde há contexto: normalizar à entrada, acrescentar um índice único sobre `lower(email)` (aditivo, não cai na regra 7), ou as duas coisas. O `token_cancelar` já tem `CHECK (length >= 32)` desde a F2-01; gerar um mais curto rebenta na escrita, não em silêncio. **E se o índice levar `COLLATE NOCASE`:** a comparação de esquemas de `tests/apoio_esquema.py` não compara collation — é preciso trocar `index_info` por `index_xinfo` nessa mesma tarefa, senão a rede fica a prometer o que não faz.
 
 ### F2-08 Importação da BD antiga
 
@@ -113,6 +114,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-01.
 - **Faz:** `scripts/importar_bd_antiga.py` e uma BD de teste falsa gerada por script a partir de `docs/legado/esquema-bd-antiga.sql` (nunca a real).
 - **Feito quando:** a importação é idempotente; categorias "Bebidas" e "bebidas" juntam-se; preços em cêntimos certos; texto sem entidades HTML; o Tomás confirma localmente, numa cópia da BD real fora do repositório, 140 produtos e 11 categorias.
+- **Herança da F2-01, para não se descobrir a meio:** `eventos.imagem` e `fotos.ficheiro` são **nomes de ficheiro**, nunca caminhos — a BD recusa `/`, `\` e `..` por `CHECK`. O esquema antigo guarda caminhos (`eventos.imagem_url`, `fotos.caminho`, valores do género `img/uploads/x.jpg`), por isso o importador tem de os reduzir ao nome do ficheiro. Falha alto e linha a linha se não o fizer, com o nome da restrição na mensagem — mas é trabalho a prever, não a descobrir. E as datas entram já em UTC: um `INSERT` em SQL cru com hora local é **rotulado** UTC sem ser convertido (ver `DataHoraUTC`).
 
 ### F2-09 Contrato da API no frontend
 

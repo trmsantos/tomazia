@@ -383,16 +383,41 @@ def test_o_guarda_do_foreign_keys_dispara_quando_o_pragma_nao_pega(
     )
 
 
-def test_os_pragmas_passam_na_mesma_ligacao_fora_da_transacao(tmp_path: Path) -> None:
-    """O guarda de cima testado contra o seu próprio sucesso falso.
+def test_os_pragmas_passam_na_mesma_ligacao_fora_da_transacao(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Os dois guardas de cima testados contra o seu próprio sucesso falso.
 
     Um `_aplicar_pragmas_sqlite` que rebentasse sempre — porque leu o
-    PRAGMA errado, porque comparou texto com número — deixava o teste
-    anterior verde e tornava impossível abrir a base de dados. Aqui a
-    mesma função, sobre a mesma ligação e o mesmo ficheiro, sem transação
-    aberta, tem de passar e deixar `foreign_keys` a 1.
+    PRAGMA errado, porque comparou texto com número — deixava os dois
+    testes de cima verdes e tornava impossível abrir a base de dados.
+    Aqui, a mesma função, sobre o mesmo tipo de ficheiro e sem transação
+    aberta, tem de passar.
+
+    Afirma os **três** valores, não só o `foreign_keys`: a função aplica os
+    três, e uma versão que fizesse o terceiro bem e desistisse a meio de um
+    dos outros dois passava num controlo que só olhasse para o último. É
+    também o único sítio onde se mede que os três sobrevivem uns aos outros
+    na mesma ligação, pela ordem em que `app/db.py` os emite.
+
+    O `busy_timeout` vai por um valor inventado, e isso não é detalhe: com
+    o 5000 de omissão, a asserção passava com a aplicação do PRAGMA
+    apagada, porque é o que o `pysqlite` já põe sozinho. É a mesma
+    coincidência que
+    `test_busy_timeout_vem_do_nosso_codigo_e_nao_da_omissao_do_driver`
+    existe para desfazer.
+
+    O que este teste **não** prova, dito aqui para ninguém contar com ele:
+    o `journal_mode == "wal"` é consistência, não prova. O ficheiro já vem
+    em WAL de `_preparar_ficheiro_ja_em_wal` (tem de vir, senão era o
+    guarda do WAL a disparar em vez do que estes testes querem exercitar),
+    por isso a leitura dá `wal` mesmo que ninguém emita o PRAGMA. Quem
+    prova o WAL é `test_ligacao_nova_tem_wal_fk_e_busy_timeout`, sobre um
+    ficheiro acabado de criar, e `test_wal_que_nao_se_aplica_rebenta...`.
     """
     import app.db
+
+    monkeypatch.setattr(app.db, "BUSY_TIMEOUT_MS", BUSY_TIMEOUT_INVENTADO)
 
     caminho = tmp_path / "guarda-fk-ok.db"
     _preparar_ficheiro_ja_em_wal(caminho)
@@ -400,11 +425,18 @@ def test_os_pragmas_passam_na_mesma_ligacao_fora_da_transacao(tmp_path: Path) ->
     ligacao = sqlite3.connect(caminho, isolation_level=None)
     try:
         app.db._aplicar_pragmas_sqlite(ligacao, None)
-        ligadas = ligacao.execute("PRAGMA foreign_keys").fetchone()[0]
+        lidos = {
+            nome: ligacao.execute(f"PRAGMA {nome}").fetchone()[0]
+            for nome in NOMES_DOS_PRAGMAS
+        }
     finally:
         ligacao.close()
 
-    assert ligadas == 1
+    assert lidos == {
+        "journal_mode": "wal",
+        "foreign_keys": 1,
+        "busy_timeout": BUSY_TIMEOUT_INVENTADO,
+    }
 
 
 def test_o_guarda_do_busy_timeout_dispara_quando_o_valor_e_recusado(

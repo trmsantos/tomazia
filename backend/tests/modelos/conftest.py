@@ -59,16 +59,38 @@ ORIGENS_DO_ESQUEMA = ("modelos", "migracao")
 
 
 @pytest.fixture(scope="session")
-def _bd_construida_pelo_alembic(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def _bd_construida_pelo_alembic(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[Path]:
     """Uma base de dados em head, construída uma vez por sessão de testes.
 
     Correr `alembic upgrade head` num subprocesso por cada teste custava
     cerca de meio segundo vezes o número de testes desta pasta. Construir
     uma vez e copiar o ficheiro dá o mesmo esquema por uma fração do tempo,
     e a cópia é por teste — nenhum teste vê dados de outro.
+
+    **A pasta fica só de leitura enquanto a sessão corre.** Este caminho é
+    devolvido a todos os testes da sessão: um teste futuro que lhe chame
+    `criar_engine` — que força o WAL — contaminava todas as cópias
+    seguintes. O `0444` que `construir_bd_com_alembic` põe no ficheiro
+    **não chega** para isso, e isso foi medido: com a pasta escrevível, o
+    `criar_engine` abriu a base de dados sem uma queixa e deixou lá um
+    `-wal` e um `-shm`, porque criar sidecars depende das permissões da
+    **pasta**, não das do ficheiro. Com a pasta a `0555`, a mesma abertura
+    dá `attempt to write a readonly database`, em voz alta, e não fica
+    sidecar nenhum (medido).
+
+    Não parte nada do que precisamos: o `shutil.copyfile` só **lê** a
+    fonte. E as permissões são repostas no fim, para a limpeza do
+    `tmp_path` do pytest poder apagar a pasta.
     """
-    destino = tmp_path_factory.mktemp("esquema-da-migracao") / "modelo.db"
-    return apoio_esquema.construir_bd_com_alembic(destino)
+    pasta = tmp_path_factory.mktemp("esquema-da-migracao")
+    modelo = apoio_esquema.construir_bd_com_alembic(pasta / "modelo.db")
+    pasta.chmod(0o555)
+    try:
+        yield modelo
+    finally:
+        pasta.chmod(0o755)
 
 
 @pytest.fixture(params=ORIGENS_DO_ESQUEMA)
@@ -102,10 +124,17 @@ def motor(request: pytest.FixtureRequest, origem_do_esquema: str) -> Iterator[En
         # metade `[migracao]`, em vez de apagar a bateria inteira com
         # erros de fixture que não dizem qual é o problema.
         modelo = request.getfixturevalue("_bd_construida_pelo_alembic")
+        destino = _caminho_da_base_de_dados()
+        # O `copyfile` substitui só o ficheiro principal: um `-wal` ou um
+        # `-shm` que já lá esteja sobrevive-lhe, e o SQLite passa a ler um
+        # estado que não é o do ficheiro acabado de escrever. Hoje o
+        # destino está sempre limpo (o `tmp_path` é novo por teste); esta
+        # é a sonda que o diz em voz alta quando deixar de estar.
+        apoio_esquema.exigir_destino_sem_vestigios(destino)
         # Antes de `obter_engine()`: o motor é preguiçoso e ainda não abriu
         # o ficheiro, por isso a cópia não passa por baixo de uma ligação
         # aberta.
-        shutil.copyfile(modelo, _caminho_da_base_de_dados())
+        shutil.copyfile(modelo, destino)
 
     motor_da_sessao = obter_engine()
 

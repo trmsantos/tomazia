@@ -39,6 +39,52 @@ RAIZ_BACKEND = Path(__file__).resolve().parent.parent
 #: Tabelas que não são nossas e não entram em comparação nenhuma.
 TABELAS_INTERNAS = frozenset({"alembic_version"})
 
+#: Os ficheiros que o SQLite põe ao lado da base de dados. `-wal` e `-shm`
+#: em modo WAL, `-journal` no modo `delete`. Importam por duas razões: um
+#: `-wal` por consolidar guarda transações que o ficheiro principal ainda
+#: não tem, e um `-shm`/`-wal` deixado por **outra** base de dados em cima
+#: do mesmo caminho faz o SQLite ler um estado que não é o do ficheiro que
+#: lá está.
+SUFIXOS_SIDECAR = ("-wal", "-shm", "-journal")
+
+
+def sidecars_de(base_dados: Path) -> list[Path]:
+    """Os caminhos dos sidecars de `base_dados` que existem neste momento."""
+    return [
+        caminho
+        for caminho in (
+            base_dados.with_name(base_dados.name + sufixo) for sufixo in SUFIXOS_SIDECAR
+        )
+        if caminho.exists()
+    ]
+
+
+def exigir_destino_sem_vestigios(destino: Path) -> None:
+    """Rebenta se `destino` ou algum sidecar dele já existir.
+
+    Chamado antes de copiar a base de dados-modelo para o caminho do teste.
+    O `shutil.copyfile` substitui **só** o ficheiro principal: um `-wal` ou
+    um `-shm` deixado lá por outra base de dados sobrevive à cópia, e o
+    SQLite passa a ler um estado que não é o do ficheiro que acabámos de
+    escrever — dados de um teste a aparecer no seguinte, sem nada no
+    caminho a dizê-lo.
+
+    Hoje nenhum caminho do projeto chega aqui com o destino ocupado (o
+    `tmp_path` é novo por teste). Isto é a sonda que o diz em voz alta
+    quando deixar de ser verdade: uma fixture futura que abra a base de
+    dados **antes** da `motor`, por exemplo.
+    """
+    vestigios = ([destino] if destino.exists() else []) + sidecars_de(destino)
+    if vestigios:
+        raise RuntimeError(
+            "o destino da cópia da base de dados-modelo já está ocupado: "
+            f"{[str(caminho) for caminho in vestigios]}. O `copyfile` só "
+            "substitui o ficheiro principal; um `-wal` ou `-shm` de outra "
+            "base de dados sobrevive-lhe e passa estado de um teste para o "
+            "seguinte. Quem abriu esta base de dados antes da fixture "
+            "`motor`?"
+        )
+
 
 def ambiente_do_alembic(base_dados: Path) -> dict[str, str]:
     """Ambiente mínimo para o subprocesso, isolado do `backend/.env` real.
@@ -107,17 +153,31 @@ def construir_bd_com_alembic(destino: Path) -> Path:
             )
         )
 
-    # Um `-wal` por consolidar quer dizer que há transações só no diário:
+    # Um sidecar por consolidar quer dizer que há transações só no diário:
     # copiar o ficheiro principal sozinho perderia parte do esquema, em
     # silêncio. O subprocesso já fechou a ligação (saiu), e nessa altura o
     # SQLite consolida e apaga o `-wal` — mas isso é comportamento dele,
     # não garantia nossa, por isso verifica-se.
-    diario = destino.with_name(destino.name + "-wal")
-    if diario.exists() and diario.stat().st_size > 0:
+    sobras = [caminho for caminho in sidecars_de(destino) if caminho.stat().st_size > 0]
+    if sobras:
         raise RuntimeError(
-            f"ficou um diário WAL por consolidar em {diario}: copiar "
-            f"{destino.name} sozinho perderia parte do esquema"
+            f"ficaram diários por consolidar em {[str(c) for c in sobras]}: "
+            f"copiar {destino.name} sozinho perderia parte do esquema"
         )
+
+    # Só leitura, a partir daqui. Esta base de dados existe para ser
+    # **copiada**, nunca aberta: a fixture `_bd_construida_pelo_alembic`
+    # devolve este caminho a todos os testes da sessão, e qualquer escrita
+    # nele — ou qualquer `criar_engine`, que força o WAL e deixa sidecars —
+    # contaminaria todas as cópias seguintes. Com 0444, essa escrita passa
+    # a ser um `attempt to write a readonly database` em voz alta (medido)
+    # em vez de contaminação silenciosa.
+    #
+    # Não parte a cópia: o `shutil.copyfile` só **lê** a fonte, e cria o
+    # destino com permissões novas (0644, medido). E não parte a limpeza
+    # do `tmp_path`: apagar um ficheiro depende das permissões da pasta,
+    # não das do ficheiro.
+    destino.chmod(0o444)
     return destino
 
 
@@ -271,24 +331,53 @@ def chaves_estrangeiras(base_dados: Path) -> set[tuple[str, str, str, str, str]]
         ligacao.close()
 
 
-def indices(base_dados: Path) -> set[tuple[str, str]]:
-    """`(nome, tabela)` dos índices criados por nós.
+#: Um índice comparável: `(nome, tabela, único, parcial, colunas por ordem)`.
+DescricaoDeIndice = tuple[str, str, int, int, tuple[str, ...]]
+
+
+def indices(base_dados: Path) -> set[DescricaoDeIndice]:
+    """Os índices criados por nós, com as colunas, a unicidade e o `WHERE`.
+
+    Comparar só `(nome, tabela)` não chegava, e isso foi medido: trocada a
+    coluna de `ix_produtos_categoria_id` e tornado `UNIQUE`, mantendo o
+    nome, a comparação de esquemas passava. Um índice é o que indexa, não
+    como se chama — e a partir da F2-03 e da F2-05 aparecem índices em
+    `eventos.inicio` e `fotos.estado`, e qualquer `UniqueConstraint` que
+    passe a `UNIQUE INDEX` sai da comparação do DDL e entra aqui.
 
     Os `sqlite_autoindex_*` ficam de fora: o SQLite cria-os sozinho para
     cada `UNIQUE` e numera-os pela ordem em que aparecem no DDL, por isso o
     nome muda com a ordem das restrições sem nada ter mudado. O que eles
     representam já está comparado em `restricoes_nomeadas`.
+
+    **O que isto ainda não compara: a collation.** Nem a do índice
+    (`CREATE INDEX ... COLLATE NOCASE`) nem a da coluna
+    (`CREATE TABLE ... COLLATE NOCASE`) — o `PRAGMA index_info` não a dá e
+    o `PRAGMA table_info` também não. Hoje não há nenhuma no esquema, por
+    isso não é um buraco aberto; passa a ser um quando a F2-07 acrescentar
+    o índice `COLLATE NOCASE` do email dos clientes, e nessa altura a
+    correção é trocar `index_info` por `index_xinfo`, que traz a collation
+    numa coluna `coll`.
+
+    Uma coluna a `None` quer dizer um índice sobre uma expressão, não sobre
+    uma coluna; fica como `"<expressão>"` para a comparação não a confundir
+    com uma coluna chamada "None".
     """
     ligacao = _ligar(base_dados)
     try:
-        return {
-            (nome, tabela)
-            for nome, tabela in ligacao.execute(
-                "SELECT name, tbl_name FROM sqlite_master WHERE type = 'index'"
-            )
-            if not nome.startswith("sqlite_autoindex_")
-            and tabela not in TABELAS_INTERNAS
-        }
+        resultado: set[DescricaoDeIndice] = set()
+        for tabela in sorted(tabelas_de_negocio(base_dados)):
+            for _, nome, unico, _origem, parcial in ligacao.execute(
+                f"PRAGMA index_list({tabela})"
+            ):
+                if nome.startswith("sqlite_autoindex_"):
+                    continue
+                colunas_do_indice = tuple(
+                    coluna if coluna is not None else "<expressão>"
+                    for _, _, coluna in ligacao.execute(f'PRAGMA index_info("{nome}")')
+                )
+                resultado.add((nome, tabela, unico, parcial, colunas_do_indice))
+        return resultado
     finally:
         ligacao.close()
 
@@ -297,9 +386,14 @@ def esquema_normalizado(base_dados: Path) -> dict[str, object]:
     """Tudo o que se compara entre dois esquemas, numa estrutura comparável.
 
     Colunas (tipo, nulidade, omissão, chave primária), restrições nomeadas,
-    chaves estrangeiras com o `ON DELETE`, e índices nossos. Tudo em
-    conjuntos e dicionários, para a comparação não depender da ordem em que
-    o DDL foi escrito.
+    chaves estrangeiras com o `ON DELETE`, e índices nossos (nome, tabela,
+    unicidade, parcialidade e colunas por ordem). Tudo em conjuntos e
+    dicionários, para a comparação não depender da ordem em que o DDL foi
+    escrito.
+
+    O que **não** entra aqui, escrito para não se descobrir por acidente: a
+    collation, de coluna ou de índice (ver `indices`), e o `ON UPDATE` das
+    chaves estrangeiras, que o projeto não usa em lado nenhum.
     """
     return {
         "tabelas": tabelas_de_negocio(base_dados),
