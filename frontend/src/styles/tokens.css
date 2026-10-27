@@ -1,0 +1,238 @@
+/*
+ * Os valores do desenho. É o único ficheiro do repositório onde pode aparecer
+ * um hex — `src/styles/cores-so-nos-tokens.test.ts` varre o resto da árvore e
+ * compara esta paleta com a tabela Design de `docs/ESPECIFICACAO.md`.
+ *
+ * A regra, numa linha: aqui ficam os valores; o `tailwind.config.ts` só tem
+ * nomes que apontam para eles. Não há duas listas para concordar — há uma
+ * lista e um índice. Mudar o bordô é mudar uma linha aqui, e o Tailwind, o CSS
+ * à mão e o `color-mix` veem a mudança ao mesmo tempo.
+ *
+ * Só `:root` e classes de âmbito; nenhuma regra de componente.
+ *
+ * A escala vem da especificação em px e guarda-se em rem (1 rem = 16 px), com
+ * o px em comentário: o resultado em ecrã é igual por omissão, mas passa a
+ * respeitar o tamanho de letra escolhido no telemóvel (WCAG 1.4.4). A exceção
+ * é o alvo de toque de 44 px, que fica em px de propósito: é uma constante
+ * ergonómica (o polegar do dono), não tipográfica, e não deve encolher se
+ * alguém reduzir o tamanho de letra.
+ */
+:root {
+  /* A paleta. Espelha a tabela Design de docs/ESPECIFICACAO.md. */
+  --cor-bordo-noite: #3d0f24;
+  --cor-bordo-vinho: #4a1830;
+  --cor-bordo-tomazia: #5d1f3a;
+  --cor-dourado-latao: #d4af37;
+  --cor-creme-papel: #f5e6d3;
+  --cor-creme-sombra: #d9c3ae;
+  --cor-sucesso-escuro: #7fb77e;
+  --cor-erro-escuro: #e07a5f;
+  --cor-sucesso-creme: #4f6b2e;
+  --cor-erro-creme: #a63d2a;
+
+  /* Derivada, não nova: a cortina da Folha. Sai de um token, sem repetir o
+     hex — é por isso que o `color-mix` só pode viver neste ficheiro.
+
+     88% e não 78%: a cortina assenta sobre uma página que já é bordô, por
+     isso não escurece o fundo — só apaga o conteúdo. A 78% o texto creme por
+     trás ficava a 1,81 contra o fundo escurecido e lia-se todo (ver a
+     `1024-folha-centrada.png` da F3-01); a 88% cai para 1,35, que é ruído e
+     não leitura. */
+  --cor-cortina: color-mix(in srgb, var(--cor-bordo-noite) 88%, transparent);
+
+  /* Tipografia */
+  --fonte-titulo: "Playfair Display", "Iowan Old Style", Georgia, serif;
+  --fonte-corpo: "Source Sans 3", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --peso-normal: 400;
+  --peso-forte: 600;
+  --peso-titulo: 700;
+
+  --texto-nota: 0.875rem; /* 14 px */
+  --texto-corpo: 1.0625rem; /* 17 px */
+  --texto-seccao: 1.3125rem; /* 21 px */
+  --texto-titulo: 1.6875rem; /* 27 px */
+  --texto-destaque: 2.125rem; /* 34 px */
+
+  --entrelinha-nota: 1.4;
+  --entrelinha-corpo: 1.5;
+  --entrelinha-seccao: 1.35;
+  --entrelinha-titulo: 1.2;
+  --entrelinha-destaque: 1.15;
+
+  /* Espaçamento: os sete passos da especificação */
+  --espaco-1: 0.25rem; /* 4 */
+  --espaco-2: 0.5rem; /* 8 */
+  --espaco-3: 0.75rem; /* 12 */
+  --espaco-4: 1rem; /* 16 */
+  --espaco-6: 1.5rem; /* 24 */
+  --espaco-8: 2rem; /* 32 */
+  --espaco-12: 3rem; /* 48 */
+
+  /* Forma */
+  --raio-pequeno: 4px; /* chips, campos, botões */
+  --raio-cartao: 12px; /* cartões, folhas, avisos */
+  --raio-cheio: 9999px; /* só o Interruptor */
+  --contorno-fino: 1px;
+  --espessura-foco: 2px;
+  --afastamento-foco: 2px;
+  --alvo-toque: 44px; /* Q-04; em px de propósito */
+  --descida-premido: 1px; /* o botão desce 1 px quando está a ser carregado */
+
+  /*
+   * Desativado. É um canal à parte, e tem de ser: medido na revisão da F3-01,
+   * entre o texto normal e o texto `texto-suave` há 1,39 no escuro e 1,33 no
+   * creme — uma diferença de 1,3 não é uma mudança de estado, é a mesma coisa
+   * outra vez. Nos dois âmbitos `--cor-contorno` e `--cor-texto-suave`
+   * resolvem para a cor que um controlo normal já usa, por isso **a cor não
+   * pode ser o sinal de desativado**: o sinal é a opacidade.
+   *
+   * O controlo desativado mantém o preenchimento e o contorno da sua variante
+   * e só perde opacidade. Assim um principal continua a distinguir-se de um
+   * secundário quando os dois estão desligados, e um discreto desativado
+   * deixa de **ganhar** um contorno que o normal não tem — que era sinal
+   * invertido, pior do que sinal nenhum.
+   *
+   * A 0,55 a etiqueta fica em 4,82 no escuro e 3,61 no creme. A 1.4.3 isenta
+   * explicitamente os componentes inativos do mínimo de contraste
+   * ("Incidental"), por isso baixar aqui é o comportamento correto e não uma
+   * exceção que se abre.
+   *
+   * **Este valor tem um chão, e o chão é o anel de foco.** Um Botão
+   * desativado leva `aria-disabled` e não `disabled`, de propósito: continua
+   * focável, para quem navega por teclado poder lá parar e ouvir porque é que
+   * ele ali está. Mas a `opacity` apaga tudo o que o elemento pinta — **o anel
+   * incluído**. O chão é por âmbito, e o apertado é o do painel:
+   *
+   *     escuro 0,516 · painel 0,546 · creme 0,536
+   *
+   * Abaixo disso o anel de um controlo desativado cai abaixo dos 3 de 1.4.11
+   * e quem navega por teclado perde-o. A 0,60 fica em 3,60 / 3,37 / 3,49.
+   *
+   * **Porquê 0,60 e não 0,55**, que era o valor anterior: a 0,55 o painel dava
+   * 3,04 contra um chão de 0,546 — quatro milésimas, que não é folga, é
+   * coincidência. O que se paga pela subida é o sinal de "desativado" ficar um
+   * pouco menos apagado: a distância entre o texto normal e o desativado desce
+   * de 2,59 para 2,28 no painel. Continua a ser **quase o dobro** do 1,33–1,39
+   * que chumbou na revisão da F3-01 — gasta-se uma fatia pequena de um
+   * excedente grande para comprar margem onde não havia nenhuma.
+   *
+   * E as duas falhas não pesam o mesmo. Um controlo desativado um pouco menos
+   * apagado continua a ler-se. Um anel abaixo de 3 falha exatamente a pessoa
+   * para quem o `aria-disabled` foi escolhido — e o painel é a superfície da
+   * Folha e do Aviso, ou seja, é onde vai nascer o primeiro botão desativado
+   * do projeto: o da Folha de confirmação da gestão, à frente de uma ação
+   * destrutiva.
+   *
+   * Cuidado com o teste que guarda isto: `getComputedStyle().outlineColor`
+   * devolve a cor **sem** a opacidade aplicada, por isso um teste ingénuo lê
+   * 7,73 e passa enquanto a pessoa vê 3,37. A conta tem de multiplicar pela
+   * opacidade computada do elemento. E tem de ser feita **a partir dos
+   * tokens**, nos três âmbitos: no painel não há hoje um único controlo
+   * desativado para amostrar, e foi por isso que o âmbito mais apertado dos
+   * três escapou a duas revisões que olharam para píxeis.
+   */
+  --opacidade-desativado: 0.6;
+
+  /* Larguras. A coluna pública da especificação, e as duas medidas que o
+     `tailwind.config.ts` teria como literais se não estivessem aqui. */
+  --coluna-publica: 640px;
+  --largura-folha: 480px; /* a Folha a partir de 1024 px, centrada */
+  --largura-vazio: 320px; /* a coluna estreita do Estado vazio */
+  --altura-folha: 85dvh; /* dvh e não vh: com a barra do Safari, 85vh corta o botão de baixo */
+
+  /* Interruptor: carril 48 × 28 com o manípulo de 24 e --espaco-1 de folga.
+     O 28 e o 20 não são passos da escala de espaçamento (não há 28 px nos sete
+     passos), por isso vivem aqui com nome em vez de ficarem literais na
+     classe. */
+  --carril-largura: 48px;
+  --carril-altura: 28px;
+  --manipulo: 24px;
+  --manipulo-curso: 20px; /* 48 − 24 − 2 × 4 */
+
+  /* Movimento */
+  --duracao-curta: 120ms;
+  --duracao-folha: 200ms;
+  --curva: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/*
+ * Os papéis. São estes que os componentes escrevem (`bg-acao`, `text-foco`,
+ * `border-contorno`), e é a classe de âmbito que troca o que cada palavra
+ * significa. É o que torna a armadilha do dourado sobre creme impossível por
+ * distração: para a cometer é preciso escrever `dourado-latao` à mão, e isso é
+ * uma linha que salta num diff (e que `cores-so-nos-tokens.test.ts` recusa).
+ */
+:root,
+.superficie-escura {
+  --cor-fundo-local: var(--cor-bordo-noite);
+  --cor-texto: var(--cor-creme-papel);
+  --cor-texto-suave: var(--cor-creme-sombra);
+  --cor-texto-marca: var(--cor-creme-papel);
+  --cor-contorno: var(--cor-creme-sombra); /* contorno de controlos */
+  --cor-contorno-superficie: var(--cor-creme-sombra); /* fio ENTRE superfícies */
+  /*
+   * Fio DENTRO de uma superfície: divisórias de lista, aresta de um cartão
+   * que já está em cima de outro. Calmo, mas acima dos 3 de 1.4.11 — 3,78
+   * contra o bordô noite.
+   *
+   * **Cada âmbito tem de repetir esta linha**, e não é zelo: uma propriedade
+   * personalizada que contenha `var()` é substituída no elemento onde é
+   * **declarada**, não onde é usada. Declarada só aqui, a mistura congelava
+   * contra o bordô noite e descia pelo `.superficie-painel` já resolvida.
+   * Verificado no browser antes de escrever isto.
+   */
+  --cor-fio-interno: color-mix(in srgb, var(--cor-creme-sombra) 55%, var(--cor-fundo-local));
+  --cor-foco: var(--cor-dourado-latao);
+  --cor-acao: var(--cor-dourado-latao);
+  --cor-texto-sobre-acao: var(--cor-bordo-noite);
+  --cor-perigo: var(--cor-erro-escuro);
+  --cor-texto-sobre-perigo: var(--cor-bordo-noite);
+  --cor-sucesso: var(--cor-sucesso-escuro);
+  --cor-erro: var(--cor-erro-escuro);
+  --cor-pontilhado: var(--cor-creme-sombra);
+}
+
+.superficie-painel {
+  --cor-fundo-local: var(--cor-bordo-vinho);
+  /* Repetido de propósito: ver a nota em `--cor-fio-interno` acima. Aqui a
+     mistura resolve-se contra o bordô vinho e dá 3,55; herdada de cima dava
+     3,33, que ainda passava — mas por acaso, e no dia em que a paleta mexer
+     ninguém dava por isso. */
+  --cor-fio-interno: color-mix(in srgb, var(--cor-creme-sombra) 55%, var(--cor-fundo-local));
+}
+
+/*
+ * O creme é onde tudo troca. **Três** linhas e não uma, porque no creme elas
+ * divergem todas:
+ *
+ *  - `--cor-contorno-superficie` é a aresta do próprio cartão creme, e
+ *    continua a ser `creme-sombra`: ela vê-se contra o bordô de **fora**
+ *    (8,44), como manda a especificação.
+ *  - `--cor-contorno` é a fronteira de um controlo **dentro** do cartão. Não
+ *    pode ser `creme-sombra`: contra o creme dá 1,39 e o campo fica sem
+ *    fronteira. Daí `bordo-tomazia` (9,95).
+ *  - `--cor-fio-interno` é uma divisória dentro do cartão. Herdar a aresta do
+ *    cartão era o erro simétrico do anterior — medido na revisão da F3-01, a
+ *    lista de interruptores dentro do creme desenhava as divisórias a 1,39 e
+ *    elas desapareciam no telemóvel. Mas também não pode ser os 9,95 do
+ *    contorno dos controlos: uma divisória tão forte como a fronteira de um
+ *    campo tira a calma ao cartão. Fica a meio caminho, derivada dos mesmos
+ *    dois tokens: 3,49 contra o creme.
+ */
+.superficie-creme {
+  --cor-fundo-local: var(--cor-creme-papel);
+  --cor-texto: var(--cor-bordo-noite);
+  --cor-texto-suave: var(--cor-bordo-tomazia);
+  --cor-texto-marca: var(--cor-bordo-tomazia);
+  --cor-contorno: var(--cor-bordo-tomazia);
+  --cor-contorno-superficie: var(--cor-creme-sombra);
+  --cor-fio-interno: color-mix(in srgb, var(--cor-bordo-tomazia) 60%, var(--cor-fundo-local));
+  --cor-foco: var(--cor-bordo-tomazia);
+  --cor-acao: var(--cor-bordo-tomazia);
+  --cor-texto-sobre-acao: var(--cor-creme-papel);
+  --cor-perigo: var(--cor-erro-creme);
+  --cor-texto-sobre-perigo: var(--cor-creme-papel);
+  --cor-sucesso: var(--cor-sucesso-creme);
+  --cor-erro: var(--cor-erro-creme);
+  --cor-pontilhado: var(--cor-bordo-tomazia);
+}

@@ -155,7 +155,17 @@ export function construirPropriedadesInseguras(html: string) {
 }
 `;
 
-describe("S-13: dangerouslySetInnerHTML é proibido", () => {
+/**
+ * Arrancar o ESLint em processo custa segundos, não milissegundos: ele lê a
+ * flat config, resolve os plugins e constrói o Linter. O primeiro `it` de
+ * cada bloco paga essa conta inteira e chega a levar sete segundos numa
+ * máquina ocupada — acima dos 5 s por omissão do Vitest. Sem este limite, o
+ * teste falhava a dizer "timed out" e não "a regra não acusou", que são
+ * coisas opostas: a primeira é a máquina lenta, a segunda é o S-13 a cair.
+ */
+const ESPERA_PELO_ESLINT = { timeout: 30_000 };
+
+describe("S-13: dangerouslySetInnerHTML é proibido", ESPERA_PELO_ESLINT, () => {
   it("atributo JSX: apanhado por react/no-danger e por no-restricted-syntax", async () => {
     const eslint = new ESLint({ cwd: RAIZ_FRONTEND });
 

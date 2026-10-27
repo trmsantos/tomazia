@@ -3,6 +3,13 @@ coverage
 src/lib/api
 package-lock.json
 
+# Artefactos do Playwright (capturas, traces, relatório). Aparecem
+# depois de `npx playwright test` e não são código nosso — sem isto, o
+# `npm run lint` passava a falhar sempre que os testes ponta a ponta
+# corressem antes dele.
+test-results
+playwright-report
+
 # Gerado por `python -m app.openapi`, nunca formatado à mão.
 openapi.json
 
