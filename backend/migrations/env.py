@@ -1,12 +1,15 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
 
 from app.config import obter_definicoes
-from app.db import Base
+from app.db import criar_engine
+
+# `Base` vem de `app.models`, não de `app.db`: é o import dos modelos que
+# garante que as sete tabelas estão em `Base.metadata`. Importar de
+# `app.db` dava um `MetaData` vazio sempre que alguém se esquecesse de
+# importar os agregados, e o `autogenerate` propunha largar tudo.
+from app.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -56,21 +59,28 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    O motor vem de `app.db.criar_engine`, nunca de `engine_from_config`:
+    é na fábrica de `app/db.py` que vivem os três PRAGMAs. Um motor
+    construído aqui por fora criaria no servidor, durante o deploy, uma
+    base de dados sem WAL e com as chaves estrangeiras desligadas —
+    incluindo durante as próprias migrações de dados.
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = criar_engine(obter_definicoes().base_dados_url)
 
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+    try:
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                # O SQLite não sabe alterar colunas; sem isto, qualquer
+                # migração futura que mude uma coluna rebenta no servidor.
+                render_as_batch=True,
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        connectable.dispose()
 
 
 if context.is_offline_mode():

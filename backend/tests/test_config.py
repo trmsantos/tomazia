@@ -22,10 +22,12 @@ def test_omissoes_de_desenvolvimento(monkeypatch: pytest.MonkeyPatch) -> None:
     pôs. Quem prende a obrigatoriedade é
     `tests/seguranca/test_arranque_passenger.py`.
     """
-    # A fixture `isolar_definicoes` já aponta DATA_DIR para um tmp_path, para
-    # nenhum teste escrever em `var/`; aqui interessa-nos o valor por
-    # omissão real da classe, por isso removemo-la antes de medir.
+    # A fixture `isolar_definicoes` já aponta DATA_DIR e BASE_DADOS_URL para
+    # dentro de um tmp_path, para nenhum teste escrever em `var/` nem abrir a
+    # base de dados de desenvolvimento; aqui interessa-nos o valor por
+    # omissão real da classe, por isso removemo-las antes de medir.
     monkeypatch.delenv("DATA_DIR", raising=False)
+    monkeypatch.delenv("BASE_DADOS_URL", raising=False)
 
     from app.config import obter_definicoes
 
