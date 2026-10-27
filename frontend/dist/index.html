@@ -4,8 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bar da Tomazia</title>
-    <script type="module" crossorigin src="/assets/index-CNtP9nr2.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Be_p-Exd.css">
+
+    <!--
+      As duas faces acima da dobra, e só essas: três preloads competem com o
+      CSS e o JS pela mesma ligação, e a face de 600 chega depois sem se dar
+      por isso. O `crossorigin` é obrigatório mesmo na mesma origem — sem ele
+      o browser descarrega a fonte duas vezes e o preload fica pior que nada.
+    -->
+    <link
+      rel="preload"
+      href="/fontes/source-sans-3-v20-latin-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fontes/playfair-display-v40-latin-700.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script type="module" crossorigin src="/assets/index-BEltPK4U.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CrwVQazU.css">
   </head>
   <body>
     <div id="root"></div>
