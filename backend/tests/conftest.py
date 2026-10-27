@@ -48,22 +48,19 @@ def _limpar_cache_do_motor() -> None:
     apagado) para toda a sessão de testes — exatamente o problema que
     `obter_definicoes.cache_clear()` resolve para a configuração.
 
-    O `import app.db` é deliberadamente **sem guarda**: um `app/db.py`
-    partido (erro de sintaxe, dependência em falta) tem de rebentar aqui,
-    em voz alta. Só a ausência do nome `obter_engine` é tolerada, e só
-    enquanto a F2-01 não aterrar — e essa tolerância não é silenciosa:
-    `tests/test_db_pragmas.py::test_app_db_expoe_obter_engine_com_cache`
-    falha enquanto o nome não existir, e volta a falhar se alguém o
-    remover. Sem esse teste, este `getattr` seria um guarda a confundir
-    "ainda não existe" com "foi removido", que é o que a regra 10 do
-    `CLAUDE.md` proíbe.
+    Tanto o `import app.db` como o acesso a `obter_engine` são
+    deliberadamente **sem guarda**. Um `app/db.py` partido (erro de
+    sintaxe, dependência em falta) ou sem o nome `obter_engine` tem de
+    rebentar aqui, em voz alta. Enquanto a F2-01 não aterrou, a ausência
+    do nome era tolerada com um `getattr`; agora que aterrou, essa
+    tolerância passaria a confundir "ainda não existe" com "alguém
+    renomeou", que é o que a regra 10 do `CLAUDE.md` proíbe — e o preço
+    seria a suite inteira a correr, em silêncio, com um motor apontado a
+    um `tmp_path` já apagado.
     """
     import app.db
 
-    obter_engine = getattr(app.db, "obter_engine", None)
-    if obter_engine is None:
-        return
-    obter_engine.cache_clear()
+    app.db.obter_engine.cache_clear()
 
 
 @pytest.fixture(autouse=True)

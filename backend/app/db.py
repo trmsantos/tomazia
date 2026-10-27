@@ -1,8 +1,8 @@
 """Ligação à base de dados: a fábrica de motores e os PRAGMAs do SQLite.
 
-Os três PRAGMAs (`journal_mode=WAL`, `busy_timeout`, `foreign_keys=ON`)
-vivem no ouvinte do evento `connect` do motor, e não noutro sítio, por
-três razões medidas:
+Os três PRAGMAs (`busy_timeout`, `journal_mode=WAL`, `foreign_keys=ON`,
+por esta ordem) vivem no ouvinte do evento `connect` do motor, e não
+noutro sítio, por três razões medidas:
 
 - um PRAGMA é por **ligação**, não por processo. `foreign_keys` e
   `busy_timeout` morrem com a ligação que os recebeu; só o
@@ -67,7 +67,7 @@ class Base(DeclarativeBase):
 
 def _mensagem_sem_wal(modo_obtido: object) -> str:
     return (
-        "A base de dados não ficou em modo WAL: `PRAGMA journal_mode=WAL` "
+        "A base de dados não ficou em modo WAL: `PRAGMA journal_mode` "
         f"devolveu {modo_obtido!r} em vez de 'wal'. O SQLite não dá erro "
         "quando recusa a mudança de modo, por isso isto é o único sítio "
         "onde se nota. Acontece com uma base de dados em memória "
@@ -77,24 +77,74 @@ def _mensagem_sem_wal(modo_obtido: object) -> str:
     )
 
 
+def _mensagem_sem_busy_timeout(valor_obtido: object, esperado: int) -> str:
+    return (
+        "A ligação não ficou com o `busy_timeout` que pedimos: "
+        f"`PRAGMA busy_timeout` devolveu {valor_obtido!r} em vez de "
+        f"{esperado}. Sem ele, duas escritas ao mesmo tempo desistem uma "
+        "da outra de imediato em vez de esperarem, e o pedido rebenta com "
+        "'database is locked'. O SQLite não dá erro quando o PRAGMA não "
+        "pega, por isso isto é o único sítio onde se nota."
+    )
+
+
+def _mensagem_sem_foreign_keys(valor_obtido: object) -> str:
+    return (
+        "A ligação não ficou com as chaves estrangeiras ligadas: "
+        f"`PRAGMA foreign_keys` devolveu {valor_obtido!r} em vez de 1. "
+        "Este PRAGMA é um no-op **silencioso** dentro de uma transação "
+        "(medido: dentro de `BEGIN` devolve 0, fora devolve 1, nos dois "
+        "casos sem exceção nenhuma). Sem ele, uma chave estrangeira é "
+        "decoração que o SQLite grava no DDL e nunca verifica, e um "
+        "produto pode apontar para uma categoria que não existe."
+    )
+
+
+def _ler_pragma(cursor: Any, nome: str) -> Any:
+    """Lê um PRAGMA e devolve o valor, ou `None` se não vier linha nenhuma."""
+    cursor.execute(f"PRAGMA {nome}")
+    linha = cursor.fetchone()
+    return linha[0] if linha else None
+
+
 def _aplicar_pragmas_sqlite(ligacao_dbapi: Any, _registo: Any) -> None:
-    """Aplica os três PRAGMAs a cada ligação nova do pool.
+    """Aplica os três PRAGMAs a cada ligação nova do pool, e **relê os três**.
 
     Corre com o cursor do DBAPI, antes de o SQLAlchemy entregar a ligação
     a quem a pediu. `BUSY_TIMEOUT_MS` é lido aqui, do módulo, no momento
     em que a ligação abre.
+
+    Nenhum dos três dá erro quando não pega — devolvem o valor antigo e
+    seguem em frente. Por isso os três são relidos e os três rebentam:
+    emitir um PRAGMA e não verificar a resposta é o mesmo que não o
+    emitir, e dos três é o `foreign_keys` que sustenta a integridade
+    referencial do projeto inteiro.
+
+    A ordem não é arbitrária. O `busy_timeout` vem primeiro porque o
+    `journal_mode=WAL` é o único dos três que precisa de acesso
+    exclusivo ao ficheiro e pode apanhar um `SQLITE_BUSY`: a instrução
+    que mais precisa do tempo de espera não pode ser a única a correr
+    sem ele.
     """
     cursor = ligacao_dbapi.cursor()
     try:
-        cursor.execute("PRAGMA journal_mode=WAL")
-        linha = cursor.fetchone()
-        modo = linha[0] if linha else None
-        if str(modo).lower() != "wal":
-            raise RuntimeError(_mensagem_sem_wal(modo))
         # Um PRAGMA não aceita parâmetros ligados; o valor é interpolado,
         # e por isso passa por `int()` antes de entrar na instrução.
-        cursor.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT_MS)}")
+        esperado = int(BUSY_TIMEOUT_MS)
+        cursor.execute(f"PRAGMA busy_timeout={esperado}")
+        obtido = _ler_pragma(cursor, "busy_timeout")
+        if obtido != esperado:
+            raise RuntimeError(_mensagem_sem_busy_timeout(obtido, esperado))
+
+        cursor.execute("PRAGMA journal_mode=WAL")
+        modo = _ler_pragma(cursor, "journal_mode")
+        if str(modo).lower() != "wal":
+            raise RuntimeError(_mensagem_sem_wal(modo))
+
         cursor.execute("PRAGMA foreign_keys=ON")
+        ligadas = _ler_pragma(cursor, "foreign_keys")
+        if ligadas != 1:
+            raise RuntimeError(_mensagem_sem_foreign_keys(ligadas))
     finally:
         cursor.close()
 

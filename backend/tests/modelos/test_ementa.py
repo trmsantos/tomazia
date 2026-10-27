@@ -154,3 +154,49 @@ def test_texto_do_produto_volta_byte_a_byte_sem_escape(sessao: Session) -> None:
     assert "&lt;" not in linha.nome
     assert "&amp;" not in linha.nome
     assert "&quot;" not in linha.nome
+
+
+def test_insert_cru_sem_os_opcionais_usa_os_valores_por_omissao(
+    sessao: Session,
+) -> None:
+    """As omissões de `categorias` e `produtos` vivem na **base de dados**.
+
+    O `importar_bd_antiga.py` da F2-08 escreve direto, em SQL, sem ORM: é
+    esta a tabela que ele vai encher com os 140 produtos e as 11
+    categorias. Um `default=` só do lado do Python não corre nesse caminho,
+    e sem `server_default` o script rebentava com
+    `NOT NULL constraint failed: produtos.disponivel`.
+
+    E os valores importam, não só a existência: `disponivel` e `visivel` a
+    1 (um produto importado aparece na ementa, que é o que o dono espera
+    ao migrar) e `ordem` a 0 (ordenação por decidir, não uma posição
+    inventada).
+    """
+    sessao.execute(
+        text(
+            "INSERT INTO categorias (nome, slug) "
+            "VALUES ('Importada de exemplo', 'importada-de-exemplo')"
+        )
+    )
+    categoria_id = sessao.execute(
+        text("SELECT id FROM categorias WHERE slug = 'importada-de-exemplo'")
+    ).scalar_one()
+    sessao.execute(
+        text(
+            "INSERT INTO produtos (categoria_id, nome, preco_cent) "
+            "VALUES (:categoria_id, 'Importado de exemplo', 650)"
+        ),
+        {"categoria_id": categoria_id},
+    )
+    sessao.commit()
+
+    categoria = sessao.execute(text("SELECT visivel, ordem FROM categorias")).one()
+    assert categoria.visivel == 1
+    assert categoria.ordem == 0
+
+    produto = sessao.execute(
+        text("SELECT disponivel, ordem, descricao FROM produtos")
+    ).one()
+    assert produto.disponivel == 1
+    assert produto.ordem == 0
+    assert produto.descricao is None

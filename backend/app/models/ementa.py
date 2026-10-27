@@ -51,7 +51,14 @@ class Produto(Base):
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
     descricao: Mapped[str | None] = mapped_column(String(280), nullable=True)
     preco_cent: Mapped[int] = mapped_column(Integer, nullable=False)
-    disponivel: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # O `server_default` não é redundante com o `default=`: o `default=`
+    # é do lado do Python e não corre num `INSERT` em SQL cru. Sem ele,
+    # o `importar_bd_antiga.py` da F2-08 — que escreve direto, e é esta
+    # a tabela que ele vai encher — rebentava com
+    # `NOT NULL constraint failed: produtos.disponivel`.
+    disponivel: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
     ordem: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )

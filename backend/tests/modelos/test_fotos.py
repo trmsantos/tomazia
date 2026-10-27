@@ -165,3 +165,59 @@ def test_insert_cru_sem_criada_em_rele_se_como_data_valida(sessao: Session) -> N
         f"`criada_em` releu-se como {foto.criada_em!r}, fora do intervalo "
         f"[{antes}, {depois}] em que o INSERT correu"
     )
+
+
+#: Nomes de ficheiro que não são nomes de ficheiro: trazem um separador de
+#: caminho ou um `..`. Quem lê `fotos.ficheiro` junta-o a
+#: `DATA_DIR/pendentes` ou a `public_html/media`; um destes valores faz essa
+#: junção sair da pasta.
+FICHEIROS_COM_CAMINHO = (
+    "../fora-de-exemplo.webp",
+    "pasta/dentro-de-exemplo.webp",
+    "pasta\\dentro-de-exemplo.webp",
+    "/absoluto-de-exemplo.webp",
+    # Sem separador nenhum: apanha uma implementação que só procure `/` e
+    # `\` e deixe passar o `..`, que basta para subir uma pasta quando o
+    # nome é concatenado sem normalização.
+    "..oculto-de-exemplo.webp",
+)
+
+RESTRICAO_FICHEIRO = "ck_fotos_ficheiro_sem_caminho"
+
+
+@pytest.mark.parametrize("ficheiro", FICHEIROS_COM_CAMINHO)
+def test_ficheiro_com_caminho_e_rejeitado(sessao: Session, ficheiro: str) -> None:
+    """A base de dados recusa um `ficheiro` que não seja só um nome.
+
+    A defesa principal é da fronteira — a F2-06 ignora o nome que o cliente
+    manda e gera um nome aleatório. Mas um `CHECK` não se acrescenta a uma
+    tabela que já existe sem a reconstruir (regra 7), e a F2-08 escreve
+    direto, sem passar pela API.
+
+    Exige o nome da restrição na mensagem: é isso que prova que foi a base
+    de dados a recusar, e não um validador do lado do Python que um script
+    contornaria por escrever em SQL cru.
+    """
+    sessao.add(nova_foto(ficheiro=ficheiro))
+    with pytest.raises(IntegrityError) as informacao:
+        sessao.commit()
+    sessao.rollback()
+
+    assert RESTRICAO_FICHEIRO in str(informacao.value), (
+        f"{ficheiro!r} foi recusado, mas não por {RESTRICAO_FICHEIRO}:"
+        f"\n{informacao.value}"
+    )
+
+
+def test_ficheiro_sem_caminho_e_aceite(sessao: Session) -> None:
+    """O guarda de cima testado contra o seu próprio sucesso falso.
+
+    Um `CHECK` com a condição ao contrário recusava **todos** os nomes e
+    deixava os testes acima verdes, com a galeria impossível de usar. Um
+    `uuid.webp`, que é o que a F2-06 gera, tem de entrar.
+    """
+    sessao.add(nova_foto(ficheiro="00000000-0000-4000-8000-00000000000a.webp"))
+    sessao.commit()
+
+    quantas = sessao.execute(text("SELECT COUNT(*) FROM fotos")).scalar_one()
+    assert quantas == 1

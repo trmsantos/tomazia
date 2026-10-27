@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Enum, String, func
+from sqlalchemy import CheckConstraint, Enum, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -38,6 +38,19 @@ TIPO_ESTADO_FOTO = Enum(
 
 class Foto(Base):
     __tablename__ = "fotos"
+    __table_args__ = (
+        # `ficheiro` é um nome, nunca um caminho: quem o lê junta-o a
+        # `DATA_DIR/pendentes` ou a `public_html/media`. A defesa
+        # principal continua a ser da fronteira — a F2-06 ignora o nome
+        # que o cliente manda e gera um nome aleatório —, mas um `CHECK`
+        # não se acrescenta a uma tabela que já existe sem a reconstruir
+        # (regra 7), e a F2-08 escreve direto, sem passar pela API.
+        CheckConstraint(
+            "instr(ficheiro, '/') = 0 AND instr(ficheiro, '\\') = 0 "
+            "AND instr(ficheiro, '..') = 0",
+            name="ficheiro_sem_caminho",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ficheiro: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)

@@ -117,3 +117,33 @@ def test_as_sete_chaves_da_especificacao_cabem(sessao: Session) -> None:
 
     assert set(guardadas) == set(CHAVES_DE_DEFINICOES)
     assert guardadas["horario"] == horario
+
+
+def test_insert_cru_sem_tentativas_falhadas_comeca_a_zero(sessao: Session) -> None:
+    """`admins.tentativas_falhadas` tem omissão 0 **na base de dados**.
+
+    O `criar_admin.py` da F2-02 pode escrever por SQL cru, onde o
+    `default=0` do lado do Python não corre. Sem `server_default`, o script
+    rebentava — e, se a coluna fosse anulável para contornar isso, a conta
+    nascia com NULL e nunca bloqueava: em SQL, `NULL + 1` é NULL, e a conta
+    nunca chegava às 5 falhas.
+
+    `criado_em` é passado à mão porque **não** tem `server_default` (só
+    `default=agora_utc`, do lado do Python). O valor vai já em UTC e sem
+    fuso, que é a forma como `DataHoraUTC` escreve.
+    """
+    sessao.execute(
+        text(
+            "INSERT INTO admins (utilizador, hash_password, criado_em) VALUES "
+            "('criado-por-script-de-exemplo', '$argon2id$falso$para$testes', "
+            "'2026-06-20 11:00:00')"
+        )
+    )
+    sessao.commit()
+
+    linha = sessao.execute(
+        text("SELECT tentativas_falhadas, bloqueado_ate FROM admins")
+    ).one()
+
+    assert linha.tentativas_falhadas == 0
+    assert linha.bloqueado_ate is None

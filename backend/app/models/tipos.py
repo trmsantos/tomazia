@@ -23,6 +23,12 @@ MENSAGEM_SEM_FUSO = (
     "aqui)."
 )
 
+MENSAGEM_NAO_E_DATA_HORA = (
+    "O valor não é um `datetime`. Uma `date` sozinha não chega: não tem "
+    "hora nem fuso horário, e esta coluna guarda instantes. Converte-a "
+    "para um `datetime` com `tzinfo` antes de a guardar."
+)
+
 
 def agora_utc() -> datetime:
     """O instante atual, sempre com fuso e sempre em UTC."""
@@ -39,6 +45,13 @@ class DataHoraUTC(TypeDecorator[datetime]):
       serve de `server_default` a `fotos.criada_em`, escreve
       `2026-10-27 12:34:56`, sem fuso e sem frações de segundo, e os
       scripts da F2-02 e da F2-08 escrevem por SQL, sem ORM.
+
+    **A recusa do ingénuo só protege quem escreve pelo ORM.** Um
+    `INSERT` em SQL cru não passa por aqui: o que lá estiver é lido de
+    volta e **rotulado** UTC, sem conversão nenhuma. Uma hora local
+    ingénua escrita assim fica a valer como UTC e passa a estar uma hora
+    errada metade do ano, sem erro nenhum pelo caminho. Os scripts da
+    F2-02 e da F2-08 têm de escrever já em UTC.
     """
 
     impl = DateTime
@@ -51,6 +64,11 @@ class DataHoraUTC(TypeDecorator[datetime]):
     ) -> datetime | None:
         if value is None:
             return None
+        # Antes do teste do `tzinfo`: uma `datetime.date` não tem o
+        # atributo, e sem isto saía daqui um `AttributeError` em inglês,
+        # da biblioteca, em vez da nossa mensagem.
+        if not isinstance(value, datetime):
+            raise ValueError(MENSAGEM_NAO_E_DATA_HORA)
         if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
             raise ValueError(MENSAGEM_SEM_FUSO)
         return value.astimezone(UTC).replace(tzinfo=None)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, String, Text
+from sqlalchemy import Boolean, CheckConstraint, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -23,6 +23,19 @@ class Evento(Base):
         CheckConstraint(
             "publicado = 0 OR inicio IS NOT NULL", name="publicado_exige_inicio"
         ),
+        # `imagem` é um nome de ficheiro, nunca um caminho: quem o lê
+        # junta-o a uma pasta. A defesa principal é da fronteira (a
+        # F4-03 valida antes de guardar), mas um `CHECK` não se
+        # acrescenta a uma tabela que já existe sem a reconstruir
+        # (regra 7), e a F2-08 importa nomes de imagem do site antigo
+        # sem passar pela API. O `IS NULL` é explícito de propósito: a
+        # coluna é anulável e "sem imagem" tem de continuar a entrar.
+        CheckConstraint(
+            "imagem IS NULL OR ("
+            "instr(imagem, '/') = 0 AND instr(imagem, '\\') = 0 "
+            "AND instr(imagem, '..') = 0)",
+            name="imagem_sem_caminho",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -32,4 +45,9 @@ class Evento(Base):
     inicio: Mapped[datetime | None] = mapped_column(DataHoraUTC, nullable=True)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     imagem: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    publicado: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # `server_default` pela mesma razão que `produtos.disponivel`: um
+    # `INSERT` em SQL cru não corre o `default=` do lado do Python, e a
+    # F2-08 escreve direto.
+    publicado: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )

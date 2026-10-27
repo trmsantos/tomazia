@@ -59,12 +59,13 @@ def _ler_pragmas(ligacao: Connection) -> dict[str, Any]:
 def test_app_db_expoe_obter_engine_com_cache() -> None:
     """`app.db.obter_engine` existe e é um `lru_cache` — a fixture conta com isso.
 
-    `tests/conftest.py::_limpar_cache_do_motor` tolera a ausência deste nome
-    (a F2-01 ainda não aterrou) com um `getattr`. Este teste é o que impede
-    essa tolerância de se tornar um guarda cego: enquanto o nome não
-    existir, falha; se um dia alguém o remover ou lhe tirar o `lru_cache`,
-    volta a falhar, em vez de a suite inteira passar a correr com um motor
-    partilhado entre testes.
+    `tests/conftest.py::_limpar_cache_do_motor` chama
+    `app.db.obter_engine.cache_clear()` sem guarda nenhuma, por isso quem
+    remover o nome ou lhe tirar o `lru_cache` já rebenta lá, em todos os
+    testes de uma vez. Este teste continua a valer a pena por dizer
+    porquê: dá o nome ao contrato num sítio só, com a mensagem de
+    asserção a explicar o que a fixture precisa, em vez de deixar quem
+    renomeou a função a decifrar um `AttributeError` repetido 420 vezes.
     """
     import app.db
 
@@ -282,3 +283,169 @@ def test_obter_engine_usa_a_url_das_definicoes_e_guarda_em_cache() -> None:
 
     assert primeiro is segundo
     assert str(primeiro.url) == obter_definicoes().base_dados_url
+
+
+# --------------------------------------------------------------------------
+# Os guardas dos três PRAGMAs, forçados a disparar.
+#
+# `app/db.py` relê os três PRAGMAs depois de os emitir e rebenta quando o
+# valor lido não é o pedido. Sem os testes abaixo, essa releitura é palavra
+# dada: um `if` que nunca é verdadeiro parece-se, em cobertura e em revisão,
+# com um `if` que funciona. E foi precisamente por o `foreign_keys` e o
+# `busy_timeout` serem emitidos e nunca verificados que a revisão apanhou
+# aqui a décima segunda instância da regra 10 deste projeto.
+#
+# Os três testes chamam `_aplicar_pragmas_sqlite` ou `criar_engine`
+# diretamente sobre uma situação construída de propósito. Tocar num nome
+# privado é intencional: o que se está a testar é o guarda em si, não o
+# caminho normal da aplicação — esse já está nos testes acima.
+# --------------------------------------------------------------------------
+
+
+def _preparar_ficheiro_ja_em_wal(caminho: Path) -> None:
+    """Deixa `caminho` a existir, em WAL, com uma tabela lá dentro.
+
+    O WAL antes de mais nada porque os três PRAGMAs correm por ordem
+    (`busy_timeout`, `journal_mode`, `foreign_keys`) e o primeiro que
+    falhar é o que rebenta. Para chegar ao guarda do `foreign_keys`, os
+    dois anteriores têm de passar — e `PRAGMA journal_mode=WAL` dentro de
+    uma transação só devolve `wal` se a base de dados **já** estiver em
+    WAL.
+    """
+    ligacao = sqlite3.connect(caminho)
+    try:
+        ligacao.execute("PRAGMA journal_mode=WAL")
+        ligacao.execute("CREATE TABLE marca_de_exemplo (id INTEGER PRIMARY KEY)")
+        ligacao.commit()
+    finally:
+        ligacao.close()
+
+
+def test_o_guarda_do_foreign_keys_dispara_quando_o_pragma_nao_pega(
+    tmp_path: Path,
+) -> None:
+    """Dentro de uma transação, `PRAGMA foreign_keys=ON` é um no-op silencioso.
+
+    Medido: dentro de `BEGIN` devolve 0, fora devolve 1, e nos dois casos
+    **sem exceção nenhuma**. Era por isto que emitir o PRAGMA sem reler o
+    valor não valia nada: uma ligação entregue assim tem as chaves
+    estrangeiras desligadas e nada no caminho o diz.
+
+    Este teste constrói essa situação de propósito e exige que o guarda
+    rebente. Sem ele, o `if ligadas != 1` de `app/db.py` nunca é executado
+    por teste nenhum — e um guarda que nunca é exercitado não é um guarda,
+    é um comentário.
+    """
+    import app.db
+
+    caminho = tmp_path / "guarda-fk.db"
+    _preparar_ficheiro_ja_em_wal(caminho)
+
+    ligacao = sqlite3.connect(caminho, isolation_level=None)
+    erro: BaseException | None = None
+    try:
+        ligacao.execute("BEGIN")
+
+        # A premissa do teste, medida aqui e não assumida: se um dia o
+        # SQLite passar a aplicar o PRAGMA dentro de uma transação, este
+        # teste tem de dizer que foi a premissa que caiu, não que o guarda
+        # se partiu.
+        ligacao.execute("PRAGMA foreign_keys=ON")
+        dentro_da_transacao = ligacao.execute("PRAGMA foreign_keys").fetchone()[0]
+        assert dentro_da_transacao == 0, (
+            "a premissa deste teste deixou de valer: `PRAGMA "
+            "foreign_keys=ON` dentro de uma transação devolveu "
+            f"{dentro_da_transacao}, e já não é o no-op silencioso que o "
+            "guarda de app/db.py existe para apanhar"
+        )
+
+        try:
+            app.db._aplicar_pragmas_sqlite(ligacao, None)
+        # O contrato é "rebenta"; o tipo exato é de quem escreve o guarda.
+        except Exception as excecao:
+            erro = excecao
+        ligacao.execute("ROLLBACK")
+    finally:
+        ligacao.close()
+
+    assert erro is not None, (
+        "os PRAGMAs foram aplicados a uma ligação com transação aberta e "
+        "ninguém se queixou: a ligação ficou com `foreign_keys` a 0 e "
+        "seria entregue assim a quem a pediu"
+    )
+
+    mensagem = texto_de_toda_a_cadeia(erro)
+    assert "foreign_keys" in mensagem.lower(), (
+        f"a mensagem não nomeia o PRAGMA que não pegou:\n{mensagem}"
+    )
+    assert contem_marca_pt_pt(mensagem), (
+        f"a mensagem não é nossa nem está em PT-PT:\n{mensagem}"
+    )
+
+
+def test_os_pragmas_passam_na_mesma_ligacao_fora_da_transacao(tmp_path: Path) -> None:
+    """O guarda de cima testado contra o seu próprio sucesso falso.
+
+    Um `_aplicar_pragmas_sqlite` que rebentasse sempre — porque leu o
+    PRAGMA errado, porque comparou texto com número — deixava o teste
+    anterior verde e tornava impossível abrir a base de dados. Aqui a
+    mesma função, sobre a mesma ligação e o mesmo ficheiro, sem transação
+    aberta, tem de passar e deixar `foreign_keys` a 1.
+    """
+    import app.db
+
+    caminho = tmp_path / "guarda-fk-ok.db"
+    _preparar_ficheiro_ja_em_wal(caminho)
+
+    ligacao = sqlite3.connect(caminho, isolation_level=None)
+    try:
+        app.db._aplicar_pragmas_sqlite(ligacao, None)
+        ligadas = ligacao.execute("PRAGMA foreign_keys").fetchone()[0]
+    finally:
+        ligacao.close()
+
+    assert ligadas == 1
+
+
+def test_o_guarda_do_busy_timeout_dispara_quando_o_valor_e_recusado(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Um `busy_timeout` que o SQLite não aceita é recusado, não arredondado.
+
+    Medido: `PRAGMA busy_timeout=-1` devolve 0, e `PRAGMA busy_timeout=2**31`
+    também — o SQLite aceita a instrução, guarda outra coisa e não se
+    queixa. Sem releitura, uma gralha na constante deixava todas as
+    ligações sem tempo de espera nenhum, e as escritas concorrentes a
+    desistir de imediato com 'database is locked' em vez de esperarem.
+
+    Este teste dá conteúdo ao primeiro dos três guardas, da mesma forma que
+    o do `foreign_keys` dá ao terceiro.
+    """
+    import app.db
+
+    monkeypatch.setattr(app.db, "BUSY_TIMEOUT_MS", -1)
+
+    motor: Engine | None = None
+    erro: BaseException | None = None
+    try:
+        motor = app.db.criar_engine(_url_de_ficheiro(tmp_path / "guarda-busy.db"))
+        with motor.connect() as ligacao:
+            ligacao.exec_driver_sql("SELECT 1")
+    except Exception as excecao:
+        erro = excecao
+    finally:
+        if motor is not None:
+            motor.dispose()
+
+    assert erro is not None, (
+        "a ligação abriu com `BUSY_TIMEOUT_MS = -1`: o SQLite guardou 0 e "
+        "ninguém verificou"
+    )
+
+    mensagem = texto_de_toda_a_cadeia(erro)
+    assert "busy_timeout" in mensagem.lower(), (
+        f"a mensagem não nomeia o PRAGMA que não pegou:\n{mensagem}"
+    )
+    assert contem_marca_pt_pt(mensagem), (
+        f"a mensagem não é nossa nem está em PT-PT:\n{mensagem}"
+    )
