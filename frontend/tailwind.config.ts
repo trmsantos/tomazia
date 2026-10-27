@@ -1,8 +1,236 @@
+import { readdirSync } from "node:fs";
+import { sep } from "node:path";
+
 import type { Config } from "tailwindcss";
 
+/**
+ * Tailwind 3.4 (ADR 0007; nunca v4 — na v4 este ficheiro deixa de ser lido).
+ *
+ * Aqui não há um único hex, px ou rem: cada folha do `theme` é uma
+ * referência a um token, e o valor vive em `src/styles/tokens.css`. Não há
+ * duas listas para concordar — há uma lista e um índice.
+ * `src/styles/cores-so-nos-tokens.test.ts` confirma as duas metades: que aqui
+ * só há referências, e que cada uma aponta para um token que existe mesmo.
+ *
+ * As escalas são **substituídas** (`theme.x`) e não estendidas
+ * (`theme.extend.x`): assim as cores, os tamanhos e os espaçamentos que o
+ * Tailwind traz de origem (`text-base`, `p-5`, `shadow-lg` e as paletas que
+ * ele inventa) deixam de existir, a classe não é gerada e o erro aparece no
+ * ecrã, não numa revisão.
+ *
+ * A única categoria com literais é `screens`: `@media (min-width: var(--x))`
+ * não é CSS válido. É por isso a única que nunca se duplica no `tokens.css`.
+ */
+
+/**
+ * O que o Tailwind lê para decidir que classes gera.
+ *
+ * **A página de demonstração entra em desenvolvimento e sai no build**, e a
+ * razão é que o Tailwind gera **uma** folha de estilos — a que o `index.html`
+ * carrega. Que o Vite só construa o `index.html` tira a demonstração do
+ * JavaScript e do HTML, mas não tira as classes que só ela usa: elas iam para
+ * produção dentro do CSS público (2,4 kB em bruto, e um `.bg-dourado-latao`
+ * que nenhum componente escreve). As três redes que existiam procuravam a
+ * palavra "demonstracao" ou a marca do `<h1>`, e um nome de classe partilhado
+ * não contém nenhuma das duas; o `size-limit` só mede o JavaScript.
+ *
+ * Nada se perde: a demonstração só é servida pelo `npm run dev`, e os testes
+ * ponta a ponta correm contra esse servidor (`playwright.config.ts`).
+ *
+ * `src/build-de-producao.test.ts` prende isto pelo lado de lá — olha para o
+ * que entrou em `dist/assets/*.css`, e não para o nome do ficheiro de onde
+ * veio.
+ */
+const PASTA_DA_DEMONSTRACAO = "demonstracao";
+
+/** Ficheiro que tem de estar na lista: é o guarda da regra 10 (ver abaixo). */
+const SENTINELA = "./src/App.tsx";
+
+/**
+ * Os ficheiros do pacote público: o `index.html` e o que em `src/` pode
+ * chegar ao browser de quem visita o site.
+ *
+ * Ficam de fora, por esta ordem de importância:
+ *
+ *  - **`src/demonstracao/`**, pela razão de cima;
+ *  - **os testes e os auxiliares deles** (`*.test.*`, `*.spec.*` e
+ *    `src/testes/`). Não é zelo: o `cores-so-nos-tokens.test.ts` tem a
+ *    palavra `bg-dourado-latao` escrita num comentário, a explicar o que
+ *    proíbe, e isso bastava para o Tailwind gerar a classe e mandá-la para
+ *    produção. O extractor não distingue código de comentário.
+ *
+ * É uma lista de ficheiros e não de globos porque o Tailwind 3.4 não trata
+ * globos negativos no `content` (um `"!./src/demonstracao/**"` é lido como um
+ * caminho e ignorado em silêncio). Lê-se do disco e não se escreve à mão: o
+ * modo de falha de uma lista escrita à mão seria uma pasta nova de `src/` a
+ * ficar com as classes dela em desenvolvimento e sem elas em produção.
+ *
+ * Só se usa no build, que é um tiro único. Em desenvolvimento ficam os globos
+ * em baixo, para um ficheiro criado com o servidor a correr ser visto na
+ * mesma.
+ */
+function ficheirosPublicos(): string[] {
+  const ficheiros = readdirSync("./src", { recursive: true, encoding: "utf-8" })
+    .map((entrada) => entrada.split(sep).join("/"))
+    .filter((caminho) => /\.tsx?$/.test(caminho))
+    .filter((caminho) => !/\.(test|spec)\.tsx?$/.test(caminho))
+    .filter((caminho) => !caminho.startsWith(`${PASTA_DA_DEMONSTRACAO}/`))
+    .filter((caminho) => !caminho.startsWith("testes/"))
+    .map((caminho) => `./src/${caminho}`);
+
+  if (!ficheiros.includes(SENTINELA)) {
+    // Guarda da regra 10. Uma leitura falhada (cwd errado, pasta movida) dava
+    // uma folha de estilos quase vazia e o site aparecia sem desenho nenhum —
+    // e "não li nada" não pode passar por "não havia nada para ler".
+    throw new Error(
+      `Não consegui listar os ficheiros de src/ para o \`content\` do Tailwind: ${SENTINELA} ` +
+        `não apareceu (li ${ficheiros.length} ficheiros a partir de ${process.cwd()}). ` +
+        "Isto é uma falha de leitura, não um projeto sem código.",
+    );
+  }
+
+  return ["./index.html", ...ficheiros];
+}
+
+/**
+ * A marca que o `vite.config.ts` põe quando o `command` do Vite é `build`.
+ * O nome está escrito nos dois ficheiros; a razão para não ser o `NODE_ENV`
+ * está lá, e vale a pena lê-la antes de mexer nisto.
+ */
+const EM_PRODUCAO = process.env["TOMAZIA_PACOTE_PUBLICO"] === "1";
+
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: EM_PRODUCAO
+    ? ficheirosPublicos()
+    : ["./index.html", "./demonstracao.html", "./src/**/*.{ts,tsx}"],
   theme: {
-    extend: {},
+    // Um só breakpoint. 360 px é o mínimo suportado, não um breakpoint.
+    screens: { lg: "1024px" },
+
+    colors: {
+      // Obrigatórios ao substituir a paleta: sem eles, `border-transparent`
+      // e companhia desaparecem.
+      transparent: "transparent",
+      current: "currentColor",
+      inherit: "inherit",
+
+      // A paleta, para a página de demonstração e para mais nada. Um
+      // componente que escreva um destes nomes está a furar o mecanismo dos
+      // papéis — e há um teste que o recusa.
+      "bordo-noite": "var(--cor-bordo-noite)",
+      "bordo-vinho": "var(--cor-bordo-vinho)",
+      "bordo-tomazia": "var(--cor-bordo-tomazia)",
+      "dourado-latao": "var(--cor-dourado-latao)",
+      "creme-papel": "var(--cor-creme-papel)",
+      "creme-sombra": "var(--cor-creme-sombra)",
+      cortina: "var(--cor-cortina)",
+
+      // Os papéis — é por estes que os componentes pegam.
+      fundo: "var(--cor-fundo-local)",
+      texto: "var(--cor-texto)",
+      "texto-suave": "var(--cor-texto-suave)",
+      "texto-marca": "var(--cor-texto-marca)",
+      contorno: "var(--cor-contorno)",
+      "contorno-superficie": "var(--cor-contorno-superficie)",
+      // Três linhas e não duas: a aresta ENTRE superfícies, a fronteira de um
+      // controlo, e a divisória DENTRO de uma superfície. No creme divergem as
+      // três (ver o comentário de `.superficie-creme` em `tokens.css`).
+      "fio-interno": "var(--cor-fio-interno)",
+      foco: "var(--cor-foco)",
+      acao: "var(--cor-acao)",
+      "sobre-acao": "var(--cor-texto-sobre-acao)",
+      perigo: "var(--cor-perigo)",
+      "sobre-perigo": "var(--cor-texto-sobre-perigo)",
+      sucesso: "var(--cor-sucesso)",
+      erro: "var(--cor-erro)",
+      pontilhado: "var(--cor-pontilhado)",
+    },
+
+    // `font-*` é o mesmo espaço de nomes para a família e para o peso, por
+    // isso não há uma chave `titulo` nos dois: a família de título leva o seu
+    // peso na camada base (ver `.font-titulo` em `global.css`).
+    fontFamily: {
+      titulo: "var(--fonte-titulo)",
+      corpo: "var(--fonte-corpo)",
+    },
+    fontWeight: {
+      normal: "var(--peso-normal)",
+      forte: "var(--peso-forte)",
+    },
+    fontSize: {
+      nota: ["var(--texto-nota)", { lineHeight: "var(--entrelinha-nota)" }],
+      corpo: ["var(--texto-corpo)", { lineHeight: "var(--entrelinha-corpo)" }],
+      seccao: ["var(--texto-seccao)", { lineHeight: "var(--entrelinha-seccao)" }],
+      titulo: ["var(--texto-titulo)", { lineHeight: "var(--entrelinha-titulo)" }],
+      destaque: ["var(--texto-destaque)", { lineHeight: "var(--entrelinha-destaque)" }],
+    },
+
+    // Os nomes do Tailwind mantêm-se (p-1 = 4 px, p-2 = 8, …) porque os sete
+    // passos da especificação são um subconjunto exato dos dele. Ninguém
+    // precisa de reaprender nada; só os passos de fora deixam de existir.
+    spacing: {
+      0: "0px",
+      1: "var(--espaco-1)",
+      2: "var(--espaco-2)",
+      3: "var(--espaco-3)",
+      4: "var(--espaco-4)",
+      6: "var(--espaco-6)",
+      8: "var(--espaco-8)",
+      12: "var(--espaco-12)",
+    },
+
+    borderRadius: {
+      nenhum: "0px",
+      pequeno: "var(--raio-pequeno)",
+      cartao: "var(--raio-cartao)",
+      cheio: "var(--raio-cheio)",
+    },
+    borderWidth: { 0: "0px", DEFAULT: "var(--contorno-fino)" },
+
+    // Existem para o caso de alguém precisar de afinar o anel num sítio; a
+    // regra `:focus-visible` da camada base é que o desenha em todo o lado,
+    // por isso estas utilidades não chegam a ser geradas.
+    outlineWidth: { foco: "var(--espessura-foco)" },
+    outlineOffset: { foco: "var(--afastamento-foco)" },
+
+    // Sem sombras no escuro (a especificação proíbe-as): a escala é só
+    // "nenhuma". As superfícies separam-se por um fio de 1 px.
+    boxShadow: { nenhuma: "none" },
+
+    // Uma só opacidade, e é a do estado desativado. Substituída e não
+    // estendida, como as outras escalas: assim `opacity-50` não existe e
+    // ninguém apaga nada "só um bocadinho" por gosto. A razão de a cor não
+    // poder ser o sinal de desativado está em `tokens.css`, ao lado do valor.
+    opacity: { desativado: "var(--opacidade-desativado)" },
+
+    // Os dois valores que sobrevivem à substituição de `theme.colors`, porque
+    // estão escritos como fallback dentro do Tailwind (um branco e um azul,
+    // em corePlugins.js, para quando `ringColor.DEFAULT` e
+    // `ringOffsetColor.DEFAULT` não existem). Nós usamos `outline` e não
+    // `ring-*`, mas ficam substituídos na mesma, para a hipótese não existir.
+    ringColor: { DEFAULT: "var(--cor-foco)" },
+    ringOffsetColor: { DEFAULT: "var(--cor-fundo-local)" },
+
+    extend: {
+      minHeight: { toque: "var(--alvo-toque)" },
+      minWidth: { toque: "var(--alvo-toque)" },
+      maxWidth: {
+        coluna: "var(--coluna-publica)",
+        folha: "var(--largura-folha)",
+        vazio: "var(--largura-vazio)",
+      },
+      maxHeight: { folha: "var(--altura-folha)" },
+      // O carril e o manípulo do Interruptor: 48 × 28 e 24 × 24 não são passos
+      // da escala de espaçamento, por isso têm tokens próprios.
+      width: { carril: "var(--carril-largura)", manipulo: "var(--manipulo)" },
+      height: { carril: "var(--carril-altura)", manipulo: "var(--manipulo)" },
+      translate: {
+        manipulo: "var(--manipulo-curso)",
+        premido: "var(--descida-premido)",
+      },
+      transitionDuration: { curta: "var(--duracao-curta)", folha: "var(--duracao-folha)" },
+      transitionTimingFunction: { curva: "var(--curva)" },
+    },
   },
+  plugins: [],
 } satisfies Config;

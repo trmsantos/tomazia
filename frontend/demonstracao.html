@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-PT">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Componentes do Bar da Tomazia</title>
+  </head>
+  <body>
+    <!--
+      Esta página só existe em desenvolvimento, e são precisas duas coisas
+      para isso ser verdade — não uma:
+
+      1. O HTML e o JavaScript. O Vite só constrói os HTML declarados em
+         `build.rollupOptions.input`, e o valor por omissão é só o
+         `index.html`; um segundo HTML na raiz é servido com `npm run dev` e
+         ignorado no build.
+      2. O CSS. O Tailwind gera uma folha de estilos só, a partir do
+         `content` do `tailwind.config.ts` — que, no build, deixa esta
+         página de fora. Sem esse segundo passo, as classes que só a
+         demonstração usa iam para produção dentro do CSS público, e nenhuma
+         procura pela palavra "demonstracao" dava por isso.
+
+      `src/build-de-producao.test.ts` verifica as duas.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/demonstracao/main.tsx"></script>
+  </body>
+</html>

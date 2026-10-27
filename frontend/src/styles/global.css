@@ -1,3 +1,182 @@
+/*
+ * A camada base. Os valores estão todos em `tokens.css`; aqui só se diz onde
+ * é que eles se aplicam.
+ *
+ * Os dois `@import` vêm antes do Tailwind de propósito: as variáveis têm de
+ * existir antes de qualquer regra que lhes pegue, e o `@import` em CSS só é
+ * válido no topo do ficheiro.
+ */
+@import "./tokens.css";
+@import "./fontes.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    /* Faz o Chrome usar o preenchimento automático escuro. Sem isto, o campo
+       de password do /gestao/entrar fica com a caixa azul-clara do autofill
+       por cima do bordô, e aí o texto não se lê. */
+    color-scheme: dark;
+
+    /* A caixa de consentimento marcada fica creme, não dourada: o dourado tem
+       três usos (ação principal, chip ativo, foco) e só três. */
+    accent-color: var(--cor-creme-papel);
+
+    /* Só existem 400, 600 e a Playfair 700. Sem isto, o `bolder` do browser
+       fabrica um negrito falso da Source Sans 3 que ninguém desenhou. */
+    font-synthesis: none;
+  }
+
+  body {
+    background-color: var(--cor-fundo-local);
+    color: var(--cor-texto);
+    font-family: var(--fonte-corpo);
+    font-size: var(--texto-corpo);
+    font-weight: var(--peso-normal);
+    line-height: var(--entrelinha-corpo);
+  }
+
+  /* O `bolder` do browser não tem face desenhada; o peso forte tem. */
+  strong,
+  b {
+    font-weight: var(--peso-forte);
+  }
+
+  /*
+   * A família de título traz consigo o peso que existe: a Playfair só foi
+   * descarregada em 700. Isto fica aqui, e não no `theme.fontWeight`, porque
+   * no Tailwind o `font-*` é o mesmo espaço de nomes para a família e para o
+   * peso — duas chaves `titulo` gerariam duas classes com o mesmo nome e uma
+   * delas perdia em silêncio.
+   */
+  .font-titulo {
+    font-weight: var(--peso-titulo);
+  }
+
+  /*
+   * A rede de segurança do foco: desenhado uma vez, para todos os controlos,
+   * para nenhum componente se poder esquecer dele. `outline` e não o `ring-*`
+   * do Tailwind — acompanha o `border-radius`, não precisa das variáveis
+   * `--tw-ring-*` e não traz um branco por omissão.
+   *
+   * O afastamento de 2 px é o que separa o anel do preenchimento: é isso que
+   * faz o anel do botão principal (dourado encostado a dourado, 1,0) ser
+   * legível, porque ele assenta na folga da cor do fundo local.
+   *
+   * Sem `border-radius: inherit`: o `outline` já acompanha o raio do próprio
+   * elemento. A declaração não acrescentava nada e armava uma ratoeira — no
+   * primeiro focável **sem** utilidade de raio dentro de um pai
+   * `rounded-cartao`, fazia o elemento mudar de forma ao receber foco, que é
+   * pior do que não ter anel nenhum: parece avaria.
+   */
+  :focus-visible {
+    outline: var(--espessura-foco) solid var(--cor-foco);
+    outline-offset: var(--afastamento-foco);
+  }
+
+  /* Movimento só em resposta a uma ação, e nem isso para quem pediu que não. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * As três superfícies. São elas que pintam o fundo e, sobretudo, que
+   * reatribuem os papéis de cor definidos em `tokens.css`.
+   */
+  .superficie-escura,
+  .superficie-painel,
+  .superficie-creme {
+    background-color: var(--cor-fundo-local);
+    color: var(--cor-texto);
+  }
+
+  /*
+   * O que resta aqui em baixo é o pouco que nenhuma utilidade do Tailwind
+   * escreve e que um atributo `style` escreveria — e `style` inline é
+   * bloqueado pela CSP de produção (ADR 0008).
+   */
+
+  /* Barra de chips: desliza na horizontal sem mostrar a barra de deslocamento. */
+  .sem-barra-de-deslocamento {
+    scrollbar-width: none;
+  }
+
+  .sem-barra-de-deslocamento::-webkit-scrollbar {
+    display: none;
+  }
+
+  /*
+   * Folga em baixo para o indicador de home e companhia (secção 7.5): o Aviso
+   * temporário assenta acima dele, não por cima. O `env()` não tem utilidade
+   * no Tailwind e um `style` inline seria bloqueado pela CSP, por isso vive
+   * aqui. O `0px` de recurso é preciso: um `env()` sem alternativa, onde não
+   * houver a variável, invalida a declaração inteira.
+   *
+   * Nota para quem vier a seguir: as margens de sistema só passam a valer
+   * mais do que zero com `viewport-fit=cover` no `<meta name="viewport">`,
+   * que hoje nenhuma das duas páginas usa. Até lá isto vale `--espaco-4`, que
+   * é o que a especificação manda na mesma.
+   */
+  .folga-de-sistema-em-baixo {
+    padding-bottom: calc(var(--espaco-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* O fundo não desliza enquanto a Folha está aberta. Uma classe no <body>,
+     nunca `document.body.style.overflow`. */
+  .sem-deslizar {
+    overflow: hidden;
+  }
+
+  /* A cortina da Folha. O `::backdrop` herda as variáveis do elemento que o
+     originou, por isso `--cor-cortina` chega aqui vinda de `:root`. */
+  dialog::backdrop {
+    background-color: var(--cor-cortina);
+  }
+
+  /*
+   * A Folha a entrar. É uma animação e não uma transição porque o elemento
+   * passa de `display: none` a visível quando o `showModal()` o abre, e uma
+   * transição não corre nessa passagem.
+   *
+   * Até 1024 px sobe de baixo; a partir daí é um painel centrado e só aparece.
+   * A variante `lg:` em baixo é gerada pelo Tailwind a partir desta classe,
+   * para o valor do breakpoint continuar a viver num sítio só (o `screens` do
+   * `tailwind.config.ts`).
+   */
+  .folha-sobe {
+    animation: folha-sobe var(--duracao-folha) var(--curva);
+  }
+
+  .folha-aparece {
+    animation: folha-aparece var(--duracao-folha) var(--curva);
+  }
+}
+
+@keyframes folha-sobe {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes folha-aparece {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

@@ -38,6 +38,32 @@ import tseslint from "typescript-eslint";
 const MENSAGEM_SEM_DANGEROUSLY_SET_INNER_HTML =
   "Não é permitido `dangerouslySetInnerHTML` (critério S-13).";
 
+/**
+ * F3-01: nenhum atributo `style` em JSX.
+ *
+ * A CSP de produção (`deploy/htaccess.exemplo`) serve `style-src 'self'` sem
+ * `'unsafe-inline'`, e um `style-src` assim também bloqueia atributos de
+ * estilo. O modo de falha é o pior que há neste projeto: o servidor de
+ * desenvolvimento do Vite não aplica CSP nenhuma, por isso um `style={{ … }}`
+ * funciona na máquina de quem o escreve e parte no servidor, onde ninguém
+ * está a olhar. É o mesmo raciocínio do ADR 0008.
+ *
+ * São três redes independentes, e esta regra é a primeira delas — a mesma
+ * contagem que `src/styles/sem-estilo-inline.test.ts` faz:
+ *
+ *  1. esta regra, que apanha o `style` em JSX enquanto se escreve;
+ *  2. a varredura do código em disco, que nenhum `eslint-disable` desliga;
+ *  3. a verificação de CSP em `e2e/componentes.spec.ts`, que olha para o
+ *     resultado num browser e não para a forma do código.
+ *
+ * As três existem por causa do buraco conhecido e aceite do seletor: um
+ * objeto `{ style }` montado fora do JSX e espalhado com
+ * `{...propriedades}`. Alargar o seletor a `Property[key.name='style']`
+ * acusaria qualquer objeto com uma chave `style`.
+ */
+const MENSAGEM_SEM_ESTILO_INLINE =
+  "A CSP `style-src 'self'` bloqueia `style` inline em produção. Usa uma classe.";
+
 export default tseslint.config(
   {
     ignores: ["dist", "coverage", "src/lib/api"],
@@ -160,6 +186,12 @@ export default tseslint.config(
           // `Identifier` (com `.name`) — o seletor acima não o apanha.
           selector: "MemberExpression[computed=true][property.value='dangerouslySetInnerHTML']",
           message: MENSAGEM_SEM_DANGEROUSLY_SET_INNER_HTML,
+        },
+        {
+          // F3-01: `<div style={{ … }} />`. Ver a nota no topo do ficheiro
+          // para o porquê e para o buraco conhecido do seletor.
+          selector: "JSXAttribute[name.name='style']",
+          message: MENSAGEM_SEM_ESTILO_INLINE,
         },
       ],
     },

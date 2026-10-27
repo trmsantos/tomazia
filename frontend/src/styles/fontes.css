@@ -1,0 +1,44 @@
+/*
+ * As três faces, servidas pelo próprio site.
+ *
+ * Nada de CDN: a CSP de produção é `font-src 'self'` com `default-src 'none'`,
+ * por isso uma fonte pedida a outro domínio é bloqueada no servidor e funciona
+ * em desenvolvimento — o modo de falha que esta tarefa inteira tenta evitar.
+ *
+ * Os ficheiros vivem em `public/fontes/` (com a licença e a proveniência ao
+ * lado) e não em `src/`: o preload precisa de um nome estável, e o Vite
+ * embute ficheiros abaixo de 4 KB na própria folha de estilos, que a mesma
+ * CSP bloqueia.
+ *
+ * `font-display: swap` e não `optional` nem `block`: a primeira visita é a que
+ * conta, porque é a do QR code na mesa. O texto aparece já na fonte de sistema
+ * e troca quando a nossa chega.
+ *
+ * O intervalo de caracteres não se declara: com uma só face por peso não
+ * poupa nada e cria a hipótese de uma letra portuguesa cair fora por engano.
+ * O subconjunto é latin e está registado em `public/fontes/PROVENIENCIA.md`.
+ */
+
+@font-face {
+  font-family: "Playfair Display";
+  src: url("/fontes/playfair-display-v40-latin-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("/fontes/source-sans-3-v20-latin-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("/fontes/source-sans-3-v20-latin-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
