@@ -40,6 +40,29 @@ VARIAVEIS_DE_DEFINICOES = (
 )
 
 
+def _limpar_cache_do_motor() -> None:
+    """Limpa a cache de `app.db.obter_engine()`, que também é um `lru_cache`.
+
+    Sem isto, o primeiro teste a chamar `obter_engine()` fixava o motor (e
+    com ele o ficheiro de base de dados dentro do seu `tmp_path`, já
+    apagado) para toda a sessão de testes — exatamente o problema que
+    `obter_definicoes.cache_clear()` resolve para a configuração.
+
+    Tanto o `import app.db` como o acesso a `obter_engine` são
+    deliberadamente **sem guarda**. Um `app/db.py` partido (erro de
+    sintaxe, dependência em falta) ou sem o nome `obter_engine` tem de
+    rebentar aqui, em voz alta. Enquanto a F2-01 não aterrou, a ausência
+    do nome era tolerada com um `getattr`; agora que aterrou, essa
+    tolerância passaria a confundir "ainda não existe" com "alguém
+    renomeou", que é o que a regra 10 do `CLAUDE.md` proíbe — e o preço
+    seria a suite inteira a correr, em silêncio, com um motor apontado a
+    um `tmp_path` já apagado.
+    """
+    import app.db
+
+    app.db.obter_engine.cache_clear()
+
+
 @pytest.fixture(autouse=True)
 def isolar_definicoes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -53,8 +76,12 @@ def isolar_definicoes(
       `app.config` carregar um ficheiro `.env` relativo à pasta de
       trabalho, nunca encontre o `.env` real do repositório.
     - Aponta `DATA_DIR` para dentro desse `tmp_path`, para nenhum teste
-      escrever na pasta `var/` de desenvolvimento do repositório.
-    - Limpa a cache de `obter_definicoes()` antes e depois do teste, já
+      escrever na pasta `var/` de desenvolvimento do repositório, e **cria**
+      a pasta: o SQLite não cria a pasta do ficheiro da base de dados.
+    - Aponta `BASE_DADOS_URL` para um ficheiro dentro dessa pasta. Em
+      ficheiro, nunca `:memory:` — ver `backend/CLAUDE.md`.
+    - Limpa a cache de `obter_definicoes()` e de `obter_engine()` antes e
+      depois do teste, já
       que é decorada com `lru_cache` e, de outra forma, o primeiro teste a
       chamá-la "fixava" as definições para todos os testes seguintes.
 
@@ -72,7 +99,21 @@ def isolar_definicoes(
     monkeypatch.setenv("AMBIENTE", "desenvolvimento")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "var"))
+    pasta_var = tmp_path / "var"
+    # A pasta tem de existir mesmo: o valor por omissão de `base_dados_url`
+    # (`sqlite:///./var/dev.db`) aponta para uma pasta que ninguém cria, e o
+    # SQLite não a cria sozinho — o primeiro teste a tocar na base de dados
+    # rebentava com "unable to open database file", um erro que não diz nada
+    # sobre o que o teste queria provar.
+    pasta_var.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("DATA_DIR", str(pasta_var))
+    # Uma base de dados por teste, **em ficheiro**, dentro de `tmp_path` —
+    # nunca `:memory:` (ver `backend/CLAUDE.md`). `PRAGMA journal_mode=WAL`
+    # numa base de dados em memória devolve `memory`, nunca `wal` (medido,
+    # SQLite 3.50.4), e o guarda do WAL em `app/db.py` recusa uma base de
+    # dados que não consiga pôr em WAL: um teste sobre `:memory:` rebentaria
+    # no guarda, não no que queria provar.
+    monkeypatch.setenv("BASE_DADOS_URL", f"sqlite:///{pasta_var / 'teste.db'}")
     # Caminho inexistente de propósito: nenhum `.env` lá para ser lido.
     # Independente do `chdir` acima — mesmo que um teste mude de pasta de
     # trabalho depois, o ficheiro de ambiente real do repositório nunca
@@ -83,6 +124,8 @@ def isolar_definicoes(
 
     from app.config import obter_definicoes
 
+    _limpar_cache_do_motor()
     obter_definicoes.cache_clear()
     yield
+    _limpar_cache_do_motor()
     obter_definicoes.cache_clear()
