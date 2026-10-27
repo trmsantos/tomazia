@@ -38,7 +38,7 @@ Fonte de verdade para pessoas e agentes. O plano completo, com diagramas, vive n
 | --- | --- |
 | categorias | id, nome (60), slug (único), ordem (int), visivel (bool, true) |
 | produtos | id, categoria_id, nome (120), descricao (280, opcional), preco_cent (int ≥ 0), disponivel (bool, true), ordem (int) |
-| eventos | id, titulo (120), inicio (datetime UTC, obrigatório), descricao (opcional), imagem (opcional), publicado (bool, false) |
+| eventos | id, titulo (120), inicio (datetime UTC; obrigatório para publicar — ver ADR 0009), descricao (opcional), imagem (opcional), publicado (bool, false) |
 | fotos | id, ficheiro (uuid.webp), estado (pendente, aprovada, rejeitada), descricao (255, opcional), enviada_por (60, opcional), ip_hash, criada_em, moderada_em |
 | clientes | id, nome (80), email (único), telemovel (opcional), consentimento_em, versao_termos, token_cancelar (único), criado_em |
 | admins | id, utilizador (único), hash_password (argon2id), tentativas_falhadas, bloqueado_ate, criado_em |

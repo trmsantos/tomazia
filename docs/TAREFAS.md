@@ -63,7 +63,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Agentes:** qa, backend.
 - **Depende de:** F1-02.
 - **Faz:** as sete tabelas da especificação; migração Alembic inicial; SQLite em modo WAL com `busy_timeout`.
-- **Feito quando:** `alembic upgrade head` cria a BD do zero; testes de constraints (slug único, preço ≥ 0, evento sem data rejeitado).
+- **Feito quando:** `alembic upgrade head` cria a BD do zero; testes de constraints (slug único, preço ≥ 0, evento publicado sem data rejeitado).
 
 ### F2-02 Scripts de admin e backup
 
