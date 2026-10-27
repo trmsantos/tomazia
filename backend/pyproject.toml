@@ -9,6 +9,13 @@ dependencies = [
     "alembic",
     "pydantic-settings",
     "a2wsgi>=1.10.10",
+    # ADR 0010: o corte do dia de `GET /eventos` é a meia-noite em
+    # `Europe/Lisbon`, e o `zoneinfo` lê esse nome da base de dados de
+    # fusos do sistema — que no cPanel partilhado não é nossa e pode não
+    # existir. Sem ela, `ZoneInfo("Europe/Lisbon")` levanta
+    # `ZoneInfoNotFoundError`. O `tzdata` é um pacote só de dados, puro
+    # Python, e torna o comportamento independente da máquina.
+    "tzdata",
 ]
 
 [dependency-groups]

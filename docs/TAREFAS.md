@@ -85,6 +85,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-01.
 - **Faz:** `POST /auth/login`, `/auth/logout`, `GET /auth/eu`; argon2id; cookie de sessão; dependência `exigir_admin`; verificação de `X-Tomazia`; bloqueio após 5 falhas.
 - **Feito quando:** S-04, S-06, S-07; cookie com `HttpOnly`, `Secure` e `SameSite=Strict`.
+- **Herança da F2-03, e é uma armadilha do S-04:** o critério diz "lista gerada a partir das rotas". Medido na F2-03, com FastAPI 0.161.1: o `include_router()` **não copia as rotas** para `app.routes` — deixa lá um `_IncludedRouter`, que não é uma rota e não tem `.routes`. Um `for rota in app.routes` com `isinstance(rota, APIRoute)` devolve **lista vazia** numa app cheia de rotas, e o S-04 passava a verificar zero rotas, a verde. Usa `backend/tests/apoio_rotas.py`, escrito na F2-03 para isto: desce recursivamente, acumula prefixos e **rebenta** diante de um objeto de rota que não saiba classificar.
 
 ### F2-05 Endpoints de gestão
 
