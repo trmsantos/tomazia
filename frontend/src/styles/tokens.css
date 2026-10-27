@@ -96,8 +96,42 @@
    * explicitamente os componentes inativos do mínimo de contraste
    * ("Incidental"), por isso baixar aqui é o comportamento correto e não uma
    * exceção que se abre.
+   *
+   * **Este valor tem um chão, e o chão é o anel de foco.** Um Botão
+   * desativado leva `aria-disabled` e não `disabled`, de propósito: continua
+   * focável, para quem navega por teclado poder lá parar e ouvir porque é que
+   * ele ali está. Mas a `opacity` apaga tudo o que o elemento pinta — **o anel
+   * incluído**. O chão é por âmbito, e o apertado é o do painel:
+   *
+   *     escuro 0,516 · painel 0,546 · creme 0,536
+   *
+   * Abaixo disso o anel de um controlo desativado cai abaixo dos 3 de 1.4.11
+   * e quem navega por teclado perde-o. A 0,60 fica em 3,60 / 3,37 / 3,49.
+   *
+   * **Porquê 0,60 e não 0,55**, que era o valor anterior: a 0,55 o painel dava
+   * 3,04 contra um chão de 0,546 — quatro milésimas, que não é folga, é
+   * coincidência. O que se paga pela subida é o sinal de "desativado" ficar um
+   * pouco menos apagado: a distância entre o texto normal e o desativado desce
+   * de 2,59 para 2,28 no painel. Continua a ser **quase o dobro** do 1,33–1,39
+   * que chumbou na revisão da F3-01 — gasta-se uma fatia pequena de um
+   * excedente grande para comprar margem onde não havia nenhuma.
+   *
+   * E as duas falhas não pesam o mesmo. Um controlo desativado um pouco menos
+   * apagado continua a ler-se. Um anel abaixo de 3 falha exatamente a pessoa
+   * para quem o `aria-disabled` foi escolhido — e o painel é a superfície da
+   * Folha e do Aviso, ou seja, é onde vai nascer o primeiro botão desativado
+   * do projeto: o da Folha de confirmação da gestão, à frente de uma ação
+   * destrutiva.
+   *
+   * Cuidado com o teste que guarda isto: `getComputedStyle().outlineColor`
+   * devolve a cor **sem** a opacidade aplicada, por isso um teste ingénuo lê
+   * 7,73 e passa enquanto a pessoa vê 3,37. A conta tem de multiplicar pela
+   * opacidade computada do elemento. E tem de ser feita **a partir dos
+   * tokens**, nos três âmbitos: no painel não há hoje um único controlo
+   * desativado para amostrar, e foi por isso que o âmbito mais apertado dos
+   * três escapou a duas revisões que olharam para píxeis.
    */
-  --opacidade-desativado: 0.55;
+  --opacidade-desativado: 0.6;
 
   /* Larguras. A coluna pública da especificação, e as duas medidas que o
      `tailwind.config.ts` teria como literais se não estivessem aqui. */

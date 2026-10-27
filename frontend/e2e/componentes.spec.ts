@@ -2,9 +2,11 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { arredondar, contraste, lerCor } from "../src/testes/contraste";
+import { arredondar, contraste, contrasteDeCores, lerCor, sobrepor } from "../src/testes/contraste";
 import { blocosDosTokens, resolver } from "../src/testes/tokens";
 import { exigirVarrimentoCompleto, percorrerComTab, tabulacoesAte } from "./apoio/foco";
+import type { ElementoFocado } from "./apoio/foco";
+import { instalarPintura } from "./apoio/pintura";
 import {
   CAMINHO_DA_DEMONSTRACAO,
   CONTROLOS,
@@ -46,6 +48,9 @@ async function abrirDemonstracao(pagina: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
+  // Antes do `goto`: o `addInitScript` corre a cada navegação, e é isso que
+  // o faz sobreviver ao `reload` e à re-navegação dos testes de CSP.
+  await instalarPintura(page);
   await abrirDemonstracao(page);
 });
 
@@ -141,6 +146,50 @@ test.describe("Q-04: alvos de toque", () => {
   });
 });
 
+/**
+ * Os anéis que não chegam aos 3:1 da 1.4.11, **com a opacidade aplicada**.
+ *
+ * A opacidade é a parte que faltava e que a revisão encontrou. O estado
+ * desativado viaja na `opacity`, a `opacity` apaga o anel junto com tudo o
+ * resto, e o `outlineColor` computado devolve a cor cheia. Medido sem ela,
+ * o anel de um botão desativado dava 7,73 no escuro e 9,95 no creme;
+ * medido como se vê, dá 3,22 e 3,08. Passavam os dois — um por 0,08.
+ */
+function aneisInvisiveis(visitados: ElementoFocado[]): string[] {
+  const falhas: string[] = [];
+
+  for (const visitado of visitados) {
+    const corDoAnel = lerCor(visitado.corDoContorno);
+    const fundoEfetivo = visitado.fundoEfetivo;
+    const fundo = fundoEfetivo === null ? null : lerCor(fundoEfetivo);
+
+    if (corDoAnel === null || fundo === null) {
+      falhas.push(
+        `${visitado.descricao}: não consegui ler as cores ` +
+          `(${visitado.corDoContorno} sobre ${fundoEfetivo ?? "fundo nenhum"}) — ` +
+          "falha de leitura, não de contraste",
+      );
+      continue;
+    }
+
+    const opacidade = visitado.opacidadeEfetiva;
+    const comoSeVe = sobrepor(corDoAnel, fundo, opacidade);
+    const racio = arredondar(contrasteDeCores(comoSeVe, fundo));
+    if (racio >= 3) continue;
+
+    const semOpacidade = arredondar(contrasteDeCores(corDoAnel, fundo));
+    falhas.push(
+      `${visitado.descricao}: anel ${visitado.corDoContorno} sobre ${fundoEfetivo}, ` +
+        `apagado a ${opacidade}, dá ${racio} — e o mínimo de 1.4.11 é 3. ` +
+        (opacidade < 1
+          ? `Sem a opacidade a conta dava ${semOpacidade}, que é o número que ninguém vê.`
+          : ""),
+    );
+  }
+
+  return falhas;
+}
+
 test.describe("Q-04: foco visível", () => {
   test("todo o elemento que recebe Tab mostra um anel", async ({ page }) => {
     const varrimento = await percorrerComTab(page);
@@ -174,29 +223,71 @@ test.describe("Q-04: foco visível", () => {
         "é lá que se vê se algum dourado escapou para cima do creme.",
     ).toBeGreaterThan(2);
 
-    const invisiveis: string[] = [];
-    for (const visitado of visitados) {
-      const corDoAnel = lerCor(visitado.corDoContorno);
-      const fundoEfetivo = visitado.fundoEfetivo;
-      if (corDoAnel === null || fundoEfetivo === null || lerCor(fundoEfetivo) === null) {
-        invisiveis.push(
-          `${visitado.descricao}: não consegui ler as cores ` +
-            `(${visitado.corDoContorno} sobre ${fundoEfetivo ?? "fundo nenhum"}) — ` +
-            "falha de leitura, não de contraste",
-        );
-        continue;
-      }
+    expect(aneisInvisiveis(visitados)).toEqual([]);
+  });
 
-      const racio = arredondar(contraste(visitado.corDoContorno, fundoEfetivo));
-      if (racio < 3) {
-        invisiveis.push(
-          `${visitado.descricao}: anel ${visitado.corDoContorno} sobre ` +
-            `${fundoEfetivo} dá ${racio}, e o mínimo de 1.4.11 é 3`,
-        );
-      }
-    }
+  test("autoteste: a medição atravessa um véu translúcido e multiplica as opacidades", async ({
+    page,
+  }) => {
+    // As duas metades do medidor, afirmadas sobre uma montagem feita para
+    // isso. Nenhuma delas se consegue provar contra a página de
+    // demonstração: ela não tem, hoje, um fundo translúcido no caminho de
+    // nenhum controlo focável. Sem este teste, a correção do `opaca`
+    // (`=== 1` em vez de `> 0`) ficava sem nada a prendê-la, e o erro podia
+    // voltar sem se notar — que é exactamente como ele chegou aqui.
+    //
+    // Os `style` inline são de fixture e vivem dentro deste `evaluate`; o
+    // que a CSP proíbe é código **nosso** a pô-los, e disso trata o bloco
+    // "CSP: nenhum estilo inline" mais abaixo.
+    const medida = await page.evaluate(() => {
+      const opaco = document.createElement("div");
+      opaco.setAttribute("style", "background-color: rgb(10, 20, 30)");
+      const veu = document.createElement("div");
+      veu.setAttribute("style", "background-color: rgba(255, 255, 255, 0.5); opacity: 0.5");
+      const alvo = document.createElement("button");
+      alvo.setAttribute("style", "opacity: 0.4");
 
-    expect(invisiveis).toEqual([]);
+      veu.append(alvo);
+      opaco.append(veu);
+      document.body.append(opaco);
+      const resultado = window.__pintura.medir(alvo);
+      opaco.remove();
+      return resultado;
+    });
+
+    expect(
+      medida.fundo,
+      "a subida parou num fundo translúcido e entregou-o como se fosse opaco: " +
+        "o contraste ia ser calculado contra uma cor que não é a que se vê",
+    ).toBe("rgb(10, 20, 30)");
+
+    expect(
+      medida.opacidade,
+      "a opacidade do elemento tem de ser multiplicada pela dos antepassados até ao fundo",
+    ).toBeCloseTo(0.4 * 0.5, 5);
+  });
+
+  test("o anel de um controlo desativado continua a ver-se depois de a opacidade o apagar", async ({
+    page,
+  }) => {
+    // O chão do `--opacidade-desativado`, medido onde ele acontece. O
+    // 0,55 escolhido deixa o anel a 3,22 no escuro e a 3,08 no creme: está
+    // certo, e está certo por 0,08. Abaixo de cerca de 0,53 deixa de estar,
+    // e sem este teste nada daria por isso — o `outlineColor` computado
+    // continua a devolver a cor cheia, apagada ou não.
+    const varrimento = await percorrerComTab(page);
+    exigirVarrimentoCompleto(varrimento);
+
+    const apagados = varrimento.visitados.filter((visitado) => visitado.opacidadeEfetiva < 1);
+
+    expect(
+      apagados.length,
+      "guarda: não encontrei um único controlo focável com opacidade reduzida. " +
+        "A demonstração tem botões desativados no escuro e no creme — se nenhum " +
+        "chegou aqui, este teste não mediu o que existe para medir.",
+    ).toBeGreaterThan(4);
+
+    expect(aneisInvisiveis(apagados)).toEqual([]);
   });
 });
 
@@ -442,27 +533,13 @@ test.describe("1.4.11: as linhas de 1 px dentro do creme", () => {
     page,
   }) => {
     const linhas = await page.evaluate(() => {
-      const opaca = (cor: string): boolean => {
-        const numeros = cor.match(/[\d.]+/g);
-        if (numeros === null || numeros.length < 3) return false;
-        return numeros.length < 4 || Number(numeros[3]) > 0;
-      };
-
       // O fundo em que a linha assenta é o da superfície **por trás** dela,
-      // e por isso a procura começa no pai e não no próprio elemento. Um
-      // cartão com preenchimento próprio tem a sua aresta a delimitá-lo
-      // contra o que está à volta: medir contra o seu próprio
-      // preenchimento dava 1,39 à aresta do cartão creme, que é a única
-      // linha do desenho que está certa a creme-sombra.
-      const fundoPorTras = (elemento: Element): string | null => {
-        let subida: Element | null = elemento.parentElement;
-        while (subida !== null) {
-          const cor = getComputedStyle(subida).backgroundColor;
-          if (opaca(cor)) return cor;
-          subida = subida.parentElement;
-        }
-        return null;
-      };
+      // e por isso o `medir` de `apoio/pintura.ts` começa no pai e não no
+      // próprio elemento. Um cartão com preenchimento próprio tem a sua
+      // aresta a delimitá-lo contra o que está à volta: medir contra o seu
+      // próprio preenchimento dava 1,39 à aresta do cartão creme, que é a
+      // única linha do desenho que está certa a creme-sombra.
+      const { opaca, medir } = window.__pintura;
 
       const LADOS = ["top", "right", "bottom", "left"];
       const achados: {
@@ -503,7 +580,7 @@ test.describe("1.4.11: as linhas de 1 px dentro do creme", () => {
             lado,
             espessura,
             cor,
-            fundo: fundoPorTras(elemento),
+            fundo: medir(elemento).fundo,
           });
         }
       }
@@ -562,21 +639,7 @@ test.describe("1.4.11: as linhas de 1 px dentro do creme", () => {
         "forma, e se a cor também for a mesma só se distinguem a ler as palavras",
     ).not.toBe(corDoVazio);
 
-    const fundo = await erro.evaluate((elemento) => {
-      let subida: Element | null = elemento.parentElement;
-      while (subida !== null) {
-        const cor = getComputedStyle(subida).backgroundColor;
-        const numeros = cor.match(/[\d.]+/g);
-        if (
-          numeros !== null &&
-          numeros.length >= 3 &&
-          (numeros.length < 4 || Number(numeros[3]) > 0)
-        )
-          return cor;
-        subida = subida.parentElement;
-      }
-      return null;
-    });
+    const fundo = await erro.evaluate((elemento) => window.__pintura.medir(elemento).fundo);
 
     expect(fundo, "não consegui ler o fundo por trás do título de erro").not.toBeNull();
     expect(

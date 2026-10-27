@@ -58,6 +58,12 @@ export type ElementoFocado = {
   corDoContorno: string;
   /** `null` quando não se encontrou nenhum fundo opaco: é "não sei", não "branco". */
   fundoEfetivo: string | null;
+  /**
+   * Com que opacidade a cor do anel chega ao ecrã. `1` na esmagadora
+   * maioria; `--opacidade-desativado` num controlo desativado, que é
+   * precisamente onde o anel por medir estava mais perto de desaparecer.
+   */
+  opacidadeEfetiva: number;
   noCreme: boolean;
   caixa: CaixaDeLayout;
 };
@@ -133,26 +139,11 @@ export async function percorrerComTab(pagina: Page): Promise<Varrimento> {
       // na folga, que é pintada pela superfície por trás. É isso que faz o
       // anel do botão principal (dourado sobre preenchimento dourado, 1,0)
       // ser legível: ele não toca no preenchimento.
-      // Opaca quer dizer alfa > 0. A cor computada vem como três ou quatro
-      // números; o quarto, quando existe, é o alfa. Lê-se assim, e não por
-      // comparação com a cadeia de uma cor transparente, para a varredura
-      // não ficar dependente da forma exacta como o browser a escreve.
-      const opaca = (cor: string): boolean => {
-        const numeros = cor.match(/[\d.]+/g);
-        if (numeros === null || numeros.length < 3) return false;
-        return numeros.length < 4 || Number(numeros[3]) > 0;
-      };
-
-      let fundoEfetivo: string | null = null;
-      let subida: Element | null = elemento.parentElement;
-      while (subida !== null) {
-        const cor = getComputedStyle(subida).backgroundColor;
-        if (opaca(cor)) {
-          fundoEfetivo = cor;
-          break;
-        }
-        subida = subida.parentElement;
-      }
+      //
+      // A opacidade vem no mesmo movimento, e tem de vir: um controlo
+      // desativado pinta o anel com a cor inteira e deixa-o chegar ao ecrã
+      // apagado a 0,55. Ver `apoio/pintura.ts`.
+      const pintura = window.__pintura.medir(elemento);
 
       // Coordenadas de layout: ver a nota de `CaixaDeLayout`.
       const rectangulo = elemento.getBoundingClientRect();
@@ -193,7 +184,8 @@ export async function percorrerComTab(pagina: Page): Promise<Varrimento> {
         estiloDoContorno: estilo.outlineStyle,
         espessura: Number.parseFloat(estilo.outlineWidth),
         corDoContorno: estilo.outlineColor,
-        fundoEfetivo,
+        fundoEfetivo: pintura.fundo,
+        opacidadeEfetiva: pintura.opacidade,
         noCreme: elemento.closest(".superficie-creme") !== null,
         caixa: {
           topo,
