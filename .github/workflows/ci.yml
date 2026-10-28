@@ -23,8 +23,9 @@
 #
 # A guarda dos tipos gerados (job `contrato`) já não vive num `run:`:
 # está em `.github/scripts/verificar-gerado-em-dia.sh`, com códigos de
-# saída distintos para "em dia" (0), "há diferenças" (1), "o git não
-# respondeu" (2) e "não foi gerado nada" (3). Embutida aqui, tinha a
+# saída distintos para "em dia" (0), "há diferenças" (1), "não consegui
+# verificar" (2 — o git não respondeu, ou o caminho está escondido do
+# git pelo `.gitignore`) e "não foi gerado nada" (3). Embutida aqui, tinha a
 # forma `if [ -n "$(git status --porcelain -- <caminho>)" ]`, e essa
 # substituição de comandos engole o estado do git: com o `git` a falhar,
 # a saída vem vazia, o `-n` dá falso e o passo fica VERDE (dentro da

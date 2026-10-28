@@ -35,6 +35,15 @@
  * `src/lib/api/gerador.test.ts`, no caso que corre o `openapi-typescript`
  * diretamente sobre um documento vazio.
  *
+ * **O passo 3 também olha para os `$ref`, e é por isso que esta ferramenta
+ * é hermética.** Medido na revisão de segurança, com um servidor local: um
+ * `$ref` remoto (`{"$ref": "http://…/remoto.json"}`) num esquema faz o
+ * `openapi-typescript` **ir buscá-lo à rede**. Não há escalada — o job do
+ * CI corre sem segredos e com `contents: read`, e quem chega aos esquemas
+ * já corre código no runner pelo `npm ci` — mas uma ferramenta que promete
+ * ler um ficheiro e ler só isso não pode sair do ficheiro. Só `$ref`
+ * começados por `#/` passam.
+ *
  * O passo 4 segue a regra 10 do `CLAUDE.md`: um processo que não arranca
  * (`result.error`), um que é morto por um sinal (`status === null`) e um
  * que sai com estado ≠ 0 são três avarias diferentes e não podem dar a
@@ -42,15 +51,25 @@
  * a ficar sem memória, e mandar alguém procurar o defeito no OpenAPI seria
  * mandá-lo procurar o que lá não está.
  *
- * Estados de saída (contrato com o CI e com os testes):
+ * Estados de saída (contrato com o CI e com os testes). São todos
+ * distintos porque o que o CI lê é o número, não a frase — a mesma regra
+ * 10 que separa o 5, o 6 e o 7 obriga a separar «não existe» de «existe e
+ * não consigo lê-lo», e a não deixar nenhum caminho sair por um 1 que esta
+ * tabela não nomeia:
  *   0  gerou
  *   2  entrada ausente
  *   3  entrada não é JSON
- *   4  contrato degenerado (sem `paths`, vazio, ou sem as rotas públicas)
+ *   4  contrato degenerado (sem `paths`, vazio, sem as rotas públicas, ou
+ *      com um `$ref` que sai deste ficheiro)
  *   5  não consegui lançar o openapi-typescript
  *   6  o openapi-typescript saiu com estado ≠ 0
  *   7  o openapi-typescript foi morto por um sinal
  *   8  correu bem mas não escreveu saída (ou escreveu-a vazia)
+ *   9  a entrada existe mas não a consigo ler (permissões, é uma diretoria)
+ *  10  não consigo escrever a saída (a pasta não se cria, o ficheiro não se move)
+ *  70  avaria inesperada (EX_SOFTWARE): um defeito desta ferramenta, com o
+ *      rasto completo no stderr. Existe para nenhum caminho sair por um 1
+ *      com um rasto cru e sem frase de correção.
  *
  * ## O `overrides` do `package.json`
  *
@@ -93,6 +112,9 @@ const ESTADOS = {
   GERADOR_FALHOU: 6,
   GERADOR_MORTO_POR_SINAL: 7,
   SAIDA_VAZIA: 8,
+  ENTRADA_ILEGIVEL: 9,
+  SAIDA_NAO_ESCRITA: 10,
+  AVARIA_INESPERADA: 70,
 };
 
 /** Escreve a frase no stderr e devolve o estado de saída. */
@@ -125,6 +147,50 @@ function tamanhoDe(caminho) {
   }
 }
 
+/**
+ * Todos os `$ref` do documento que não apontam para dentro dele próprio.
+ *
+ * Percorre o JSON inteiro — não só os `paths` — porque um `$ref` remoto
+ * serve em qualquer sítio onde um esquema caiba, e o que se quer impedir é
+ * o `openapi-typescript` sair deste ficheiro para a rede ou para o disco.
+ * Um `$ref` local começa sempre por `#/`; tudo o resto (`http://…`,
+ * `./outro.json`, `/etc/passwd`, ou um `$ref` que nem é string) é recusado.
+ *
+ * Devolve os valores encontrados, para a mensagem poder dizer qual é.
+ *
+ * A travessia é iterativa, com uma pilha explícita, e não recursiva: um
+ * documento com dezenas de milhares de níveis de aninhamento — JSON
+ * perfeitamente válido — esgotava a pilha de chamadas e rebentava com
+ * `RangeError` (medido, a 50 000 níveis). A rede do `correr()` apanhava-o
+ * e dava um estado nomeado, mas um guarda que rebenta perante a entrada
+ * que devia examinar não chega a examinar nada, e «não consegui procurar»
+ * não pode valer por «não encontrei».
+ */
+function refsQueSaemDoFicheiro(documento) {
+  const encontrados = [];
+  const porVisitar = [documento];
+
+  while (porVisitar.length > 0) {
+    const valor = porVisitar.pop();
+
+    if (Array.isArray(valor)) {
+      for (const item of valor) porVisitar.push(item);
+      continue;
+    }
+    if (valor === null || typeof valor !== "object") continue;
+
+    for (const [chave, filho] of Object.entries(valor)) {
+      if (chave === "$ref" && !(typeof filho === "string" && filho.startsWith("#/"))) {
+        encontrados.push(typeof filho === "string" ? filho : JSON.stringify(filho));
+        continue;
+      }
+      porVisitar.push(filho);
+    }
+  }
+
+  return encontrados;
+}
+
 function main(argumentos) {
   const entrada = argumentos[0] ? resolve(argumentos[0]) : ENTRADA_OMISSAO;
   const saida = argumentos[1] ? resolve(argumentos[1]) : SAIDA_OMISSAO;
@@ -143,11 +209,17 @@ function main(argumentos) {
   try {
     texto = readFileSync(entrada, "utf-8");
   } catch (erro) {
+    // Estado próprio, e não o de «entrada ausente»: o ficheiro existe
+    // (o `existsSync` acima já passou) e é por outra razão que não se lê —
+    // permissões, ou um `openapi.json` que afinal é uma diretoria. A
+    // mensagem distinguia-as; o estado de saída é que não, e o contrato
+    // com o CI é o estado.
     return falhar(
-      ESTADOS.ENTRADA_AUSENTE,
-      `não consegui ler ${entrada}: ${erro instanceof Error ? erro.message : String(erro)}. ` +
-        `Isto é uma falha de leitura, não de conteúdo — confirma as permissões e ` +
-        `regenera o ficheiro com «${COMANDO_DO_OPENAPI}».`,
+      ESTADOS.ENTRADA_ILEGIVEL,
+      `${entrada} existe mas não o consigo ler: ` +
+        `${erro instanceof Error ? erro.message : String(erro)}. ` +
+        `Isto é uma falha de leitura, não de conteúdo — confirma as permissões (e que não é ` +
+        `uma diretoria) e regenera o ficheiro com «${COMANDO_DO_OPENAPI}».`,
     );
   }
 
@@ -175,17 +247,32 @@ function main(argumentos) {
     );
   }
 
+  // `ROTAS_OBRIGATORIAS` nunca está vazio, por isso `paths: {}` cai sempre
+  // aqui com as quatro rotas em falta: não é preciso (nem se consegue
+  // alcançar) um ramo à parte para o documento vazio.
   const presentes = Object.keys(caminhos);
   const emFalta = ROTAS_OBRIGATORIAS.filter((rota) => !presentes.includes(rota));
-  if (presentes.length === 0 || emFalta.length > 0) {
+  if (emFalta.length > 0) {
     return falhar(
       ESTADOS.CONTRATO_DEGENERADO,
       `${entrada} é um OpenAPI válido mas sem as rotas públicas. ` +
-        `Em falta: ${emFalta.length > 0 ? emFalta.join(", ") : "todas"} ` +
+        `Em falta: ${emFalta.join(", ")} ` +
         `(encontrei ${presentes.length === 0 ? "nenhuma rota" : presentes.join(", ")}). ` +
         `Gerar tipos a partir daqui dava um «paths» vazio que o «npm run typecheck» ` +
         `aceita sem dizer nada. Confirma que «app/main.py» inclui o router público e ` +
         `regenera com «${COMANDO_DO_OPENAPI}».`,
+    );
+  }
+
+  const refsDeFora = refsQueSaemDoFicheiro(documento);
+  if (refsDeFora.length > 0) {
+    return falhar(
+      ESTADOS.CONTRATO_DEGENERADO,
+      `${entrada} tem ${refsDeFora.length} «$ref» que saem do ficheiro: ` +
+        `${refsDeFora.slice(0, 3).join(", ")}${refsDeFora.length > 3 ? ", …" : ""}. ` +
+        `O openapi-typescript iria buscá-los — à rede, se forem URL —, e esta ferramenta ` +
+        `só lê o ficheiro que recebe. Um OpenAPI gerado pelo FastAPI nunca os tem: ` +
+        `regenera-o com «${COMANDO_DO_OPENAPI}».`,
     );
   }
 
@@ -201,8 +288,23 @@ function main(argumentos) {
     );
   }
 
-  mkdirSync(dirname(saida), { recursive: true });
-  // No mesmo diretório da saída, para o `renameSync` final ser uma troca
+  try {
+    mkdirSync(dirname(saida), { recursive: true });
+  } catch (erro) {
+    // Sem este `try`, a exceção subia, o Node imprimia um rasto e o
+    // processo saía 1 — um estado que a tabela do cabeçalho não nomeia e
+    // sem a frase de correção que ela promete a cada passo. Acontece com
+    // um ficheiro chamado `gerado` onde devia estar a pasta.
+    return falhar(
+      ESTADOS.SAIDA_NAO_ESCRITA,
+      `não consigo criar a pasta ${dirname(saida)}: ` +
+        `${erro instanceof Error ? erro.message : String(erro)}. ` +
+        `Confirma que não há um ficheiro com esse nome no caminho e repete ` +
+        `«npm run gerar-api».`,
+    );
+  }
+
+  // Na mesma diretoria da saída, para o `renameSync` final ser uma troca
   // dentro do mesmo sistema de ficheiros — e não uma cópia que pode ser
   // interrompida a meio por cima de um ficheiro bom.
   const temporario = `${saida}.a-gerar-${process.pid}`;
@@ -255,7 +357,16 @@ function main(argumentos) {
       );
     }
 
-    renameSync(temporario, saida);
+    try {
+      renameSync(temporario, saida);
+    } catch (erro) {
+      return falhar(
+        ESTADOS.SAIDA_NAO_ESCRITA,
+        `gerei os tipos mas não os consigo pôr em ${saida}: ` +
+          `${erro instanceof Error ? erro.message : String(erro)}. ` +
+          `${saida} fica como estava. Confirma as permissões e repete «npm run gerar-api».`,
+      );
+    }
   } finally {
     rmSync(temporario, { force: true });
   }
@@ -274,4 +385,25 @@ function main(argumentos) {
   return 0;
 }
 
-process.exit(main(process.argv.slice(2)));
+/**
+ * Rede de último recurso: um defeito desta ferramenta sai com um estado
+ * que a tabela do cabeçalho nomeia (70, o `EX_SOFTWARE` dos `sysexits`),
+ * com uma frase e com o rasto completo — e não com um 1 cru que o CI não
+ * sabe distinguir de nada.
+ */
+function correr(argumentos) {
+  try {
+    return main(argumentos);
+  } catch (erro) {
+    process.stderr.write(
+      `gerar-api: avaria inesperada desta ferramenta, que é um defeito dela e não do ` +
+        `contrato. O rasto completo vai a seguir; abre um problema com ele.\n`,
+    );
+    process.stderr.write(
+      `${erro instanceof Error ? (erro.stack ?? erro.message) : String(erro)}\n`,
+    );
+    return ESTADOS.AVARIA_INESPERADA;
+  }
+}
+
+process.exit(correr(process.argv.slice(2)));

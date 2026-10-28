@@ -79,6 +79,13 @@ const MENSAGEM_SEM_ESTILO_INLINE =
  *  - `no-restricted-properties` apanha `window.fetch`, `globalThis.fetch` e
  *    `self.fetch`, que são `MemberExpression` e passam ao lado da primeira.
  *
+ * E não é só `fetch`: `XMLHttpRequest` e `navigator.sendBeacon` fazem
+ * pedidos HTTP na mesma, sem nenhum dos cabeçalhos do cliente. Não há
+ * nenhum no projeto hoje, e as consequências de um estão cobertas por
+ * outras camadas (a CSP, o S-06, o cookie de mesma origem) — mas são uma
+ * linha cada, e uma regra que só proibisse a forma moderna convidava à
+ * antiga.
+ *
  * Nenhuma delas é `no-restricted-syntax`: essa já carrega os seletores do
  * S-13 e do estilo inline, e desligá-la dentro de `src/lib/api` (como é
  * preciso fazer com estas) desligava o S-13 lá dentro por arrasto.
@@ -88,7 +95,7 @@ const MENSAGEM_SEM_ESTILO_INLINE =
  * desliga estas duas regras e não desliga uma procura de texto.
  */
 const MENSAGEM_FETCH_SO_NO_CLIENTE =
-  '`fetch` só dentro de `src/lib/api`. Usa o cliente (`pedir`), que leva `X-Tomazia`, `credentials: "include"` e a base relativa `/api`.';
+  'Pedidos HTTP só dentro de `src/lib/api`. Usa o cliente (`pedir`), que leva `X-Tomazia`, `credentials: "include"` e a base relativa `/api`.';
 
 export default tseslint.config(
   {
@@ -234,12 +241,25 @@ export default tseslint.config(
     // um `.mjs` ou um `.cts` chamam `fetch` tão bem como um `.tsx`.
     files: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
     rules: {
-      "no-restricted-globals": ["error", { name: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE }],
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { name: "XMLHttpRequest", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+      ],
       "no-restricted-properties": [
         "error",
         { object: "window", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
         { object: "globalThis", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
         { object: "self", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        // Estas duas vão sem `object`, o que as proíbe venha de onde vier:
+        // apanham `navigator.sendBeacon` e `window.navigator.sendBeacon` de
+        // uma vez (no segundo, o objeto é um `MemberExpression`, e um par
+        // `object`/`property` não lhe chegaria). Dá para as escrever assim
+        // porque nenhuma delas tem outro significado — ao contrário de
+        // `fetch`, que como nome de método de um objeto nosso é inocente e
+        // por isso fica preso só aos três objetos globais, acima.
+        { property: "XMLHttpRequest", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { property: "sendBeacon", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
       ],
     },
   },

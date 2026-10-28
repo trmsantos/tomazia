@@ -40,7 +40,15 @@ export default defineConfig(({ command }) => {
         // `127.0.0.1` e não `localhost`: num sistema com IPv6, `localhost`
         // resolve primeiro para `::1`, onde o uvicorn (que escuta em
         // 127.0.0.1) não está.
-        "/api": {
+        //
+        // A chave é `"^/api/"` e não `"/api"` porque o Vite compara uma
+        // chave normal com `url.startsWith(chave)` — não é um limite de
+        // segmento. Com `"/api"`, um `GET /apidocs` entrava no proxy e o
+        // `rewrite` entregava `/docs` ao uvicorn. Uma chave começada por
+        // `^` é tratada como expressão regular, e aí `/api/` exige mesmo a
+        // barra. Só em desenvolvimento e sem ganho de privilégio nenhum,
+        // mas o emparelhamento tem de dizer o que parece dizer.
+        "^/api/": {
           target: "http://127.0.0.1:8070",
           changeOrigin: false,
           rewrite: (caminho) => caminho.replace(/^\/api/, ""),

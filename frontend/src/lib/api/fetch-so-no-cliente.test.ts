@@ -20,7 +20,13 @@
  *     desliga, e que **falha se não encontrar ficheiro nenhum** — um glob
  *     vazio é «não consegui procurar», nunca «está tudo limpo».
  *
- * **O que estes testes deixam passar:** `fetch` chamado por uma
+ * E não é só `fetch`: `XMLHttpRequest` e `navigator.sendBeacon` fazem
+ * pedidos HTTP na mesma, sem nenhum dos cabeçalhos do cliente. Não há
+ * nenhum no projeto hoje; estão nas duas redes porque custam uma linha
+ * cada e porque uma regra que só proibisse a forma moderna convidava à
+ * antiga.
+ *
+ * **O que estes testes deixam passar:** um pedido feito por uma
  * referência guardada noutro nome (`const f = window.fetch; f(...)`), ou
  * por `globalThis["fe" + "tch"]`. É o mesmo buraco conhecido do S-13 — o
  * ESLint só reconhece a chave quando ela está escrita, e a varredura só
@@ -56,6 +62,21 @@ const CODIGO_COM_WINDOW_FETCH = `
 export async function carregarEmenta() {
   const resposta = await window.fetch("/api/ementa");
   return resposta.json();
+}
+`;
+
+const CODIGO_COM_XHR = `
+export function carregarEmenta(aoReceber: (texto: string) => void) {
+  const pedido = new XMLHttpRequest();
+  pedido.open("GET", "/api/ementa");
+  pedido.onload = () => aoReceber(pedido.responseText);
+  pedido.send();
+}
+`;
+
+const CODIGO_COM_SEND_BEACON = `
+export function registar(evento: string) {
+  navigator.sendBeacon("/api/telemetria", evento);
 }
 `;
 
@@ -113,6 +134,26 @@ describe("o ESLint acusa fetch fora de src/lib/api", ESPERA_PELO_ESLINT, () => {
     );
   });
 
+  it("XMLHttpRequest também dá erro: a forma antiga do mesmo pedido", async () => {
+    const resultado = await lintar(CODIGO_COM_XHR, "src/pages/publico/Ementa.tsx");
+
+    expect(resultado.errorCount).toBeGreaterThan(0);
+    expect(resultado.messages.map((mensagem) => mensagem.ruleId)).toContain(
+      "no-restricted-globals",
+    );
+  });
+
+  it("navigator.sendBeacon também dá erro", async () => {
+    // `sendBeacon` não é um global: só se lhe chega por `navigator`, por
+    // isso só a segunda regra o pode apanhar.
+    const resultado = await lintar(CODIGO_COM_SEND_BEACON, "src/pages/publico/Ementa.tsx");
+
+    expect(resultado.errorCount).toBeGreaterThan(0);
+    expect(resultado.messages.map((mensagem) => mensagem.ruleId)).toContain(
+      "no-restricted-properties",
+    );
+  });
+
   it("dentro do cliente é permitido: o controlo da regra", async () => {
     // Sem este caso, uma regra que acusasse `fetch` em todo o lado —
     // incluindo no único sítio onde ele tem de existir — passaria por boa,
@@ -156,13 +197,21 @@ function ficheirosForaDoCliente(): string[] {
   );
 }
 
-/** `ficheiro:linha` de cada chamada a `fetch(` nos ficheiros dados. */
-function procurarChamadasDeFetch(ficheiros: string[], raiz: string = RAIZ_FRONTEND): string[] {
+/**
+ * As três formas de fazer um pedido HTTP a partir de uma página, escritas
+ * como aparecem no código: `fetch(`, `new XMLHttpRequest(` e
+ * `sendBeacon(`. O `\\s*` antes do parêntese apanha `fetch (`, que um
+ * `includes("fetch(")` deixava passar.
+ */
+const PEDIDOS_HTTP = /\b(?:fetch|XMLHttpRequest|sendBeacon)\s*\(/;
+
+/** `ficheiro:linha` de cada pedido HTTP escrito nos ficheiros dados. */
+function procurarPedidosHttp(ficheiros: string[], raiz: string = RAIZ_FRONTEND): string[] {
   const violacoes: string[] = [];
   for (const ficheiro of ficheiros) {
     const relativo = caminhoRelativo(ficheiro, raiz);
     const texto = lerTexto(ficheiro, relativo);
-    for (const linha of linhasQueCorrespondem(texto, (conteudo) => /\bfetch\s*\(/.test(conteudo))) {
+    for (const linha of linhasQueCorrespondem(texto, (conteudo) => PEDIDOS_HTTP.test(conteudo))) {
       violacoes.push(`${relativo}:${linha}`);
     }
   }
@@ -170,22 +219,26 @@ function procurarChamadasDeFetch(ficheiros: string[], raiz: string = RAIZ_FRONTE
 }
 
 describe("varredura em disco, que nenhum eslint-disable desliga", () => {
-  it("nenhum ficheiro fora de src/lib/api chama fetch", () => {
+  it("nenhum ficheiro fora de src/lib/api faz um pedido HTTP", () => {
     const ficheiros = ficheirosForaDoCliente();
 
     // O guarda da regra 10: se a raiz estiver errada ou o filtro cortar a
     // mais, isto rebenta com «não consegui procurar» em vez de passar com
     // zero violações.
-    exigirSentinelas(ficheiros, [...COMPONENTES_DA_F3_01, "src/App.tsx"], "fetch fora do cliente");
+    exigirSentinelas(
+      ficheiros,
+      [...COMPONENTES_DA_F3_01, "src/App.tsx"],
+      "pedidos HTTP fora do cliente",
+    );
 
     expect(
-      procurarChamadasDeFetch(ficheiros),
-      "`fetch` só dentro de `src/lib/api`. Usa o cliente (`pedir`), que leva `X-Tomazia`, " +
-        '`credentials: "include"` e a base relativa `/api`.',
+      procurarPedidosHttp(ficheiros),
+      "Pedidos HTTP só dentro de `src/lib/api`. Usa o cliente (`pedir`), que leva " +
+        '`X-Tomazia`, `credentials: "include"` e a base relativa `/api`.',
     ).toEqual([]);
   });
 
-  it("a varredura apanha um fetch escondido atrás de um eslint-disable", () => {
+  it("a varredura apanha um pedido escondido atrás de um eslint-disable", () => {
     // Autoteste, isolado do estado real de `src/`: nenhuma regra de ESLint
     // sobrevive a um `eslint-disable` posto de propósito por cima da linha,
     // e uma procura de texto não lê diretivas de desativação. Também prende
@@ -207,6 +260,16 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
         ['const resposta = await fetch ("/api/info");', ""].join("\n"),
       );
       writeFileSync(
+        join(raiz, "paginas", "ComXhr.ts"),
+        ["const pedido = new XMLHttpRequest();", 'pedido.open("GET", "/api/ementa");', ""].join(
+          "\n",
+        ),
+      );
+      writeFileSync(
+        join(raiz, "paginas", "ComBeacon.ts"),
+        ['navigator.sendBeacon("/api/telemetria", "x");', ""].join("\n"),
+      );
+      writeFileSync(
         join(raiz, "paginas", "Limpa.ts"),
         ["import { obterEmenta } from './api';", "export const carregar = obterEmenta;", ""].join(
           "\n",
@@ -214,12 +277,41 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
       );
 
       const ficheiros = listarFicheiros(raiz, { extensoes: [".ts", ".tsx"] });
-      expect(ficheiros, "a árvore temporária tem de ter três ficheiros").toHaveLength(3);
+      expect(ficheiros, "a árvore temporária tem de ter cinco ficheiros").toHaveLength(5);
 
-      expect(procurarChamadasDeFetch(ficheiros, raiz)).toEqual([
-        "paginas/ComDisable.tsx:2",
-        "paginas/ComEspaco.ts:1",
-      ]);
+      expect(procurarPedidosHttp(ficheiros, raiz)).toEqual(
+        [
+          "paginas/ComDisable.tsx:2",
+          "paginas/ComEspaco.ts:1",
+          "paginas/ComXhr.ts:1",
+          "paginas/ComBeacon.ts:1",
+        ].sort(),
+      );
+    } finally {
+      rmSync(raiz, { recursive: true, force: true });
+    }
+  });
+
+  it("a varredura não acusa o que não é um pedido", () => {
+    // O controlo do regex: `prefetch(` e uma variável chamada `fetchado`
+    // não são pedidos HTTP, e um `\\b` mal posto transformava esta rede num
+    // ruído que alguém acabaria por desligar.
+    const raiz = mkdtempSync(join(tmpdir(), "fetch-falsos-positivos-"));
+    try {
+      writeFileSync(
+        join(raiz, "Limpo.ts"),
+        [
+          "export const prefetch = () => undefined;",
+          "const fetchado = true;",
+          "export const usar = () => prefetch();",
+          "export const resultado = fetchado;",
+          "",
+        ].join("\n"),
+      );
+
+      const ficheiros = listarFicheiros(raiz, { extensoes: [".ts"] });
+      expect(ficheiros).toHaveLength(1);
+      expect(procurarPedidosHttp(ficheiros, raiz)).toEqual([]);
     } finally {
       rmSync(raiz, { recursive: true, force: true });
     }

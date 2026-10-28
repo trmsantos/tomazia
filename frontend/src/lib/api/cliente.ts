@@ -23,11 +23,17 @@
  * 10 do `CLAUDE.md` dentro do cliente, porque «não houve resposta» e «o
  * servidor disse que não» não podem chegar iguais:
  *
- *  | o que aconteceu          | o que `pedir` lança                          |
- *  | ------------------------ | -------------------------------------------- |
- *  | rede, DNS, servidor fora | `ErroDaApi` com `estado === null`            |
- *  | resposta não-2xx         | `ErroDaApi` com `estado` igual ao código HTTP |
- *  | `AbortSignal` cancelado  | o erro original (**não** é `ErroDaApi`)      |
+ *  | o que aconteceu            | o que `pedir` lança                          |
+ *  | -------------------------- | -------------------------------------------- |
+ *  | rede, DNS, servidor fora   | `ErroDaApi` com `estado === null`            |
+ *  | prazo esgotado (`timeout`) | `ErroDaApi` com `estado === null`            |
+ *  | resposta não-2xx           | `ErroDaApi` com `estado` igual ao código HTTP |
+ *  | `abort()` de quem chamou   | o erro original (**não** é `ErroDaApi`)      |
+ *
+ * O prazo esgotado está na primeira linha e não na última de propósito,
+ * apesar de também chegar por um `AbortSignal`: ninguém o pediu, é o
+ * servidor que não respondeu a tempo, e o ecrã tem de o mostrar como
+ * erro. Ver `nomeDaAbortagem`, mais abaixo, para como se separam os dois.
  *
  * O cancelamento sai tal como veio, e de propósito: um `useEffect` a
  * desmontar cancela o pedido, e se isso chegasse como `ErroDaApi` o ecrã
@@ -87,13 +93,42 @@ export class ErroDaApi extends Error {
 }
 
 /**
- * Houve cancelamento? Olha para o sinal **e** para o nome do erro: o
- * `fetch` rejeita com um `AbortError`, mas um sinal já abortado antes da
- * chamada pode rejeitar antes de chegar lá.
+ * O nome do erro que abortou o pedido, ou `null` se não houve abortagem.
+ *
+ * **Um sinal abortado não é só um sinal abortado.** `AbortSignal.timeout()`
+ * — a forma padrão de pôr um prazo num `fetch`, e a que os ecrãs vão
+ * querer — também põe `aborted === true`, mas com `reason.name ===
+ * "TimeoutError"` em vez de `"AbortError"` (medido). Olhar só para o
+ * `aborted` classificava um prazo esgotado como «fui eu que cancelei», o
+ * erro saía cru em vez de `ErroDaApi`, e um ecrã que apanhasse
+ * `instanceof ErroDaApi` ficava em «a carregar» para sempre. Um prazo
+ * esgotado é **não houve resposta**, não é um cancelamento.
+ *
+ * A ordem é: primeiro o `reason` do sinal (é quem sabe porque abortou),
+ * depois o nome do erro que o `fetch` rejeitou, e por fim — para um
+ * `abort("texto")`, cujo `reason` não é um `Error` — a abortagem conta
+ * como cancelamento, que é o que ela é.
  */
+function nomeDaAbortagem(erro: unknown, sinal: AbortSignal | undefined): string | null {
+  if (sinal?.aborted === true) {
+    const razao: unknown = sinal.reason;
+    if (razao instanceof Error) return razao.name;
+    return "AbortError";
+  }
+  if (erro instanceof Error && (erro.name === "AbortError" || erro.name === "TimeoutError")) {
+    return erro.name;
+  }
+  return null;
+}
+
+/** Só o cancelamento a sério sai cru por `pedir`; o prazo esgotado não. */
 function foiCancelado(erro: unknown, sinal: AbortSignal | undefined): boolean {
-  if (sinal?.aborted === true) return true;
-  return erro instanceof Error && erro.name === "AbortError";
+  return nomeDaAbortagem(erro, sinal) === "AbortError";
+}
+
+/** O prazo esgotou? É um erro da API, com `estado: null`. */
+function foiPrazoEsgotado(erro: unknown, sinal: AbortSignal | undefined): boolean {
+  return nomeDaAbortagem(erro, sinal) === "TimeoutError";
 }
 
 type Interpretacao = { interpretou: true; valor: unknown } | { interpretou: false };
@@ -165,7 +200,9 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
   } catch (erro) {
     if (foiCancelado(erro, sinal)) throw erro;
     throw new ErroDaApi(
-      "Não consegui falar com o servidor. Verifica a ligação e tenta outra vez.",
+      foiPrazoEsgotado(erro, sinal)
+        ? "O servidor demorou demasiado a responder. Tenta outra vez."
+        : "Não consegui falar com o servidor. Verifica a ligação e tenta outra vez.",
       { estado: null, codigo: null, causa: erro },
     );
   }
@@ -177,6 +214,8 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
     if (foiCancelado(erro, sinal)) throw erro;
     // Houve resposta (temos `status`), mas o corpo cortou-se a meio. Não é
     // o mesmo que não ter havido resposta nenhuma, e por isso leva estado.
+    // Um prazo esgotado a meio do corpo cai aqui e **também** é `ErroDaApi`:
+    // o que não pode acontecer, em caminho nenhum, é um prazo sair cru.
     throw new ErroDaApi("A resposta do servidor cortou-se a meio. Tenta outra vez.", {
       estado: resposta.status,
       codigo: null,

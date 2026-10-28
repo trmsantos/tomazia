@@ -142,10 +142,57 @@ describe("os três estados de falha, distinguíveis uns dos outros", () => {
     ).toBe(false);
   });
 
-  it("os três dão classificações diferentes com o mesmo código de quem chama", async () => {
+  it("prazo esgotado: ErroDaApi com estado null, não um cancelamento", async () => {
+    // O caso que o revisor mediu: `AbortSignal.timeout()` é a forma padrão
+    // de pôr um prazo num `fetch`, e também põe `aborted === true`. Um
+    // cliente que olhasse só para o `aborted` classificava isto como «fui
+    // eu que cancelei», deixava o erro sair cru, e um ecrã que apanhasse
+    // `instanceof ErroDaApi` ficava em «a carregar» para sempre.
+    const sinal = AbortSignal.timeout(1);
+    await new Promise((resolver) => setTimeout(resolver, 20));
+    expect(sinal.aborted, "o pré-requisito do caso: o sinal está abortado").toBe(true);
+    expect((sinal.reason as Error).name).toBe("TimeoutError");
+
+    comFetch(() => {
+      throw sinal.reason;
+    });
+
+    const erro = await pedir("/ementa", { sinal }).catch((capturado: unknown) => capturado);
+
+    expect(erro, "um prazo esgotado é um erro da API, não um cancelamento").toBeInstanceOf(
+      ErroDaApi,
+    );
+    expect((erro as ErroDaApi).estado, "ninguém respondeu: não há código HTTP").toBeNull();
+    expect((erro as ErroDaApi).message).toMatch(/demorou demasiado/i);
+  });
+
+  it("abort() com um motivo em texto continua a ser cancelamento", async () => {
+    // `abort("mudei de página")` põe `reason` a uma string, que não é um
+    // `Error` e não tem `.name` — o caminho que decide pelo `reason` tem de
+    // continuar a tratar isto como cancelamento, não como prazo.
+    const controlador = new AbortController();
+    comFetch(() => {
+      controlador.abort("mudei de página");
+      throw controlador.signal.reason;
+    });
+
+    const erro = await pedir("/eventos", { sinal: controlador.signal }).catch(
+      (capturado: unknown) => capturado,
+    );
+
+    expect(erro).toBe("mudei de página");
+    expect(erro instanceof ErroDaApi).toBe(false);
+  });
+
+  it("o mesmo código de quem chama separa todos os casos", async () => {
     // A prova da regra 10 feita de uma vez: o mesmo `catch` tem de separar
-    // os três. Se um dia os dois primeiros passarem a dar `estado: null`,
-    // ou o cancelamento passar a ser `ErroDaApi`, este caso cai.
+    // o que é erro do que é cancelamento. Se um dia a recusa do servidor
+    // passar a dar `estado: null`, ou o cancelamento passar a ser
+    // `ErroDaApi`, ou o prazo esgotado voltar a sair cru, este caso cai.
+    //
+    // O prazo esgotado dá a mesma classificação que a rede em baixo, e é
+    // isso que se quer: para o ecrã, as duas são «não houve resposta». O
+    // que ele **não** pode partilhar é a classe do cancelamento.
     function classificar(erro: unknown): string {
       if (!(erro instanceof ErroDaApi)) return "cancelado";
       return erro.estado === null ? "sem resposta" : `o servidor disse ${erro.estado}`;
@@ -170,12 +217,26 @@ describe("os três estados de falha, distinguíveis uns dos outros", () => {
       classificar(erro),
     );
 
-    expect([semResposta, recusa, cancelado]).toEqual([
+    vi.unstubAllGlobals();
+    const prazo = AbortSignal.timeout(1);
+    await new Promise((resolver) => setTimeout(resolver, 20));
+    comFetch(() => {
+      throw prazo.reason;
+    });
+    const esgotado = await pedir("/info", { sinal: prazo }).catch((erro: unknown) =>
+      classificar(erro),
+    );
+
+    expect([semResposta, recusa, cancelado, esgotado]).toEqual([
       "sem resposta",
       "o servidor disse 500",
       "cancelado",
+      "sem resposta",
     ]);
-    expect(new Set([semResposta, recusa, cancelado]).size, "os três têm de ser distintos").toBe(3);
+    expect(
+      esgotado,
+      "um prazo esgotado nunca pode cair na mesma classe que um cancelamento",
+    ).not.toBe(cancelado);
   });
 });
 

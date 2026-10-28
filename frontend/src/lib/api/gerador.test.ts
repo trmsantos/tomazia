@@ -252,6 +252,158 @@ describe("gerar-api: recusas, cada uma com o comando de correção", ESPERA_PELO
   });
 });
 
+describe("gerar-api: lê o ficheiro, e só o ficheiro", ESPERA_PELO_GERADOR, () => {
+  it("um $ref remoto é recusado antes de o openapi-typescript o ir buscar", () => {
+    // Achado da revisão de segurança, medido com um servidor local: um
+    // `$ref` para um URL faz o openapi-typescript fazer o pedido. Não há
+    // escalada (o job do CI corre sem segredos), mas uma ferramenta que
+    // promete ler um ficheiro tem de ler só esse ficheiro — e a promessa
+    // está escrita no cabeçalho dela. O endereço abaixo nunca chega a ser
+    // contactado: é esse o ponto do teste.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    const saida = join(pasta, "esquema.ts");
+
+    const documento = JSON.parse(documentoOpenapi(ROTAS_PUBLICAS)) as {
+      components: { schemas: Record<string, unknown> };
+    };
+    documento.components.schemas["RespostaEmenta"] = {
+      $ref: "http://127.0.0.1:9/remoto.json#/components/schemas/Intruso",
+    };
+    writeFileSync(entrada, `${JSON.stringify(documento, null, 2)}\n`, "utf-8");
+
+    const execucao = correrGerador(entrada, saida);
+
+    expect(execucao.estado).not.toBe(0);
+    expect(execucao.stderr).toContain("$ref");
+    expect(execucao.stderr).toContain("http://127.0.0.1:9/remoto.json");
+    expect(execucao.stderr).toContain(COMANDO_DO_BACKEND);
+    expect(readdirSync(pasta)).toEqual(["openapi.json"]);
+  });
+
+  it("um $ref para outro ficheiro do disco também é recusado", () => {
+    // O mesmo buraco sem rede pelo meio: `./segredo.json` sairia deste
+    // ficheiro na mesma, e um caminho absoluto ainda mais.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    const saida = join(pasta, "esquema.ts");
+
+    const documento = JSON.parse(documentoOpenapi(ROTAS_PUBLICAS)) as {
+      paths: Record<string, { get: { responses: Record<string, unknown> } }>;
+    };
+    const rota = documento.paths["/info"];
+    if (rota === undefined) throw new Error("o documento de teste perdeu a rota /info");
+    rota.get.responses["404"] = { $ref: "./outro-ficheiro.json#/respostas/NaoEncontrado" };
+    writeFileSync(entrada, `${JSON.stringify(documento, null, 2)}\n`, "utf-8");
+
+    const execucao = correrGerador(entrada, saida);
+
+    expect(execucao.estado).not.toBe(0);
+    expect(execucao.stderr).toContain("./outro-ficheiro.json");
+  });
+
+  it("um documento com dezenas de milhares de níveis não rebenta o guarda", () => {
+    // JSON válido, aninhado 50 000 vezes. Uma travessia recursiva esgotava
+    // a pilha e saía com `RangeError` antes de examinar `$ref` nenhum — e
+    // um guarda que rebenta perante a entrada que devia examinar não
+    // examinou nada. A rede de último recurso da ferramenta apanhava-o,
+    // mas «não consegui procurar» não vale por «não encontrei».
+    //
+    // O que este caso exige não é um estado em particular (quem recusa
+    // este documento é o openapi-typescript, e isso é assunto dele): é que
+    // a recusa venha com uma frase nossa e sem o nosso percorredor num
+    // rasto de pilha.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    const saida = join(pasta, "esquema.ts");
+
+    // O documento é montado como **texto**, não com `JSON.stringify`: o
+    // `stringify` é ele próprio recursivo e rebentaria aqui, no teste,
+    // antes de chegar a escrever o ficheiro.
+    const niveis = 50_000;
+    const profundo = `${'{"a":'.repeat(niveis)}{}${"}".repeat(niveis)}`;
+    const marca = '"schemas":{';
+    const base = JSON.stringify(JSON.parse(documentoOpenapi(ROTAS_PUBLICAS)));
+    expect(
+      base.split(marca).length - 1,
+      "a marca onde o fundo é injetado tem de aparecer exatamente uma vez",
+    ).toBe(1);
+    writeFileSync(entrada, `${base.replace(marca, `${marca}"Fundo":${profundo},`)}\n`, "utf-8");
+
+    const execucao = correrGerador(entrada, saida);
+
+    expect(execucao.stderr).toContain("gerar-api:");
+    expect(
+      execucao.stderr,
+      "o percorredor de $ref não pode aparecer num rasto de pilha: é ele que tem de aguentar",
+    ).not.toContain("refsQueSaemDoFicheiro");
+    expect(
+      execucao.stderr,
+      "e isto não pode ser classificado como avaria da nossa ferramenta",
+    ).not.toContain("avaria inesperada");
+  });
+
+  it("os $ref locais do FastAPI passam: o controlo do guarda", () => {
+    // Sem este caso, um guarda que recusasse todos os `$ref` — incluindo
+    // os `#/components/schemas/…` que o FastAPI escreve em cada resposta —
+    // passava por bom, e o `npm run gerar-api` nunca mais gerava nada.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    const saida = join(pasta, "esquema.ts");
+    const documento = documentoOpenapi(ROTAS_PUBLICAS);
+
+    expect(documento, "o documento de teste tem de ter $ref locais").toContain(
+      "#/components/schemas/",
+    );
+    writeFileSync(entrada, documento, "utf-8");
+
+    expect(correrGerador(entrada, saida).estado).toBe(0);
+  });
+});
+
+describe("gerar-api: falhas de disco têm estado próprio", ESPERA_PELO_GERADOR, () => {
+  it("entrada que existe mas não se lê: estado diferente de «entrada ausente»", () => {
+    // Uma diretoria chamada `openapi.json` passa o `existsSync` e rebenta
+    // no `readFileSync` (EISDIR). A mensagem já distinguia os dois casos;
+    // o estado de saída é que não — e o contrato com o CI é o estado.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    const saida = join(pasta, "esquema.ts");
+    mkdirSync(entrada);
+
+    const ilegivel = correrGerador(entrada, saida);
+    const ausente = correrGerador(join(pasta, "nao-existe.json"), saida);
+
+    expect(ilegivel.estado).not.toBe(0);
+    expect(ausente.estado).not.toBe(0);
+    expect(
+      ilegivel.estado,
+      "«existe e não consigo lê-lo» não é «não existe»: são avarias diferentes",
+    ).not.toBe(ausente.estado);
+    expect(ilegivel.stderr).toContain(COMANDO_DO_BACKEND);
+  });
+
+  it("pasta de saída que não se cria: frase de correção, não um rasto cru", () => {
+    // Um ficheiro chamado `gerado` onde devia estar a pasta. Sem o `try`
+    // à volta do `mkdirSync`, isto saía 1 com um rasto do Node e sem
+    // nenhuma frase a dizer o que fazer.
+    const pasta = pastaTemporaria();
+    const entrada = join(pasta, "openapi.json");
+    writeFileSync(entrada, documentoOpenapi(ROTAS_PUBLICAS), "utf-8");
+    writeFileSync(join(pasta, "gerado"), "não sou uma pasta\n", "utf-8");
+    const saida = join(pasta, "gerado", "esquema.ts");
+
+    const execucao = correrGerador(entrada, saida);
+
+    expect(execucao.estado).not.toBe(0);
+    expect(execucao.estado, "nenhum caminho pode sair pelo 1 genérico do Node").not.toBe(1);
+    expect(execucao.stderr, "a frase tem de dizer o que fazer, não despejar um rasto").toContain(
+      "npm run gerar-api",
+    );
+    expect(execucao.stderr).not.toContain("at Object.");
+  });
+});
+
 describe("gerar-api: uma geração falhada não deixa saída meio escrita", ESPERA_PELO_GERADOR, () => {
   it("entrada truncada com um esquema bom já lá: o anterior fica byte a byte igual", () => {
     // O cenário real: alguém corre `npm run gerar-api` com o `openapi.json`
@@ -277,6 +429,78 @@ describe("gerar-api: uma geração falhada não deixa saída meio escrita", ESPE
     expect(readFileSync(saida, "utf-8")).toBe(anterior);
     // E sem nenhum `esquema.ts.a-gerar-…` esquecido ao lado.
     expect(readdirSync(join(pasta, "gerado"))).toEqual(["esquema.ts"]);
+  });
+});
+
+describe("o override do peer do openapi-typescript tem data de validade", () => {
+  /**
+   * O `package.json` força `openapi-typescript` a aceitar o TypeScript
+   * deste projeto, porque ele ainda declara `peer typescript: "^5.x"` e nós
+   * estamos no 6 (sem isso, o `npm ci` recusa com ERESOLVE). A escolha está
+   * no ADR 0012 e é dirigida a este pacote e a este peer — não é um
+   * `legacy-peer-deps` global.
+   *
+   * O problema de um override é que ele silencia o peer **para sempre**:
+   * no dia em que eles abrirem o intervalo, nada fica vermelho e ninguém se
+   * lembra de o tirar. Estes casos são o despertador.
+   *
+   * **O que deixam passar:** não sabem avaliar um intervalo de versões —
+   * não há semver aqui, e escrever um a meio era pior do que não ter
+   * nenhum. São uma comparação literal com o que foi medido: qualquer
+   * mudança a montante acende a luz, mesmo que não seja ainda a abertura ao
+   * 6. É falso positivo barato (uma pessoa vai ler o intervalo novo) contra
+   * um falso negativo que dura anos.
+   */
+  const PEER_MEDIDO = "^5.x";
+
+  function manifesto(caminho: string): Record<string, unknown> {
+    const texto = readFileSync(caminho, "utf-8");
+    return JSON.parse(texto) as Record<string, unknown>;
+  }
+
+  it("ainda é preciso: o peer deles continua a recusar o TypeScript 6", () => {
+    const deles = manifesto(
+      join(RAIZ_FRONTEND, "node_modules", "openapi-typescript", "package.json"),
+    );
+    const peers = deles.peerDependencies as Record<string, string> | undefined;
+
+    if (peers === undefined) {
+      throw new Error(
+        "o openapi-typescript deixou de declarar peerDependencies. Isso resolve o problema " +
+          "por outro caminho: tira o `overrides` do package.json, a nota `//` e este teste.",
+      );
+    }
+
+    expect(
+      peers.typescript,
+      "o intervalo de peer do openapi-typescript mudou. Vai ver se já aceita o TypeScript 6: " +
+        "se aceitar, tira o `overrides` do package.json, a nota `//` e estes casos, e " +
+        "atualiza o ADR 0012. Se não aceitar, atualiza só o valor medido aqui.",
+    ).toBe(PEER_MEDIDO);
+  });
+
+  it("o override continua a existir, dirigido ao pacote e ao peer", () => {
+    const nosso = manifesto(join(RAIZ_FRONTEND, "package.json"));
+    const overrides = nosso.overrides as Record<string, Record<string, string>> | undefined;
+
+    expect(
+      overrides?.["openapi-typescript"]?.typescript,
+      "o override tem de seguir a versão que o projeto usa (`$typescript`), nunca uma fixa",
+    ).toBe("$typescript");
+
+    expect(
+      String(nosso["//"] ?? ""),
+      "a nota do package.json tem de apontar para o ADR que explica a decisão",
+    ).toContain("0012-cliente-da-api-sem-biblioteca.md");
+  });
+
+  it("e estamos mesmo no TypeScript 6, que é o que torna o override preciso", () => {
+    const typescript = manifesto(join(RAIZ_FRONTEND, "node_modules", "typescript", "package.json"));
+
+    expect(
+      String(typescript.version).split(".")[0],
+      "se o projeto voltar ao TypeScript 5, o override deixa de fazer falta e sai",
+    ).toBe("6");
   });
 });
 

@@ -51,6 +51,7 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   },
+  "//": "overrides: o openapi-typescript 7.13.0 ainda declara peer typescript ^5.x e este projeto está no TypeScript 6; o override dá-lhe a versão que já usamos, dirigido a este pacote e a este peer. Porquê e quando sai: docs/decisoes/0012-cliente-da-api-sem-biblioteca.md. O gatilho que avisa que já se pode tirar está em frontend/src/lib/api/gerador.test.ts.",
   "overrides": {
     "openapi-typescript": {
       "typescript": "$typescript"

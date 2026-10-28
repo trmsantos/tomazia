@@ -33,11 +33,14 @@ set -euo pipefail
 #   1 — há diferenças: o gerador produziu algo diferente do que está
 #       versionado (alterado, apagado, ou novo e por versionar).
 #   2 — não se conseguiu verificar: o `git status` não respondeu (não é
-#       um repositório, índice corrompido, `git` em falta...), ou o
-#       caminho existe mas está fora do alcance desta verificação (ver
-#       "O caminho ignorado" e "Diretoria ilegível", abaixo). NUNCA
-#       confundir com 0: um guarda que fica verde porque não conseguiu
-#       perguntar é um guarda que não existe (regra 10 do `CLAUDE.md`).
+#       um repositório, índice corrompido, `git` em falta...), não houve
+#       onde trabalhar (`mktemp -d` falhou), ou o caminho existe mas está
+#       fora do alcance desta verificação (ver "O caminho ignorado" e
+#       "Diretoria ilegível", abaixo). NUNCA confundir com 0: um guarda
+#       que fica verde porque não conseguiu perguntar é um guarda que não
+#       existe (regra 10 do `CLAUDE.md`). E NUNCA confundir com 1: mandar
+#       alguém correr o gerador por causa de um `TMPDIR` cheio é a mesma
+#       confusão, só que a gastar o tempo de outra pessoa.
 #   3 — o caminho não existe (ou existe como diretoria vazia). É o caso
 #       do gerador que falha em silêncio e não escreve nada: não há
 #       diferença nenhuma a assinalar, e é precisamente por isso que não
@@ -67,16 +70,30 @@ set -euo pipefail
 # parte, e o "tem conteúdo?" é um `[ -s ... ]` sobre o ficheiro — nunca
 # sobre o resultado de uma substituição.
 #
-# ## O caminho ignorado (2, não 0)
+# ## O caminho ignorado (2, não 0) — duas perguntas, não uma
 #
 # Um caminho abrangido pelo `.gitignore` é invisível para o `git status
 # --untracked-files=all`: os ficheiros que o gerador lá escrevesse de
 # novo nunca apareceriam, e esta guarda ficaria verde para sempre sem
 # nunca mais verificar nada. Como o projeto já ignora de propósito um
 # artefacto gerado (`frontend/openapi.json`), é um erro fácil de repetir
-# na pasta dos tipos. Por isso pergunta-se primeiro ao `git check-ignore`
-# e, se a resposta for "sim, é ignorado", sai-se 2 ("não consigo
-# verificar isto"), nunca 0.
+# na pasta dos tipos. A resposta é sair 2 ("não consigo verificar isto"),
+# nunca 0 — e são precisas DUAS perguntas, porque nenhuma cobre a outra:
+#
+#   1. `git check-ignore --no-index` sobre cada `--caminho`: apanha a
+#      regra que abrange a PASTA (`src/lib/api/gerado`), e apanha-a
+#      mesmo quando ainda não existe lá dentro nenhum ficheiro novo.
+#   2. `--ignored=matching` no `git status`, e qualquer linha `!!`
+#      debaixo do caminho é tratada como este mesmo caso: apanha a regra
+#      que abrange o CONTEÚDO (`src/lib/api/gerado/*.ts`), à qual a
+#      pergunta 1 responde — corretamente — "a pasta não está ignorada",
+#      enquanto o `status` fica cego a tudo o que lá seja novo. Em troca,
+#      só vê a regra depois de existir um ficheiro que lhe corresponda.
+#
+# A segunda é a que falta por omissão e a que mais provavelmente alguém
+# volta a abrir: o precedente que já existe no `.gitignore` deste projeto
+# é uma regra de ficheiro, não de pasta, e quem copiar o padrão escreve a
+# forma que escapa à pergunta 1.
 #
 # O `git check-ignore` tem o mesmo tipo de armadilha que o `grep`: 0 =
 # "pelo menos um é ignorado", 1 = "nenhum é ignorado", >= 2 = "não
@@ -125,6 +142,16 @@ falhar() {
   local mensagem="$2"
   echo "$(prefixo_erro)${mensagem}"
   exit "$codigo"
+}
+
+relatar_ignorado() {
+  # $1 = ficheiro com os caminhos (ou linhas `!!` do `git status`) a
+  # mostrar. Usada pelas DUAS perguntas sobre o `.gitignore` — ver
+  # "O caminho ignorado", no cabeçalho — para as duas darem a mesma
+  # resposta a quem lê o log.
+  echo "$(prefixo_erro)há ficheiros ou caminhos abrangidos pelo .gitignore debaixo do que esta guarda vigia (listados abaixo). O 'git status' não mostra um ficheiro novo que caia numa regra de exclusão, por isso esta verificação ficaria verde sem verificar nada. Tira a regra do .gitignore — um tipo gerado por versionar não é um artefacto a ignorar — ou aponta a guarda para outro sítio."
+  cat "$1"
+  exit "$SAIDA_NAO_CONSEGUI_VERIFICAR"
 }
 
 caminhos=()
@@ -203,10 +230,29 @@ for caminho in "${caminhos[@]}"; do
   fi
 done
 
-tmp_dir="$(mktemp -d)"
+# `if ! tmp_dir="$(...)"`, e não `tmp_dir="$(mktemp -d)"` a direito: com
+# `set -e`, uma atribuição por substituição de comandos sai com o estado
+# do comando, e o `mktemp` falha com **1** — que é, pelo contrato deste
+# script, "há diferenças". Um `TMPDIR` cheio ou só de leitura no runner
+# fazia esta guarda sair 1 e mandar alguém correr o gerador e fazer
+# commit, quando o que falhou não tinha nada a ver com os tipos. É a
+# mesma confusão que o script existe para evitar, e tem de valer aqui
+# dentro também. Dentro de um `if !` o `errexit` está desligado e a
+# atribuição mantém o valor.
+#
+# O `-z`/`-d` a seguir fecham o resto: um `mktemp` que saia 0 sem
+# escrever nada deixaria `tmp_dir` vazio, e o `trap` abaixo passaria a
+# ser um `rm -rf ""`.
+tmp_dir=""
+if ! tmp_dir="$(mktemp -d)" || [ -z "$tmp_dir" ] || [ ! -d "$tmp_dir" ]; then
+  falhar "$SAIDA_NAO_CONSEGUI_VERIFICAR" \
+    "não consegui criar a pasta temporária de trabalho ('mktemp -d' falhou, ou não devolveu uma pasta). Isto não diz nada sobre os ficheiros gerados — não corras o gerador por causa desta mensagem; vê o espaço e as permissões de TMPDIR."
+fi
 trap 'rm -rf "${tmp_dir}"' EXIT
 tmp_saida="${tmp_dir}/saida"
 tmp_erro="${tmp_dir}/saida.err"
+tmp_ignorados="${tmp_dir}/ignorados"
+tmp_diferencas="${tmp_dir}/diferencas"
 
 # --- O caminho está escondido do git pelo `.gitignore`? ---
 #
@@ -232,9 +278,7 @@ git check-ignore --no-index -- "${caminhos[@]}" \
 
 case "$estado_ignore" in
   0)
-    echo "$(prefixo_erro)há caminhos abrangidos pelo .gitignore (listados abaixo): o 'git status' nunca mostraria um ficheiro novo lá dentro, por isso esta verificação ficaria verde sem verificar nada. Tira-os do .gitignore ou aponta a guarda para outro sítio."
-    cat "$tmp_saida"
-    exit "$SAIDA_NAO_CONSEGUI_VERIFICAR"
+    relatar_ignorado "$tmp_saida"
     ;;
   1)
     : # Nenhum caminho ignorado: é o que se quer.
@@ -247,9 +291,29 @@ case "$estado_ignore" in
 esac
 
 # --- O que o git tem a dizer sobre o caminho ---
+#
+# `--ignored=matching` é a segunda metade da pergunta sobre o
+# `.gitignore`, e fecha o caso que o `check-ignore` acima NÃO apanha: uma
+# regra que abranja o CONTEÚDO (`src/lib/api/gerado/*.ts`) em vez da
+# pasta (`src/lib/api/gerado`). Sobre a pasta, o `check-ignore` responde
+# "não ignorada" — corretamente — enquanto o `git status` fica cego a
+# todos os ficheiros novos lá dentro. Medido: com essa regra e um
+# `novo.ts` por versionar, o `check-ignore` saía 1, o `status` saía vazio
+# e esta guarda imprimia "Em dia" e saía 0.
+#
+# E é a forma MAIS provável de alguém repetir o erro, porque o precedente
+# que já existe no `.gitignore` deste projeto (`frontend/openapi.json`) é
+# uma regra de ficheiro, não de pasta: quem copiar o padrão escreve
+# precisamente a forma que escapa ao `check-ignore`.
+#
+# As duas perguntas ficam, porque nenhuma cobre a outra: o
+# `check-ignore` vê a pasta abrangida mesmo quando ainda não existe lá
+# ficheiro novo nenhum; o `--ignored=matching` vê as regras de conteúdo,
+# mas só a partir do momento em que existe um ficheiro que lhes
+# corresponda.
 estado_git=0
-git --literal-pathspecs status --porcelain --untracked-files=all -- "${caminhos[@]}" \
-  >"$tmp_saida" 2>"$tmp_erro" || estado_git=$?
+git --literal-pathspecs status --porcelain --untracked-files=all --ignored=matching \
+  -- "${caminhos[@]}" >"$tmp_saida" 2>"$tmp_erro" || estado_git=$?
 
 if [ "$estado_git" -ne 0 ]; then
   echo "$(prefixo_erro)'git status' não respondeu (estado ${estado_git}); não é seguro concluir que o caminho está em dia — 'não há diferenças' e 'não consegui perguntar' não são a mesma coisa. Razão, tal como o git a deu:"
@@ -257,9 +321,28 @@ if [ "$estado_git" -ne 0 ]; then
   exit "$SAIDA_NAO_CONSEGUI_VERIFICAR"
 fi
 
-if [ -s "$tmp_saida" ]; then
+# Separar as linhas `!!` (ignorado) das restantes, num `case` sobre cada
+# linha e não com um `grep`: o `grep` traz de volta a armadilha dos
+# estados (1 = "não encontrei", >= 2 = "não consegui procurar") no
+# exato sítio onde este script existe para a evitar. Uma linha `!!` nunca
+# conta como diferença — e nunca pode ficar invisível.
+: >"$tmp_ignorados"
+: >"$tmp_diferencas"
+while IFS= read -r linha || [ -n "$linha" ]; do
+  case "$linha" in
+    "!!"*) printf '%s\n' "$linha" >>"$tmp_ignorados" ;;
+    "") ;;
+    *) printf '%s\n' "$linha" >>"$tmp_diferencas" ;;
+  esac
+done <"$tmp_saida"
+
+if [ -s "$tmp_ignorados" ]; then
+  relatar_ignorado "$tmp_ignorados"
+fi
+
+if [ -s "$tmp_diferencas" ]; then
   echo "$(prefixo_erro)${caminhos[*]} ficou diferente depois de correr o gerador (alterado, apagado, ou novo e por versionar).${sugestao:+ Corrige com: ${sugestao}} Estado, segundo o git:"
-  cat "$tmp_saida"
+  cat "$tmp_diferencas"
   exit "$SAIDA_HA_DIFERENCAS"
 fi
 
