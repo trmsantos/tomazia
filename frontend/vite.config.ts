@@ -25,6 +25,36 @@ export default defineConfig(({ command }) => {
 
   return {
     plugins: [react()],
+    server: {
+      proxy: {
+        // F2-09: em desenvolvimento, `/api/…` vai para o uvicorn da porta
+        // 8070 (a que o `CLAUDE.md` da raiz documenta).
+        //
+        // O `rewrite` não é cosmético: o backend declara as rotas **sem**
+        // `/api` (`app/routers/publico.py`), porque em produção é o
+        // Passenger que o acrescenta via `SCRIPT_NAME`. Sem tirar o prefixo
+        // aqui, o uvicorn via `GET /api/ementa` e respondia 404 a tudo — e o
+        // cliente, que tem de usar uma base relativa por causa da CSP
+        // `connect-src 'self'` (ADR 0008), não tem como contornar isso.
+        //
+        // `127.0.0.1` e não `localhost`: num sistema com IPv6, `localhost`
+        // resolve primeiro para `::1`, onde o uvicorn (que escuta em
+        // 127.0.0.1) não está.
+        //
+        // A chave é `"^/api/"` e não `"/api"` porque o Vite compara uma
+        // chave normal com `url.startsWith(chave)` — não é um limite de
+        // segmento. Com `"/api"`, um `GET /apidocs` entrava no proxy e o
+        // `rewrite` entregava `/docs` ao uvicorn. Uma chave começada por
+        // `^` é tratada como expressão regular, e aí `/api/` exige mesmo a
+        // barra. Só em desenvolvimento e sem ganho de privilégio nenhum,
+        // mas o emparelhamento tem de dizer o que parece dizer.
+        "^/api/": {
+          target: "http://127.0.0.1:8070",
+          changeOrigin: false,
+          rewrite: (caminho) => caminho.replace(/^\/api/, ""),
+        },
+      },
+    },
     test: {
       environment: "jsdom",
       // Os testes de `e2e/` são do Playwright, não do Vitest, mas o padrão

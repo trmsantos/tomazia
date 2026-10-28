@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "size": "size-limit",
-    "gerar-api": "echo 'Tipos da API: gerados na tarefa F2-09 (openapi-typescript).'"
+    "gerar-api": "node ferramentas/gerar-api.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -41,6 +41,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "jsdom": "^30.1.3",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.31",
     "prettier": "^3.9.10",
     "size-limit": "^14.2.0",
@@ -49,5 +50,11 @@
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
+  },
+  "//": "overrides: o openapi-typescript 7.13.0 ainda declara peer typescript ^5.x e este projeto está no TypeScript 6; o override dá-lhe a versão que já usamos, dirigido a este pacote e a este peer. Porquê e quando sai: docs/decisoes/0012-cliente-da-api-sem-biblioteca.md. O gatilho que avisa que já se pode tirar está em frontend/src/lib/api/gerador.test.ts.",
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

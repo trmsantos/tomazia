@@ -64,9 +64,47 @@ const MENSAGEM_SEM_DANGEROUSLY_SET_INNER_HTML =
 const MENSAGEM_SEM_ESTILO_INLINE =
   "A CSP `style-src 'self'` bloqueia `style` inline em produção. Usa uma classe.";
 
+/**
+ * F2-09: `fetch` só dentro de `src/lib/api`.
+ *
+ * O cliente de `src/lib/api/cliente.ts` é que põe `X-Tomazia: 1`,
+ * `credentials: "include"` e a base relativa `/api` em todos os pedidos. Um
+ * `fetch` escrito à mão num componente não leva nada disso — e as três
+ * consequências aparecem em sítios diferentes e tarde: a mutação é recusada
+ * com 403 (S-06), a sessão não vai, e uma origem absoluta é bloqueada pela
+ * CSP `connect-src 'self'` **só no servidor** (ADR 0008).
+ *
+ * São duas regras, de propósito, e não uma:
+ *  - `no-restricted-globals` apanha a chamada direta (`fetch(...)`);
+ *  - `no-restricted-properties` apanha `window.fetch`, `globalThis.fetch` e
+ *    `self.fetch`, que são `MemberExpression` e passam ao lado da primeira.
+ *
+ * E não é só `fetch`: `XMLHttpRequest` e `navigator.sendBeacon` fazem
+ * pedidos HTTP na mesma, sem nenhum dos cabeçalhos do cliente. Não há
+ * nenhum no projeto hoje, e as consequências de um estão cobertas por
+ * outras camadas (a CSP, o S-06, o cookie de mesma origem) — mas são uma
+ * linha cada, e uma regra que só proibisse a forma moderna convidava à
+ * antiga.
+ *
+ * Nenhuma delas é `no-restricted-syntax`: essa já carrega os seletores do
+ * S-13 e do estilo inline, e desligá-la dentro de `src/lib/api` (como é
+ * preciso fazer com estas) desligava o S-13 lá dentro por arrasto.
+ *
+ * A terceira rede é a varredura do código em disco, em
+ * `src/lib/api/fetch-so-no-cliente.test.ts`, porque um `eslint-disable`
+ * desliga estas duas regras e não desliga uma procura de texto.
+ */
+const MENSAGEM_FETCH_SO_NO_CLIENTE =
+  'Pedidos HTTP só dentro de `src/lib/api`. Usa o cliente (`pedir`), que leva `X-Tomazia`, `credentials: "include"` e a base relativa `/api`.';
+
 export default tseslint.config(
   {
-    ignores: ["dist", "coverage", "src/lib/api"],
+    // `src/lib/api/gerado/` é escrito pelo `npm run gerar-api` e não se
+    // edita: lintá-lo era acusar o openapi-typescript de não escrever como
+    // nós. O resto de `src/lib/api` é código nosso, escrito à mão, e é
+    // lintado como qualquer outro — a regra antiga ignorava a pasta inteira
+    // e deixou de poder fazê-lo quando o cliente passou a viver lá.
+    ignores: ["dist", "coverage", "src/lib/api/gerado"],
   },
   js.configs.recommended,
   {
@@ -194,6 +232,57 @@ export default tseslint.config(
           message: MENSAGEM_SEM_ESTILO_INLINE,
         },
       ],
+    },
+  },
+  {
+    // F2-09: `fetch` fora de `src/lib/api` é erro. Ver
+    // `MENSAGEM_FETCH_SO_NO_CLIENTE`, acima, para o porquê das duas regras.
+    // O glob é o mesmo das oito extensões do bloco S-13, e pela mesma razão:
+    // um `.mjs` ou um `.cts` chamam `fetch` tão bem como um `.tsx`.
+    files: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { name: "XMLHttpRequest", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "window", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { object: "globalThis", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { object: "self", property: "fetch", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        // Estas duas vão sem `object`, o que as proíbe venha de onde vier:
+        // apanham `navigator.sendBeacon` e `window.navigator.sendBeacon` de
+        // uma vez (no segundo, o objeto é um `MemberExpression`, e um par
+        // `object`/`property` não lhe chegaria). Dá para as escrever assim
+        // porque nenhuma delas tem outro significado — ao contrário de
+        // `fetch`, que como nome de método de um objeto nosso é inocente e
+        // por isso fica preso só aos três objetos globais, acima.
+        { property: "XMLHttpRequest", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+        { property: "sendBeacon", message: MENSAGEM_FETCH_SO_NO_CLIENTE },
+      ],
+    },
+  },
+  {
+    // O cliente é o único sítio onde `fetch` é permitido — é essa a regra, e
+    // esta exceção é o que a torna uma regra de sítio e não uma proibição.
+    // `src/lib/api/gerado/` nem chega aqui (está nos `ignores`).
+    files: ["src/lib/api/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-globals": "off",
+      "no-restricted-properties": "off",
+    },
+  },
+  {
+    // `ferramentas/*.mjs` corre no Node, não no browser: sem os globais do
+    // Node, o `no-undef` do `js.configs.recommended` acusava `process`,
+    // `console` e companhia. Fica fora do bloco de `.ts`/`.tsx` de propósito
+    // — não quer o `typescript-eslint` nem as regras do React.
+    files: ["ferramentas/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
   // Por último, para desligar as regras de formatação do ESLint que
