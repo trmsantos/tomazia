@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from app.config import obter_definicoes
-from app.routers import saude
+from app.routers import publico, saude
 
 #: Instante, em UTC, em que este *processo* importou `app.main` — não em
 #: que um pedido chegou, nem em que `criar_app()` correu. É calculado uma
@@ -65,6 +65,7 @@ def criar_app() -> FastAPI:
     aplicacao.state.arrancado_em = ARRANCADO_EM
 
     aplicacao.include_router(saude.router)
+    aplicacao.include_router(publico.router)
     return aplicacao
 
 
