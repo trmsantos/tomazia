@@ -37,6 +37,14 @@ CACHE_DE_UM_MINUTO = "max-age=60"
 #: Nada em cache. Ver o cabeçalho do módulo.
 SEM_CACHE = "no-store"
 
+#: `GET /info` publica a password do WiFi em texto, para qualquer pessoa
+#: na internet. Isso está decidido (ADR 0011) e não muda aqui: o site
+#: continua a lê-la, que é para isso que ela serve — o QR code da mesa.
+#: O que este cabeçalho tira é só a parte **indexável**: a password passa
+#: a não ficar guardada na cache de um motor de busca, legível por quem
+#: nunca entrou no bar e muito depois de o dono a ter mudado.
+SEM_INDEXACAO = "noindex"
+
 router = APIRouter(tags=["publico"])
 
 #: A sessão da base de dados do pedido, fechada no fim por `obter_sessao`.
@@ -82,4 +90,5 @@ def obter_info(response: Response, sessao: SessaoDaBD) -> RespostaInfo:
     500: os outros campos estão no mesmo ecrã (ADR 0011).
     """
     response.headers["Cache-Control"] = SEM_CACHE
+    response.headers["X-Robots-Tag"] = SEM_INDEXACAO
     return servico.obter_info(sessao)

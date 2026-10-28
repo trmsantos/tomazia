@@ -147,11 +147,23 @@ class TestOrdemEFiltro:
         O quiz tem `id = 50` e é o último: uma implementação que ordene por
         `id` devolve `[20, 50, 70]` e fica vermelha.
 
+        A primeira asserção é a sonda do empate: confirma, pela própria
+        resposta, que os dois primeiros eventos têm mesmo o **mesmo**
+        instante. Sem ela, alguém que mexesse nos instantes do cenário
+        desarmava o empate e este teste passava a verificar uma lista
+        ordenada sem empates nenhuns, sem ficar vermelho.
+
         Deixa passar: **o desempate por `id` não é discriminante aqui**.
         Em ordem ascendente, o SQLite devolve os empates por `rowid`, que é
         o `id` — uma implementação sem desempate explícito acerta por
         acaso. O caso que discrimina é a ordem descendente da galeria.
         """
+        por_id = {evento["id"]: evento for evento in eventos["eventos"]}
+        assert (
+            por_id[apoio_publico.ID_EVT_KARAOKE]["inicio"]
+            == por_id[apoio_publico.ID_EVT_FADOS]["inicio"]
+        ), "o cenário já não arma o empate que este teste existe para prender"
+
         obtido = tuple(evento["id"] for evento in eventos["eventos"])
 
         assert obtido == EVENTOS_ESPERADOS

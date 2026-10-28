@@ -209,6 +209,13 @@ HORARIO_ESPERADO_DO_INCOMPLETO: list[dict[str, Any]] = [
 #: é "configurado e fechado toda a semana", uma afirmação sobre o bar.
 HORARIO_SETE_DIAS_FECHADO = [dia_fechado(dia) for dia in DIAS_DA_SEMANA]
 
+#: Listas encaixadas que chegam para o `json` desistir por profundidade.
+#: O limite do analisador em C ronda os mil níveis; vinte mil deixa margem
+#: para qualquer versão do CPython e continua a ser uma cadeia pequena
+#: (40 000 bytes), que é o que uma caixa de texto da gestão aceita sem dar
+#: por isso.
+PROFUNDIDADE_QUE_REBENTA_O_JSON = 20_000
+
 #: Valores guardados que não passam na validação do ADR 0011. Todos têm de
 #: dar `horario: null`, 200, e um erro no log com o nome da chave.
 HORARIOS_INVALIDOS = {
@@ -218,6 +225,25 @@ HORARIOS_INVALIDOS = {
     "hora-impossivel": '[{"dia": "segunda", "periodos": [{"abre": "25:00", "fecha": "02:00"}]}]',
     "periodo-sem-fecha": '[{"dia": "segunda", "periodos": [{"abre": "17:00"}]}]',
     "lista-de-strings": '["segunda", "terca"]',
+    # `fecha == abre` é inválido pelo ADR 0011 (um período de duração nula
+    # não é um horário, é uma gralha). Entra aqui porque **é o mesmo
+    # validador** que a F2-05 vai usar na escrita do
+    # `PUT /gestao/definicoes`: sem um valor que o exercite, a F2-05 herda
+    # a regra sem nada a prendê-la, e lá já há um caminho de escrita a
+    # sério. Medido: com o validador desligado por completo, a bateria
+    # ficava verde.
+    "periodo-de-duracao-nula": (
+        '[{"dia": "segunda", "periodos": [{"abre": "17:00", "fecha": "17:00"}]}]'
+    ),
+    # Rebenta o analisador do `json` por **profundidade**, não por
+    # sintaxe: a cadeia é JSON perfeitamente bem formado. Antes da
+    # correção, o `RecursionError` passava ao lado de um `except
+    # ValueError` e o `/info` respondia 500 — levando atrás o WiFi, a
+    # morada e o telefone, que é exatamente o que o ADR 0011 diz que não
+    # pode acontecer. Era um bloqueante da revisão; é a regra 5 do
+    # `CLAUDE.md` que o obriga a ter um teste.
+    "aninhamento-profundo": "[" * PROFUNDIDADE_QUE_REBENTA_O_JSON
+    + "]" * PROFUNDIDADE_QUE_REBENTA_O_JSON,
 }
 
 # --------------------------------------------------------------------------
@@ -280,12 +306,21 @@ class ContratoDeRota:
 
     `cache` é o valor exato do cabeçalho `Cache-Control`. `metodos` é o
     conjunto de métodos HTTP que a rota aceita (sem `HEAD`, que o Starlette
-    acrescenta sozinho).
+    acrescenta sozinho). `robots` é o valor exato do `X-Robots-Tag`, ou
+    `None` quando a rota **não** pode trazer o cabeçalho — e esse `None` é
+    uma afirmação, não uma omissão: a ementa e os eventos são conteúdo que
+    queremos indexado.
     """
 
     cache: str
     metodos: frozenset[str] = field(default_factory=lambda: frozenset({"GET"}))
+    robots: str | None = None
 
+
+#: O valor exato do `X-Robots-Tag` de `/info`. Escrito aqui e não
+#: importado de `app.routers.publico`: importar a constante da app e
+#: compará-la consigo própria só provaria que ela existe.
+SEM_INDEXACAO_ESPERADA = "noindex"
 
 #: A tabela que o teste de enumeração de rotas confronta com a app.
 #: Uma rota pública nova fica **vermelha** até alguém a acrescentar aqui —
@@ -301,7 +336,12 @@ CONTRATO_PUBLICO: dict[str, ContratoDeRota] = {
     # superfícies em que um minuto de cache é um minuto a mostrar o que já
     # não é verdade.
     "/galeria": ContratoDeRota(cache="no-store"),
-    "/info": ContratoDeRota(cache="no-store"),
+    # O único com `X-Robots-Tag`. A password do WiFi continua pública —
+    # é decisão registada do Tomás no ADR 0011, é o ecrã do QR code na
+    # mesa —, mas pública e indexada não são a mesma coisa: sem este
+    # cabeçalho, a password e a morada ficam pesquisáveis a partir de
+    # fora, para sempre e sem ninguém pedir.
+    "/info": ContratoDeRota(cache="no-store", robots=SEM_INDEXACAO_ESPERADA),
 }
 
 #: Os caminhos públicos que respondem a GET — os que os testes de cache e
@@ -401,29 +441,27 @@ def exigir_relogio_lido(relogio: RelogioFixo) -> None:
 # --------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Cenario:
-    """Os instantes que o cenário usou, para os testes os poderem comparar."""
-
-    agora: datetime
-    instante_dos_eventos_empatados: datetime
-    instante_do_evento_tardio: datetime
-    instante_das_fotos_recentes: datetime
-    instante_da_foto_antiga: datetime
-
-
 def semear_cenario(
     sessao: Session,
     *,
     agora: datetime | None = None,
     texto: str = MARCA,
     com_definicoes: bool = True,
-) -> Cenario:
-    """Semeia o mundo armadilhado inteiro e devolve os instantes que usou.
+) -> None:
+    """Semeia o mundo armadilhado inteiro.
 
     `texto` é o que marca tudo o que não pode sair. Por omissão é a
     `MARCA`; o teste do S-09 passa `TEXTO_PERIGOSO` para semear o mesmo
     mundo com aspas e `<script>` em todos os campos de texto.
+
+    **Não devolve nada**, de propósito. Devolveu durante uma versão: um
+    objeto com os quatro instantes que usou, que nenhum dos dez chamadores
+    chegou a ler. Andaime que não sustenta nada é andaime que envelhece
+    sem ninguém reparar. Os empates que este cenário arma — dois eventos
+    no mesmo instante, duas fotos no mesmo segundo — são verificados onde
+    importam, por sondas nos próprios testes de ordem: se alguém mexer nos
+    instantes daqui e os empates deixarem de existir, esses testes dizem-no
+    em voz alta em vez de passarem a testar uma lista sem empates nenhuns.
     """
     from app.models.definicoes import Definicao
     from app.models.ementa import Categoria, Produto
@@ -707,14 +745,6 @@ def semear_cenario(
         )
 
     sessao.commit()
-
-    return Cenario(
-        agora=instante,
-        instante_dos_eventos_empatados=empatados,
-        instante_do_evento_tardio=tardio,
-        instante_das_fotos_recentes=fotos_recentes,
-        instante_da_foto_antiga=foto_antiga,
-    )
 
 
 def texto_de_item(texto: str, *, visivel: bool) -> str:

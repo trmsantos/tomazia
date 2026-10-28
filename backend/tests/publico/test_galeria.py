@@ -1,13 +1,19 @@
-"""`GET /galeria`: as fotos aprovadas, as mais recentes primeiro, até 24.
+"""`GET /galeria`: todas as fotos aprovadas, as mais recentes primeiro.
 
 Envelope nomeado (`{"fotos": [...]}`). `estado`, `enviada_por`, `ip_hash`,
 `criada_em` e `moderada_em` **não saem**: o que o público vê é a foto e a
 legenda.
 
-O teto de 24 vive numa constante nomeada em `app.services.publico`. Um
-número escrito a meio de uma expressão é um número que ninguém encontra
-quando quer mudá-lo — e este vai ser mudado (a F3-03 mostra seis no ecrã
-inicial e abre a grelha completa a partir daí).
+**Sem teto.** Esta bateria teve, numa versão, um teto de 24 fotos numa
+constante nomeada. Não vinha da especificação — que só diz "grelha de duas
+colunas com as seis últimas fotos; ecrã inteiro com deslizar", e isso é o
+que a **F3-03 mostra**, não o que a API devolve —, não vinha da tarefa e
+não tinha ADR. Era um requisito inventado, e a revisão de código apanhou-o.
+O Tomás decidiu: todas as aprovadas, sem teto.
+
+Fica registado porque o erro não era o número: era escolher um número em
+nome de quem decide. Se um dia houver fotos a mais para uma resposta só, a
+paginação é uma decisão com data, não um `LIMIT` que apareceu num teste.
 """
 
 from __future__ import annotations
@@ -26,11 +32,6 @@ from tests.apoio_publico import (
     FOTOS_ESPERADAS,
     IDS_DE_FOTOS_ESCONDIDAS,
 )
-
-#: O teto da especificação desta tarefa. Escrito aqui em vez de importado
-#: da app de propósito: importar a constante e compará-la consigo própria
-#: só provaria que ela existe.
-MAXIMO_ESPERADO = 24
 
 
 def _semear_fotos_aprovadas(sessao: Session, quantas: int) -> list[int]:
@@ -115,7 +116,7 @@ class TestForma:
 
 class TestOrdemEFiltro:
     def test_as_mais_recentes_primeiro_com_desempate_por_id_descendente(
-        self, galeria: dict[str, Any]
+        self, galeria: dict[str, Any], sessao: Session
     ) -> None:
         """**O desempate que discrimina.**
 
@@ -129,10 +130,27 @@ class TestOrdemEFiltro:
         estável por `rowid` **ascendente** e devolve `[100, 300]`; o
         contrato pede `[300, 100]`.
 
+        A primeira asserção é a sonda do empate: lê as duas fotos da base
+        de dados e confirma que partilham mesmo o `criada_em`. O campo não
+        sai na resposta, por isso sem esta sonda alguém que mexesse nos
+        instantes do cenário desarmava o empate e este teste — o único
+        desempate discriminante da bateria toda — passava a verificar uma
+        lista sem empates nenhuns, sem ficar vermelho.
+
         Deixa passar: três fotos chegam para a ordem, não para provar que a
-        ordenação é feita em SQL e não em Python depois do teto de 24 —
-        isso é `test_o_teto_corta_as_mais_antigas_e_nao_as_mais_recentes`.
+        ordenação é feita sobre o conjunto inteiro — isso é
+        `TestSemTeto::test_todas_as_fotos_aprovadas_saem_por_ordem`.
         """
+        from app.models.fotos import Foto
+
+        primeira = sessao.get(Foto, apoio_publico.ID_FOTO_RECENTE_B)
+        segunda = sessao.get(Foto, apoio_publico.ID_FOTO_RECENTE_A)
+        assert primeira is not None and segunda is not None
+        assert primeira.criada_em == segunda.criada_em, (
+            "o cenário já não arma o empate em `criada_em` que este teste "
+            "existe para prender"
+        )
+
         obtido = tuple(foto["id"] for foto in galeria["fotos"])
 
         assert obtido == FOTOS_ESPERADAS
@@ -162,66 +180,28 @@ class TestOrdemEFiltro:
         assert len(ids) == len(set(ids)), f"fotos repetidas na resposta: {ids}"
 
 
-class TestTeto:
-    def test_a_constante_do_teto_existe_e_vale_24(self) -> None:
-        """O teto tem nome, e o nome é onde se vai mexer nele.
-
-        Deixa passar: que a constante seja mesmo usada pela consulta. É o
-        teste a seguir que o mede.
-        """
-        from app.services.publico import MAXIMO_FOTOS_NA_GALERIA
-
-        assert MAXIMO_FOTOS_NA_GALERIA == MAXIMO_ESPERADO
-
-    def test_com_mais_do_que_o_teto_a_resposta_traz_exatamente_o_teto(
+class TestSemTeto:
+    def test_todas_as_fotos_aprovadas_saem_por_ordem(
         self, cliente: TestClient, sessao: Session
     ) -> None:
-        """Trinta aprovadas, vinte e quatro na resposta.
+        """Trinta aprovadas, trinta na resposta, pela ordem do contrato.
 
-        Deixa passar: **quais** as 24 (é o teste a seguir).
-        """
-        _semear_fotos_aprovadas(sessao, 30)
+        Prende as duas coisas de uma vez: que não há teto nenhum (o
+        contrato é "todas as aprovadas") e que a ordenação é aplicada sobre
+        o conjunto inteiro. Uma ordenação feita em Python sobre uma fatia,
+        ou um `LIMIT` sem `ORDER BY`, devolvia outra lista.
 
-        resposta = cliente.get("/galeria")
-
-        assert resposta.status_code == 200
-        assert len(resposta.json()["fotos"]) == MAXIMO_ESPERADO
-
-    def test_o_teto_corta_as_mais_antigas_e_nao_as_mais_recentes(
-        self, cliente: TestClient, sessao: Session
-    ) -> None:
-        """A ordem tem de ser aplicada **antes** do corte, em SQL.
-
-        Um `LIMIT` sobre uma consulta sem `ORDER BY`, ou uma ordenação
-        feita em Python depois de cortar, devolve 24 fotos — só que as
-        erradas. É o defeito que o teste da contagem sozinho deixa passar.
-
-        Deixa passar: a ordem dentro das 24 já é testada noutro sítio; o
-        que esta asserção prende é o conjunto e a primeira posição.
+        Deixa passar: um teto acima de 30 — não há aqui uma varredura de
+        tamanhos. E não diz nada sobre o custo de servir muitas fotos: o
+        número de instruções SQL é `test_consultas.py`, o tamanho da
+        resposta não é medido em lado nenhum. Se um dia for preciso,
+        pagina-se com uma decisão escrita, não com um número num teste.
         """
         ids = _semear_fotos_aprovadas(sessao, 30)
-        mais_recentes = sorted(ids, reverse=True)[:MAXIMO_ESPERADO]
 
         corpo = apoio_publico.obter_json(cliente, "/galeria")
 
-        obtidos = [foto["id"] for foto in corpo["fotos"]]
-        assert obtidos == mais_recentes
-
-    def test_com_menos_do_que_o_teto_vem_tudo(
-        self, cliente: TestClient, sessao: Session
-    ) -> None:
-        """O controlo de sucesso falso do teto.
-
-        Sem isto, uma implementação com `LIMIT 0` passava nos dois testes
-        de cima por não haver nada a contar.
-
-        Deixa passar: nada sobre a ordem.
-        """
-        _semear_fotos_aprovadas(sessao, 3)
-
-        corpo = apoio_publico.obter_json(cliente, "/galeria")
-
-        assert len(corpo["fotos"]) == 3
+        assert [foto["id"] for foto in corpo["fotos"]] == sorted(ids, reverse=True)
 
 
 class TestGaleriaVazia:

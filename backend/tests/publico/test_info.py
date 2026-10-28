@@ -84,6 +84,11 @@ class TestForma:
         legível por quem nunca entrou no bar e indexável por motores de
         busca.
 
+        Da segunda metade dessa frase o `X-Robots-Tag: noindex` trata —
+        **pública e indexada não são a mesma coisa**, e o cabeçalho está
+        preso em `test_cache_e_rotas.py::TestIndexacao`. Da primeira, não
+        trata nada, nem tem de tratar: é o que foi decidido.
+
         Este teste existe para que ninguém, mais tarde, tome isto por um
         defeito e o "corrija" sem uma decisão com data. Se mudar de ideias,
         o que muda é o ADR — e este teste fica vermelho a dizer onde.
@@ -234,9 +239,26 @@ class TestHorario:
         da chave** — é o único sítio onde a diferença entre "não
         configurado" e "inválido" fica registada.
 
-        Os seis valores inválidos cobrem: JSON partido, objeto em vez de
-        lista, dia que não existe, hora impossível, período incompleto e
-        lista de strings.
+        Os oito valores inválidos cobrem: JSON partido, objeto em vez de
+        lista, dia que não existe, hora impossível, período incompleto,
+        lista de strings, período de duração nula (`fecha == abre`) e
+        listas encaixadas até o analisador do `json` desistir.
+
+        Os dois últimos entraram da revisão, e cada um por uma falha real:
+
+        - `fecha == abre` passou a ter rede depois de o revisor desligar o
+          validador que o recusa e a bateria inteira ficar verde. Importa
+          mais do que os seis primeiros porque o ADR 0011 diz que é **o
+          mesmo** validador que a F2-05 usa na escrita do
+          `PUT /gestao/definicoes`, e lá já há um caminho de escrita a
+          sério a herdá-lo.
+        - o aninhamento profundo era um **bloqueante**: o `RecursionError`
+          do analisador do `json` não é um `ValueError`, passava ao lado
+          do `except`, e o `/info` respondia 500 — levando atrás o WiFi, a
+          morada e o telefone, que é exatamente o que este teste existe
+          para impedir. A cadeia é JSON bem formado: o que rebenta é a
+          profundidade, não a sintaxe, e por isso nenhum dos outros sete
+          valores lá chegava.
 
         Deixa passar: o nome do logger, o texto exato da mensagem e o
         `exc_info`. Só se exige o nível e o nome da chave.

@@ -12,8 +12,9 @@ Três opções atravessam o ficheiro inteiro:
   regra num sítio que quem escrevesse `categoria.produtos` noutra tarefa
   não veria — e sem filtro nenhum dava um N+1 silencioso numa página
   servida por um SQLite num cPanel partilhado.
-- **uma consulta por pedido**, com a ordem e o teto feitos em SQL. Ordenar
-  ou cortar em Python devolve a mesma contagem com as linhas erradas.
+- **uma consulta por pedido**, com os filtros e a ordem feitos em SQL.
+  Filtrar ou ordenar em Python traz para memória linhas que ninguém vai
+  ver e põe a regra longe de onde ela se lê.
 
 O relógio entra por `agora_utc`, importado como nome deste módulo e
 chamado dentro da função. Não é estilo: é o que permite a um teste fixar
@@ -23,11 +24,9 @@ o dia (`monkeypatch.setattr`) sem mexer no relógio da máquina. Um
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Sequence
 
-from pydantic import ValidationError
 from sqlalchemy import Row, select
 from sqlalchemy.orm import Session
 
@@ -52,12 +51,6 @@ from app.schemas.publico import (
 from app.tempo import inicio_do_dia_do_bar
 
 registo = logging.getLogger(__name__)
-
-#: Quantas fotos aprovadas a galeria pública devolve, no máximo. Tem nome
-#: porque vai ser mudado: a F3-03 mostra seis no ecrã inicial e abre a
-#: grelha completa a partir daí. Um número escrito a meio de uma
-#: expressão é um número que ninguém encontra quando quer mexer nele.
-MAXIMO_FOTOS_NA_GALERIA = 24
 
 #: As chaves de `definicoes` que `GET /info` publica, e só estas.
 #: `definicoes` é uma tabela chave/valor: devolver tudo o que lá está
@@ -196,23 +189,26 @@ def obter_eventos(sessao: Session) -> RespostaEventos:
 
 
 def obter_galeria(sessao: Session) -> RespostaGaleria:
-    """As fotos aprovadas, as mais recentes primeiro, até ao teto.
+    """**Todas** as fotos aprovadas, as mais recentes primeiro.
+
+    Sem teto, por decisão do Tomás. Um limite aqui seria um requisito
+    inventado — a especificação não o tem, e o que ela diz é do ecrã:
+    "grelha de duas colunas com as seis últimas fotos; ecrã inteiro com
+    deslizar". Quantas mostrar de início é da F3-03, que precisa da
+    grelha completa para o deslizar levar a algum lado; e um corte feito
+    aqui era invisível no contrato, porque a resposta não traz um
+    `total` que dissesse ao frontend que a lista acaba antes do fim.
 
     O desempate por `id` descendente é o único dos três endpoints que
     discrimina: `fotos.criada_em` vem do `CURRENT_TIMESTAMP`, com
     resolução de um segundo, e duas fotos enviadas seguidas empatam. Sem
     desempate, o SQLite devolve-as por `rowid` **ascendente** dentro do
     empate — a ordem contrária à pedida.
-
-    A ordem e o teto são os dois em SQL. Um `LIMIT` sobre uma consulta
-    sem `ORDER BY`, ou uma ordenação feita em Python depois de cortar,
-    devolve o número certo de fotos e as fotos erradas.
     """
     linhas = sessao.execute(
         select(Foto.id, Foto.ficheiro, Foto.descricao)
         .where(Foto.estado == EstadoFoto.APROVADA)
         .order_by(Foto.criada_em.desc(), Foto.id.desc())
-        .limit(MAXIMO_FOTOS_NA_GALERIA)
     ).all()
 
     return RespostaGaleria(
@@ -275,23 +271,45 @@ def _ler_horario(valor: str | None) -> list[DiaDoHorario] | None:
     de uma instalação nova, e enchê-lo de erros todos os dias era garantir
     que ninguém repara no dia em que o erro é a sério.
 
+    A chave guardada a `""` (ou só com espaços) conta como **não
+    configurada** e também não regista nada, pela mesma leitura que
+    `_texto_ou_nulo` faz dos outros campos: `definicoes.valor` é `NOT
+    NULL`, e é assim que a F2-05 guarda um campo que o dono apagou.
+    Pela letra do ADR 0011 é um valor guardado que não valida; a decisão
+    de o tratar como ausente está aqui, escrita, e não implícita no
+    `strip()`.
+
     `null` com um `ERROR` que nomeia a chave quer dizer **mal
     configurado**. O endpoint não devolve 500: um horário mal escrito não
     pode levar atrás o WiFi, a morada e o telefone, que estão no mesmo
     ecrã. É uma exceção consciente à regra 10 do `CLAUDE.md`, escrita no
     ADR 0011 — a alternativa era expor ao público o estado interno de uma
     definição.
+
+    O `except` é largo de propósito. `ValueError` cobre as duas falhas
+    esperadas (o `JSONDecodeError` do `json` e o `ValidationError` do
+    Pydantic herdam os dois dele) e `RecursionError` cobre a que não é
+    óbvia: um valor como `"[" * 20000` rebenta o analisador do `json` por
+    profundidade, não por sintaxe, e com uma lista de exceções estreita
+    saía daqui um 500 que levava atrás o WiFi e a morada — exatamente o
+    que o ADR existe para impedir.
+
+    A causa vai como **argumento**, não como `exc_info`. Um traceback por
+    pedido são ~1226 bytes no log de uma conta de cPanel cujo disco é
+    partilhado com o SQLite e com os backups, e esta rota não tem sessão,
+    nem limite de pedidos, nem cache a absorver um laço. O argumento
+    mantém o rasto que o ADR exige em ~210.
     """
     if valor is None or not valor.strip():
         return None
     try:
         return interpretar_horario(valor)
-    except (json.JSONDecodeError, ValidationError):
+    except (ValueError, RecursionError) as erro:
         registo.error(
             "A definição `horario` está guardada numa forma que não é a do "
             "ADR 0011 (lista de dias com `abre`/`fecha` em HH:MM). "
             "`GET /info` devolve `horario: null` e serve o resto; corrige "
-            "a chave `horario` em `definicoes`.",
-            exc_info=True,
+            "a chave `horario` em `definicoes`. Causa: %s",
+            erro,
         )
         return None

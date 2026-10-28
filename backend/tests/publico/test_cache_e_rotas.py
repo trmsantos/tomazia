@@ -2,12 +2,26 @@
 
 No padrão do critério S-04 (`docs/ESPECIFICACAO.md`: "lista gerada a partir
 das rotas"): em vez de uma lista escrita à mão que envelhece em silêncio,
-percorre-se `criar_app().routes`, tiram-se as públicas e exige-se que cada
-uma esteja na tabela — e a tabela é a mesma que alimenta o teste de cache e
-o teste da marca.
+percorrem-se as rotas que a app declara, tiram-se as públicas e exige-se
+que cada uma esteja na tabela — e a tabela é a mesma que alimenta o teste
+de cache e o teste da marca.
 
 O efeito: **uma rota pública nova fica vermelha até alguém decidir o que
 ela expõe.** É o oposto de uma lista que ninguém atualiza.
+
+**A travessia é `tests/apoio_rotas.py::rotas_declaradas`, e não um
+`for rota in criar_app().routes`.** A diferença não é estilo: medido com
+FastAPI 0.161.1, o `include_router()` não copia as rotas para
+`app.routes` — deixa lá um `_IncludedRouter`, que não é uma rota, não tem
+`.routes`, e guarda o router original e o prefixo num `include_context` à
+parte. O varrimento ingénuo devolve **lista vazia** numa app que tem rotas,
+e um teste de enumeração que confunda "não há rotas" com "não sei onde elas
+estão" fica verde a dizer que verificou tudo. `rotas_declaradas` desce a
+partir de `aplicacao.router`, acumula os prefixos de cada nível e rebenta
+diante de um objeto de rota que não saiba classificar.
+
+A F2-04 vai copiar este ficheiro como padrão do S-04: é por isso que o
+texto tem de dizer o que o código faz, e não o que parecia natural fazer.
 """
 
 from __future__ import annotations
@@ -54,7 +68,10 @@ class TestEnumeracaoDasRotas:
 
         Um filtro que não apanhasse rota nenhuma deixava os testes de baixo
         verdes com conjuntos vazios dos dois lados. "Não encontrei" e "não
-        consegui procurar" não podem dar o mesmo resultado (regra 10).
+        consegui procurar" não podem dar o mesmo resultado (regra 10). Não
+        é hipotético: um `for rota in criar_app().routes` com
+        `isinstance(rota, APIRoute)` devolve zero nesta versão do FastAPI,
+        e foi este teste que o apanhou.
 
         Deixa passar: nada sobre quais as rotas.
         """
@@ -64,9 +81,10 @@ class TestEnumeracaoDasRotas:
         exigir_cobertura_do_openapi(aplicacao)
 
         assert _rotas_publicas(aplicacao), (
-            "não foi encontrada rota pública nenhuma em `criar_app().routes`. "
-            "Ou a app não tem rotas, ou o filtro desta função deixou de as "
-            "reconhecer — e nos dois casos os testes seguintes não provam nada"
+            "a travessia de `tests/apoio_rotas.py` não encontrou rota "
+            "pública nenhuma nesta app. Ou a app não tem rotas, ou a "
+            "travessia deixou de saber ler a versão do FastAPI instalada — "
+            "e nos dois casos os testes seguintes não provam nada"
         )
 
     def test_nenhuma_rota_publica_tem_parametros_no_caminho(self) -> None:
@@ -176,3 +194,77 @@ class TestCacheControl:
 
         assert resposta.status_code == 200, resposta.text
         assert resposta.headers["cache-control"] == CONTRATO_PUBLICO[caminho].cache
+
+
+class TestIndexacao:
+    """`X-Robots-Tag: noindex` na `/info`, e **em mais lado nenhum**.
+
+    A password do WiFi sai em texto na `/info` — é decisão registada do
+    Tomás no ADR 0011, é o ecrã do QR code na mesa. Pública e indexada não
+    são a mesma coisa: sem o cabeçalho, a password, a morada e o telefone
+    ficam pesquisáveis a partir de fora, para sempre, por quem nunca
+    procurou o bar.
+
+    O negativo pesa tanto como o positivo. A ementa e os eventos são
+    conteúdo que **queremos** indexado: é como as pessoas encontram o bar.
+    Um `noindex` posto em todas as rotas "por segurança" tira o site do
+    Google e passava num teste que só verificasse a `/info`.
+    """
+
+    def test_a_tabela_tem_rotas_dos_dois_lados(self) -> None:
+        """O controlo de sucesso falso dos dois testes de baixo.
+
+        Se a coluna `robots` ficasse toda a `None` — alguém a apagar a
+        entrada da `/info` para "fazer passar" —, o teste parametrizado
+        continuava verde, a verificar cinco ausências e nenhuma presença.
+        "Não há cabeçalho nenhum para verificar" e "verifiquei todos os
+        cabeçalhos" não podem dar o mesmo resultado (regra 10).
+
+        Deixa passar: nada sobre as respostas; é um guarda sobre a tabela.
+        """
+        com_cabecalho = [
+            caminho
+            for caminho, contrato in CONTRATO_PUBLICO.items()
+            if contrato.robots is not None
+        ]
+        sem_cabecalho = [
+            caminho
+            for caminho, contrato in CONTRATO_PUBLICO.items()
+            if contrato.robots is None
+        ]
+
+        assert com_cabecalho, "nenhuma rota na tabela espera `X-Robots-Tag`"
+        assert sem_cabecalho, "nenhuma rota na tabela recusa `X-Robots-Tag`"
+
+    @pytest.mark.parametrize("caminho", CAMINHOS_PUBLICOS_GET)
+    def test_o_x_robots_tag_e_exatamente_o_da_tabela_ou_nao_existe(
+        self, cliente: TestClient, sessao: Session, caminho: str
+    ) -> None:
+        """Presença e valor onde a tabela o manda; ausência onde não manda.
+
+        Com o cenário semeado, para o cabeçalho não poder viver só no ramo
+        do "não há dados" — o mesmo defeito que o par do `Cache-Control`
+        apanha.
+
+        Deixa passar: o que os motores de busca fazem com o cabeçalho (e
+        se o Apache o repete ou o substitui em produção). E não vê a
+        `<meta name="robots">` do HTML, que é do frontend: esta rota serve
+        JSON, e o cabeçalho é a única forma de o dizer.
+        """
+        from tests import apoio_publico
+
+        apoio_publico.semear_cenario(sessao)
+        esperado = CONTRATO_PUBLICO[caminho].robots
+
+        resposta = cliente.get(caminho)
+
+        assert resposta.status_code == 200, resposta.text
+        if esperado is None:
+            assert "x-robots-tag" not in resposta.headers, (
+                f"{caminho} trouxe `X-Robots-Tag: "
+                f"{resposta.headers.get('x-robots-tag')}`. Esta rota é "
+                "conteúdo que queremos indexado: é como as pessoas "
+                "encontram o bar"
+            )
+        else:
+            assert resposta.headers["x-robots-tag"] == esperado
