@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "size": "size-limit",
-    "gerar-api": "echo 'Tipos da API: gerados na tarefa F2-09 (openapi-typescript).'"
+    "gerar-api": "node ferramentas/gerar-api.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -41,6 +41,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "jsdom": "^30.1.3",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.5.31",
     "prettier": "^3.9.10",
     "size-limit": "^14.2.0",
@@ -49,5 +50,10 @@
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

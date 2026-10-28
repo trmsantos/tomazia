@@ -1,6 +1,8 @@
 # Frontend
 
-- Estrutura: `src/pages/publico`, `src/pages/gestao` (carregada com lazy loading), `src/components/ui`, `src/lib/api` (gerado, não editar), `src/styles`.
+- Estrutura: `src/pages/publico`, `src/pages/gestao` (carregada com lazy loading), `src/components/ui`, `src/lib/api`, `src/styles`.
+- Dentro de `src/lib/api`: **`gerado/` é gerado e não se edita** (sai do OpenAPI do backend por `npm run gerar-api`); o resto é o cliente, escrito à mão e testado como qualquer outro código. A regra antiga dizia que a pasta inteira era gerada, e deixou de poder ser a partir do momento em que o cliente passou a viver lá.
+- `fetch` só dentro de `src/lib/api`. Fora de lá é erro de lint — e há uma varredura do código em disco por cima, porque um `eslint-disable` desliga a regra e não desliga a varredura.
 - Cores, tipografia e espaçamentos só em `src/styles/tokens.css` e `tailwind.config.ts`. Nunca hex soltos em componentes.
 - Paleta: bordô noite `#3D0F24` (fundo), bordô vinho `#4A1830` (superfícies), bordô Tomazia `#5D1F3A` (marca, preços no creme), dourado latão `#D4AF37` (ação principal, chip ativo, foco), creme papel `#F5E6D3` (texto no escuro, cartões da ementa), creme sombra `#D9C3AE` (texto secundário). Dourado nunca sobre creme.
 - Fontes servidas pelo próprio site: Playfair Display 700 para títulos (nunca abaixo de 22 px) e Source Sans 3 para o resto. Preços com `font-variant-numeric: tabular-nums`.

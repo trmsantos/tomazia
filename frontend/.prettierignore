@@ -1,6 +1,9 @@
 dist
 coverage
-src/lib/api
+# Escrito pelo `npm run gerar-api`, nunca formatado à mão. O resto de
+# `src/lib/api` (o cliente) é código nosso e é formatado como qualquer
+# outro — a regra antiga ignorava a pasta inteira.
+src/lib/api/gerado
 package-lock.json
 
 # Artefactos do Playwright (capturas, traces, relatório). Aparecem

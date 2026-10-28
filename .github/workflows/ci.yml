@@ -14,12 +14,23 @@
 #
 # Porque `git status --porcelain --untracked-files=all`, e não `git diff
 # --exit-code`, nas guardas "o ficheiro gerado não mudou" abaixo
-# (requirements.txt, frontend/src/lib/api): o `git diff --exit-code` só
-# compara o que já está versionado — não vê um ficheiro apagado (deixa de
-# existir, não há diff nenhum a mostrar) nem um ficheiro novo por
-# versionar. Um `requirements.txt` apagado, ou um tipo novo gerado em
-# `src/lib/api` e nunca commitado, passariam a verde. Cada uso abaixo
-# aponta só para aqui.
+# (requirements.txt, frontend/src/lib/api/gerado): o `git diff
+# --exit-code` só compara o que já está versionado — não vê um ficheiro
+# apagado (deixa de existir, não há diff nenhum a mostrar) nem um
+# ficheiro novo por versionar. Um `requirements.txt` apagado, ou um tipo
+# novo gerado em `src/lib/api/gerado` e nunca commitado, passariam a
+# verde. Cada uso abaixo aponta só para aqui.
+#
+# A guarda dos tipos gerados (job `contrato`) já não vive num `run:`:
+# está em `.github/scripts/verificar-gerado-em-dia.sh`, com códigos de
+# saída distintos para "em dia" (0), "há diferenças" (1), "o git não
+# respondeu" (2) e "não foi gerado nada" (3). Embutida aqui, tinha a
+# forma `if [ -n "$(git status --porcelain -- <caminho>)" ]`, e essa
+# substituição de comandos engole o estado do git: com o `git` a falhar,
+# a saída vem vazia, o `-n` dá falso e o passo fica VERDE (dentro da
+# condição de um `if`, o `set -e` está desligado). O `requirements.txt`
+# tem a mesma forma e o mesmo buraco; é uma correção à parte, fora do
+# âmbito da F2-09, para não misturar o job `backend` neste PR.
 name: CI
 
 on:
@@ -221,8 +232,12 @@ jobs:
         working-directory: backend
         run: uv run python -m app.openapi
 
-      # O `gerar-api` ainda é um placeholder (a geração a sério é a
-      # F2-09); estas duas guardas dão dentes ao job desde já.
+      # Estes dois `jq` são a verificação do PRIMEIRO elo da cadeia (o
+      # export), e ficam: correm antes de o Node sequer existir neste
+      # job, por isso distinguem "o backend não soube exportar o esquema"
+      # de "o gerador de tipos não soube ler o esquema". Sem eles, as
+      # duas avarias chegariam ao `gerar-api` e sairiam de lá com a mesma
+      # cara.
       - name: OpenAPI exportado é JSON válido
         run: jq empty frontend/openapi.json
 
@@ -244,15 +259,21 @@ jobs:
         working-directory: frontend
         run: npm run gerar-api
 
-      # Porquê `git status --porcelain`, não `git diff --exit-code`: ver o
-      # comentário no cabeçalho deste ficheiro.
-      - name: frontend/src/lib/api não mudou
+      # O critério da F2-09, literal: "o CI falha se os tipos gerados não
+      # estiverem atualizados". Ver o cabeçalho deste ficheiro (porquê um
+      # script, e porquê `git status --porcelain`) e o do próprio script
+      # (os códigos de saída).
+      #
+      # O caminho é só `frontend/src/lib/api/gerado`, não `src/lib/api`
+      # inteiro: o resto da pasta é código escrito à mão (o cliente com
+      # `X-Tomazia` e `credentials: "include"`), que é lintado e testado
+      # pelo job `frontend` e tem toda a legitimidade para divergir do
+      # que o gerador escreve. Só o que é gerado é que tem de coincidir.
+      - name: Tipos gerados em dia (frontend/src/lib/api/gerado)
         run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- frontend/src/lib/api)" ]; then
-            echo "::error::frontend/src/lib/api ficou diferente depois de 'npm run gerar-api'. Corrige com: cd frontend && npm run gerar-api && git add src/lib/api"
-            git status --porcelain --untracked-files=all -- frontend/src/lib/api
-            exit 1
-          fi
+          .github/scripts/verificar-gerado-em-dia.sh \
+            --caminho frontend/src/lib/api/gerado \
+            --sugestao "cd frontend && npm run gerar-api && git add src/lib/api/gerado"
 
   seguranca:
     name: seguranca
