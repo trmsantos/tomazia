@@ -25,9 +25,17 @@ Frontend, em `frontend/`:
 
 Contrato:
 
-12. `npm run gerar-api` seguido de `git status --porcelain --untracked-files=all -- frontend/src/lib/api`, que tem de vir vazio
+12a. Em `backend/`, `AMBIENTE=desenvolvimento uv run python -m app.openapi`
+12b. Em `frontend/`, `npm run gerar-api`
+12c. Da raiz, `.github/scripts/verificar-gerado-em-dia.sh --caminho frontend/src/lib/api/gerado --sugestao "cd frontend && npm run gerar-api"`
 
-O `git diff --exit-code` não serve aqui: não vê ficheiros novos por versionar, e deixaria passar a verde um tipo gerado por commitar.
+Cada um leva a sua linha na tabela final. **A ordem é a correção.**
+
+O 12a não é cerimónia. O `app.openapi` só escreve o ficheiro **depois** de construir o esquema com sucesso, por isso um export falhado deixa o `frontend/openapi.json` antigo intacto — e sem o 12a os tipos eram regenerados a partir desse ficheiro velho, ficavam iguais, e este passo dizia "ok" com o backend possivelmente a nem sequer importar. No CI o problema nunca existiu, porque lá o `openapi.json` está no `.gitignore` e nunca vem do checkout; localmente existia, e era exatamente a forma de erro que este passo devia apanhar.
+
+O 12c é um script, e não um `git status` dentro de um `if`, por quatro razões medidas: a substituição de comandos engole o estado do git (se ele sair 128, a saída vem vazia e o `if` dá verde); um caminho que não existe não tem o que comparar; um caminho abrangido pelo `.gitignore` é invisível ao `git status`; e uma regra do `.gitignore` sobre o **conteúdo** do caminho escapa à verificação da anterior. O script distingue tudo isso — 0 em dia, 1 há diferenças, 2 não consegui verificar, 3 o caminho não existe — e nunca confunde "não encontrei" com "não consegui procurar".
+
+O `git diff --exit-code` não serve em sítio nenhum destes: não vê ficheiros novos por versionar, e deixaria passar a verde um tipo gerado por commitar.
 
 Deriva e ficheiros proibidos, da raiz do repositório:
 
