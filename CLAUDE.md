@@ -26,8 +26,19 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run mypy app passenger_wsgi.py
 uv run pytest
+
+# Antes de servir pela primeira vez (a BD de desenvolvimento não existe):
+mkdir -p var
+AMBIENTE=desenvolvimento uv run alembic upgrade head
+
 AMBIENTE=desenvolvimento uv run uvicorn app.main:app --reload --port 8070
 ```
+
+Os dois passos do meio fazem-se uma vez. Sem eles, o `/health` responde —
+não toca na base de dados — e **todas as outras rotas devolvem 500**: o
+`BASE_DADOS_URL` por omissão aponta para `./var/dev.db`, o SQLite não cria
+a pasta do ficheiro, e sem a migração não há tabelas. Os testes não
+apanham isto porque constroem a base de dados em `tmp_path`.
 
 `AMBIENTE` não tem valor por omissão: faltando, a app recusa arrancar. É o que
 impede uma configuração em falta de ser tomada por desenvolvimento. Precisam
