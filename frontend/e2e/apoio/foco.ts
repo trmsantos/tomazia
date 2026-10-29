@@ -49,6 +49,15 @@ export type CaixaDeLayout = {
    * acusar.
    */
   fixo: boolean;
+  /**
+   * `true` quando o elemento, ou um antepassado seu, é `position: sticky`.
+   *
+   * Entra na F3-02: um controlo que vive **dentro** da barra colada ao topo
+   * (a lupa) não pode ser acusado de estar tapado por ela. Separado do
+   * `fixo` porque um elemento colado continua a ter lugar na ordem vertical
+   * do documento — só pára de descer a certa altura.
+   */
+  colado: boolean;
 };
 
 export type ElementoFocado = {
@@ -150,11 +159,23 @@ export async function percorrerComTab(pagina: Page): Promise<Varrimento> {
       let topo = 0;
       let esquerda = 0;
       let fixo = false;
+      let colado = false;
       let no: HTMLElement | null = elemento instanceof HTMLElement ? elemento : null;
+      // Uma só subida, e chega. A cadeia de `offsetParent` salta os
+      // antepassados **sem** posicionamento, e um elemento colado não é um
+      // deles: `position: sticky` é posicionamento, por isso a barra da
+      // ementa aparece na cadeia de quem vive lá dentro. Medido nos doze
+      // controlos desta página, com a pesquisa fechada e aberta: a cadeia
+      // de `offsetParent` e uma subida pelo DOM dão o mesmo resultado em
+      // todos. Havia aqui um segundo ciclo a subir o DOM, justificado por
+      // uma frase falsa — o único caso em que a cadeia pára cedo é um
+      // antepassado `position: fixed`, e esse já é marcado como `fixo`.
       while (no !== null) {
         topo += no.offsetTop;
         esquerda += no.offsetLeft;
-        if (getComputedStyle(no).position === "fixed") fixo = true;
+        const posicao = getComputedStyle(no).position;
+        if (posicao === "fixed") fixo = true;
+        if (posicao === "sticky") colado = true;
         no = no.offsetParent as HTMLElement | null;
       }
 
@@ -193,6 +214,7 @@ export async function percorrerComTab(pagina: Page): Promise<Varrimento> {
           altura: rectangulo.height,
           largura: rectangulo.width,
           fixo,
+          colado,
         },
       };
     });

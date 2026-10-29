@@ -7,8 +7,16 @@
  * "cardápio" de propósito, escreve-o distraído, e numa revisão de 400
  * linhas a palavra passa.
  *
- * Âmbito: `src/components/**` e `src/demonstracao/**` — a superfície da
- * F3-01. Os ecrãs reais entram quando existirem, nas tarefas deles.
+ * Âmbito: `src/components/**`, `src/demonstracao/**` e `src/pages/**`. A
+ * pasta dos ecrãs entra na F3-02 (12.10), com o primeiro ecrã a sério — e as
+ * sentinelas crescem com ela, senão a varredura de uma pasta que não existe
+ * passa por "não encontrei nada".
+ *
+ * **O que esta varredura deixa passar:** texto vindo da API (um produto
+ * chamado "Cardápio" é do dono, não nosso) e frases construídas por
+ * concatenação. A contagem de resultados da ementa
+ * (`{n} produtos encontrados.`) é concatenação, e por isso tem teste próprio
+ * para o singular e para o plural em `src/pages/publico/Ementa.test.tsx`.
  *
  * O que cada regra apanha, e porquê:
  *  - **palavras de pt-BR**: a lista da regra 6. Uma delas é "arquivo": em
@@ -31,6 +39,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
+import { FICHEIROS_DA_F3_02 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -90,13 +99,24 @@ function ficheirosDaInterface(): string[] {
   return [
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "components"), { extensoes: [".ts", ".tsx"] }),
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "demonstracao"), { extensoes: [".ts", ".tsx"] }),
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "pages"), { extensoes: [".ts", ".tsx"] }),
   ].filter((ficheiro) => !/\.test\.tsx?$/.test(ficheiro));
 }
+
+/**
+ * As sentinelas das duas tarefas juntas.
+ *
+ * Crescem com os ficheiros novos de propósito: sem a linha da F3-02, a
+ * varredura de uma `src/pages/` vazia (ou inexistente) devolveria zero
+ * ficheiros, encontraria zero violações e passaria. "Não consegui procurar"
+ * a dar o mesmo resultado que "não encontrei" é a regra 10 do `CLAUDE.md`.
+ */
+const SENTINELAS = [...COMPONENTES_DA_F3_01, ...FICHEIROS_DA_F3_02];
 
 describe("texto visível em português de Portugal", () => {
   it("nenhuma palavra de outro português, nem gerúndio brasileiro", () => {
     const ficheiros = ficheirosDaInterface();
-    exigirSentinelas(ficheiros, COMPONENTES_DA_F3_01, "textos em PT-PT");
+    exigirSentinelas(ficheiros, SENTINELAS, "textos em PT-PT");
 
     const violacoes: string[] = [];
     for (const ficheiro of ficheiros) {
@@ -123,7 +143,7 @@ describe("texto visível em português de Portugal", () => {
 
   it("nada de emojis, setas, reticências em três pontos nem etiquetas em maiúsculas", () => {
     const ficheiros = ficheirosDaInterface();
-    exigirSentinelas(ficheiros, COMPONENTES_DA_F3_01, "textos em PT-PT");
+    exigirSentinelas(ficheiros, SENTINELAS, "textos em PT-PT");
 
     const violacoes: string[] = [];
     for (const ficheiro of ficheiros) {
@@ -151,7 +171,7 @@ describe("texto visível em português de Portugal", () => {
 
   it("o espaço antes do € é inquebrável", () => {
     const ficheiros = ficheirosDaInterface();
-    exigirSentinelas(ficheiros, COMPONENTES_DA_F3_01, "textos em PT-PT");
+    exigirSentinelas(ficheiros, SENTINELAS, "textos em PT-PT");
 
     const violacoes: string[] = [];
     for (const ficheiro of ficheiros) {

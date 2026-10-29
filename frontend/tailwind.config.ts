@@ -213,17 +213,35 @@ export default {
 
     extend: {
       minHeight: { toque: "var(--alvo-toque)" },
-      minWidth: { toque: "var(--alvo-toque)" },
+      minWidth: {
+        toque: "var(--alvo-toque)",
+        // O pontilhado da Linha de produto nunca encolhe abaixo disto. Sem um
+        // mínimo, um nome longo come-o todo e a linha deixa de se ler como uma
+        // linha de ementa (F3-02, secção 6.3).
+        fio: "var(--espaco-6)",
+      },
       maxWidth: {
         coluna: "var(--coluna-publica)",
         folha: "var(--largura-folha)",
         vazio: "var(--largura-vazio)",
       },
       maxHeight: { folha: "var(--altura-folha)" },
+      // A barra de chips: `h-barra` fixa-lhe a altura e `top-cabecalho` diz
+      // onde ela pára quando cola. Os dois saem do mesmo sítio que a âncora
+      // das categorias, para não haver duas contas a discordar.
+      inset: { cabecalho: "var(--altura-cabecalho)" },
       // O carril e o manípulo do Interruptor: 48 × 28 e 24 × 24 não são passos
       // da escala de espaçamento, por isso têm tokens próprios.
       width: { carril: "var(--carril-largura)", manipulo: "var(--manipulo)" },
-      height: { carril: "var(--carril-altura)", manipulo: "var(--manipulo)" },
+      height: {
+        carril: "var(--carril-altura)",
+        manipulo: "var(--manipulo)",
+        barra: "var(--altura-barra-chips)",
+        // O lugar reservado à contagem da pesquisa. Ocupa-se à abertura, para
+        // que o texto que chega 500 ms depois não empurre a lista para baixo
+        // com a pessoa já a lê-la (F3-02, secção 4.5).
+        contagem: "var(--altura-contagem)",
+      },
       translate: {
         manipulo: "var(--manipulo-curso)",
         premido: "var(--descida-premido)",
