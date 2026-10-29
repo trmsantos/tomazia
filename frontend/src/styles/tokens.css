@@ -140,6 +140,56 @@
   --largura-vazio: 320px; /* a coluna estreita do Estado vazio */
   --altura-folha: 85dvh; /* dvh e não vh: com a barra do Safari, 85vh corta o botão de baixo */
 
+  /*
+   * O que fica fixo no topo da área pública, e o que isso obriga a descontar.
+   * Três valores, e os dois últimos derivam do primeiro: assim há um número
+   * para mudar, não três para manter de acordo (F3-02, secção 3).
+   *
+   * `--altura-cabecalho` é **0px nesta tarefa**, porque o cabeçalho fixo é da
+   * F3-03. Fica declarado desde já para a F3-03 mudar um valor em vez de
+   * mexer no desenho da ementa: no dia em que o cabeçalho existir, a barra de
+   * chips cola-se por baixo dele e as âncoras passam a descontá-lo sozinhas.
+   * Tem de ser `0px` e não `0`: um `calc()` com um zero sem unidade é
+   * inválido e a declaração inteira cai em silêncio.
+   *
+   * `--altura-barra-chips` é escrito como a conta que é — o alvo de toque,
+   * mais a folga de cima e de baixo, mais o fio de 1 px que separa a barra do
+   * que está por baixo. Escrito assim, um dia em que o alvo de toque mude, a
+   * barra acompanha. A barra **tem** de ter esta altura fixa, e não a altura
+   * do que lá está dentro: é dela que sai a âncora, e uma barra que muda de
+   * altura (ao abrir a pesquisa, por exemplo) desalinhava todos os saltos
+   * para as categorias ao mesmo tempo.
+   *
+   * `--ancora-ementa` é a distância do topo do ecrã a que um título de
+   * categoria assenta depois de um salto. Entra em `scroll-padding-top` no
+   * `html` — uma declaração, que serve tanto o salto por âncora como o
+   * deslocamento que o browser faz ao pôr o foco num controlo escondido por
+   * baixo da barra. E é também a linha de leitura do scroll-spy, mais um
+   * píxel; é essa coincidência que faz o chip em que se carregou ficar logo
+   * ativo (F3-02, secção 3.3).
+   */
+  --altura-cabecalho: 0px;
+  --altura-barra-chips: calc(var(--alvo-toque) + 2 * var(--espaco-2) + var(--contorno-fino));
+  --ancora-ementa: calc(var(--altura-cabecalho) + var(--altura-barra-chips) + var(--espaco-4));
+
+  /*
+   * O lugar da linha de contagem da pesquisa (F3-02, secção 4.5).
+   *
+   * Uma linha de `--texto-nota` com a sua entrelinha, mais a folga de cima.
+   * Existe como token porque é uma **reserva**, e uma reserva só serve se for
+   * exactamente do tamanho do que lá vai caber: escrita como um número
+   * redondo, acertava hoje e deixava de acertar no dia em que a escala
+   * tipográfica mexesse — com a lista a saltar outra vez, meio segundo depois
+   * de alguém escrever, e ninguém a ligar uma coisa à outra.
+   *
+   * Porque é que há uma reserva: a contagem entra no fluxo 500 ms depois da
+   * última tecla (as duas temporizações de 4.5 são de propósito). Medido na
+   * revisão, isso empurrava o primeiro cartão 31,6 px para baixo com a pessoa
+   * já a ler os resultados. O lugar passa a estar ocupado desde que a
+   * pesquisa abre, e o texto chega a um sítio que já era dele.
+   */
+  --altura-contagem: calc(var(--espaco-3) + var(--texto-nota) * var(--entrelinha-nota));
+
   /* Interruptor: carril 48 × 28 com o manípulo de 24 e --espaco-1 de folga.
      O 28 e o 20 não são passos da escala de espaçamento (não há 28 px nos sete
      passos), por isso vivem aqui com nome em vez de ficarem literais na

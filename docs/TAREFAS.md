@@ -116,6 +116,8 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Faz:** `scripts/importar_bd_antiga.py` e uma BD de teste falsa gerada por script a partir de `docs/legado/esquema-bd-antiga.sql` (nunca a real).
 - **Feito quando:** a importação é idempotente; categorias "Bebidas" e "bebidas" juntam-se; preços em cêntimos certos; texto sem entidades HTML; o Tomás confirma localmente, numa cópia da BD real fora do repositório, 140 produtos e 11 categorias.
 - **Herança da F2-01, para não se descobrir a meio:** `eventos.imagem` e `fotos.ficheiro` são **nomes de ficheiro**, nunca caminhos — a BD recusa `/`, `\` e `..` por `CHECK`. O esquema antigo guarda caminhos (`eventos.imagem_url`, `fotos.caminho`, valores do género `img/uploads/x.jpg`), por isso o importador tem de os reduzir ao nome do ficheiro. Falha alto e linha a linha se não o fizer, com o nome da restrição na mensagem — mas é trabalho a prever, não a descobrir. E as datas entram já em UTC: um `INSERT` em SQL cru com hora local é **rotulado** UTC sem ser convertido (ver `DataHoraUTC`).
+- **Herança da F3-02, do agente de domínio:** cinco das onze categorias reais são garrafas — whiskys, gin, portos, brandy, licores — e aí os nomes de produto vêm com marca: `J&B`, `Ballantine's`, `Chivas 12 anos`, `Four Roses`. **As fixturas do frontend não tinham um único nome de produto com "&", apóstrofo ou algarismo** até a F3-02 os acrescentar, por isso o ecrã da ementa nunca os tinha visto. O "&" e o apóstrofo mexem com o escape; os algarismos mexem com a pesquisa (escrever "12") e com os `tabular-nums` da coluna de preços. Convém que a BD de teste falsa deste importador os traga.
+- **Para o Tomás ver depois de importar, não para mudar antes:** a pesquisa condiz com o nome da categoria por **subcadeia** (ADR 0013), e algumas categorias reais têm nomes curtos. Escrever "gin" vai encontrar a categoria **gin**, a **Ginjinha** dos licores e o **Ginger ale** das bebidas. Não é defeito — a pessoa vê o g-i-n dentro de "Ginjinha" e explica o resultado a olhar para o ecrã —, mas é o tipo de ruído que o próprio ADR 0013 diz que justificaria a reversão, e as fixturas escondem-no por completo. Escrever "gin" com os 140 produtos antes de dar o assunto por fechado.
 
 ### F2-09 Contrato da API no frontend
 
@@ -123,6 +125,15 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-03.
 - **Faz:** `npm run gerar-api` (openapi-typescript a partir de `frontend/openapi.json`); cliente em `src/lib/api` com `X-Tomazia` e `credentials: "include"`; job de contrato no CI.
 - **Feito quando:** o CI falha se os tipos gerados não estiverem atualizados.
+
+### F2-10 Mensagens de recurso do cliente da API
+
+- **Agentes:** dominio-bar, frontend, qa.
+- **Depende de:** F2-09. **Tem de estar feita antes** do primeiro ecrã que mostre `ErroDaApi.mensagem` — pelo plano, a F3-05 ou a primeira da F4.
+- **Porquê, descoberto na F3-02:** o `src/lib/api/cliente.ts` tem cinco frases de recurso para quando o backend responde sem envelope, e **nenhuma tem um teste a prendê-la**. Uma delas diz "dentro de momentos", a locução que o dominio-bar reprovou no ecrã da ementa. Hoje nenhuma chega a ninguém, porque a secção 5.3 da `docs/ecras/F3-02.md` obriga a ementa a usar frases fixas — mas são o que qualquer ecrã futuro mostrará se ler a mensagem.
+- **A decisão de fundo, antes das frases:** estas mensagens são **para o dono, não para o cliente**. Se a regra da 5.3 é boa para a ementa, é boa para os eventos, a galeria e o rodapé — nenhum ecrã público devia renderizar `ErroDaApi.mensagem`. Fixar isso primeiro muda o registo em que as cinco se escrevem.
+- **Faz:** 404 → "Não encontrei isto. Atualiza a página."; 429 → "Tentaste demasiadas vezes seguidas. Espera um bocado e tenta outra vez."; ≥500 → "O servidor teve um problema. Tenta outra vez daqui a pouco." (só muda a locução: "servidor" fica, porque para o dono é verdade e é útil); resto → "Não consegui fazer isto. Tenta outra vez." O 401/403 é decisão do Tomás: estão juntos e dizem "Entra outra vez", que resolve a sessão expirada e não resolve a falta de permissão — com um só utilizador, quase todos os casos são o primeiro, e "A tua sessão expirou. Entra outra vez." seria mais útil. Separá-los muda a estrutura do ramo.
+- **Feito quando:** um teste por ramo, **mais um que exija que as cinco sejam diferentes umas das outras** — é a regra 10 aplicada a texto: duas mensagens iguais em ramos diferentes dizem à pessoa que aconteceu a mesma coisa quando não aconteceu, e uma cópia distraída não dá erro nenhum. E está respondido o caso que não está na tabela: estas cinco só valem quando **não há** envelope do backend; quando há, é a frase do backend que chega, escrita para quem chama a API. Reescrever o recurso e deixar de pé o caminho mais provável não é fazer a tarefa.
 
 ## Fase 3: área pública
 
@@ -190,6 +201,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-05, F4-01.
 - **Faz:** preço editável na linha, interruptor "Disponível" com "Desfazer" durante 5 s, arrastar para reordenar, adicionar produto, pesquisa.
 - **Feito quando:** mudar um preço leva no máximo dois toques (e2e); aviso "Preço atualizado".
+- **Entrega da F3-02:** um `preco_cent` a **0** aparece na ementa pública como **"Oferta"**, não como "0,00 €". A entrega para aqui, tal como a secção 14 da `docs/ecras/F3-02.md` a escreve, é **avisar** ao guardar: "Este produto fica como oferta na ementa." A razão é que um engano de digitação (escrever `0` e sair do campo) publica "Oferta" sem ninguém dar por isso, e a base de dados aceita-o de bom grado (o `CHECK` é `>= 0`) — é o único valor em que o erro produz uma frase com sentido em vez de um número errado, e por isso o único que passa despercebido. **Decidido pelo Tomás em 2026-10-28:** um aviso chega — não é confirmação, para não pôr atrito no dono a cada produto gratuito. Quem implementar escolhe o aviso que já existe (`AvisoTemporario`) e não um diálogo.
 
 ### F4-03 Eventos na gestão
 

@@ -124,7 +124,7 @@ Fotos: ignora nome e `Content-Type` do cliente; Pillow abre e valida (JPEG, PNG,
 Uma página, de cima para baixo. O QR code da mesa abre diretamente aqui, sem formulário.
 
 1. Cabeçalho fixo: logótipo e botão "WiFi", que abre uma folha com rede, password grande e "Copiar password".
-2. Chips de categoria fixos, que acompanham o scroll; lupa que filtra produtos pelo nome.
+2. Chips de categoria fixos, que acompanham o scroll; lupa que filtra por nome de produto ou de categoria (ADR 0013).
 3. Ementa: um cartão creme por categoria; linhas com nome, pontilhado e preço; descrição opcional por baixo; indisponíveis escondidos.
 4. Esta semana: até três eventos, data grande em Playfair; a secção some sem eventos.
 5. Galeria: grelha de duas colunas com as seis últimas fotos; ecrã inteiro com deslizar; "Enviar uma foto" numa folha.

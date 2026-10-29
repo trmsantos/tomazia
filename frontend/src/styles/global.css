@@ -29,6 +29,63 @@
     font-synthesis: none;
   }
 
+  /*
+   * A âncora das categorias da ementa (F3-02, secção 11).
+   *
+   * Uma declaração que faz duas coisas ao mesmo tempo: o salto por fragmento
+   * pára com o título à vista, e o deslocamento que o browser faz quando a
+   * tabulação leva o foco para um controlo escondido por baixo da barra colada
+   * passa a descontá-la. Os dois não se somam: ou um, ou outro.
+   *
+   * Substitui um `scroll-margin-top` em cada secção, e é melhor do que ele por
+   * duas razões: é um número em vez de N, e aplica-se a tudo o que faz
+   * deslizar este contentor.
+   */
+  html {
+    scroll-padding-top: var(--ancora-ementa);
+  }
+
+  /*
+   * O deslize dos saltos, na **forma positiva**.
+   *
+   * O bloco de `prefers-reduced-motion: reduce` aqui em baixo não cobre este
+   * caso: ele zera durações de animação e de transição, e o deslize do
+   * documento não é nem uma coisa nem outra. Declarado solto, fora de uma
+   * consulta de media, continuava a deslizar para quem pediu que não
+   * deslizasse. Escrito assim, com movimento reduzido o salto é instantâneo
+   * e o destino é o mesmo.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /*
+   * O «×» nativo da caixa de pesquisa sai (F3-02, 4.1).
+   *
+   * Com texto escrito, a barra da ementa mostrava **dois** «×» a 52 px um do
+   * outro a fazer coisas diferentes: o de dentro limpa e fica, o de fora
+   * limpa e fecha. Quem sai é o nativo, e não o nosso — `×` é o glifo de
+   * fechar deste projeto (`Folha`, `AvisoTemporario`), e a 4.1 já tinha
+   * decidido que há **uma** forma de limpar.
+   *
+   * As outras três razões, porque se somam: o nativo não tem nome acessível
+   * e não se alcança por teclado; só existe em WebKit e Blink, por isso no
+   * Firefox a barra tinha um «×» e no Safari dois — um desenho que muda com
+   * o browser não é um desenho nosso; e pinta a branco puro, mais forte do
+   * que todos os nossos controlos em creme.
+   *
+   * As duas declarações não são uma redundância: o `display: none` tira-o do
+   * desenho e o `appearance: none` tira-lhe o aspeto de controlo do sistema,
+   * que é o que impede o botão de voltar com outra pele se um dia alguém lhe
+   * devolver o `display`.
+   */
+  input[type="search"]::-webkit-search-cancel-button {
+    appearance: none;
+    display: none;
+  }
+
   body {
     background-color: var(--cor-fundo-local);
     color: var(--cor-texto);
