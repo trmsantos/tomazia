@@ -31,6 +31,25 @@ from pathlib import Path
 
 import pytest
 
+# As fixtures da F2-08 — a base de dados antiga **falsa**, o destino em
+# `head` e a corrida feliz — vivem em `tests/apoio_legado.py` e registam-se
+# aqui, não dentro de `tests/test_importar_bd_antiga.py`: importar uma
+# fixture para dentro do módulo que a usa faz o nome da fixture e o nome do
+# parâmetro do teste colidirem (F811 no ruff), e é por isso que as de HTTP
+# também se registam num `conftest.py` e não no ficheiro de testes. Este
+# conftest é o de `tests/`, por isso vale para `tests/seguranca/` também.
+#
+# Nenhuma é `autouse` e nenhuma constrói coisa nenhuma até alguém a pedir:
+# os testes que já existem continuam a correr exatamente como antes.
+from tests.apoio_legado import (  # noqa: F401 - o import é o registo das fixtures
+    _destino_modelo_em_head,
+    cenario_feliz,
+    destino_em_head,
+    media_dir,
+    origem_falsa,
+    pasta_de_imagens,
+)
+
 VARIAVEIS_DE_DEFINICOES = (
     "AMBIENTE",
     "DATA_DIR",

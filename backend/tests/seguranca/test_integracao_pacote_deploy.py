@@ -36,11 +36,11 @@ A árvore de trabalho para `montar.sh` reutiliza o mesmo princípio de
 `tests/test_montar.py::_construir_arvore_completa`: cópia de trabalho do
 `backend/` e do `deploy/` REAIS do repositório (lidos, nunca escritos), só
 com `frontend/dist` fabricado (um `npm run build` a sério é lento e traz
-ruído de hashes que mudam a cada build). `backend/scripts` não é
-fabricado — não existe no repositório hoje (só nasce na F2-02) — e é
-precisamente esse o estado que o primeiro teste abaixo exercita: o pacote
-real, montado hoje, não tem `api/scripts/`, e isso sozinho não pode matar
-o deploy.
+ruído de hashes que mudam a cada build). `backend/scripts` também não é
+fabricado: **existe** no repositório desde a F2-08 (o
+`importar_bd_antiga.py`), e é esse o estado que o primeiro teste abaixo
+exercita — o pacote real, montado hoje, leva `api/scripts/` lá dentro, e
+`deploy.sh` tem de o aceitar e sincronizar.
 
 A instalação-servidor falsa (`$HOME`, `API`, `WEB`, o virtualenv com stubs
 de `pip`/`alembic`) segue o mesmo desenho de
@@ -52,13 +52,14 @@ escrito à mão por este ficheiro: é o próprio `--saida` passado a
 
 ## O caso dedicado "sem `backend/scripts`"
 
-Além do teste com a árvore completa (onde `backend/scripts` já está
-ausente, por ser o estado real do repositório), há um segundo teste com
-uma árvore mínima e totalmente fabricada que garante essa ausência
-mesmo depois de `backend/scripts` vir a existir (F2-02) — para que esta
-garantia não desapareça silenciosamente só por o repositório ter mudado.
-`deploy.sh` tem de aceitar um pacote sem `api/scripts/` sem morrer (nem
-com um `rsync` que recuse por a pasta de origem não existir).
+Com `backend/scripts` a existir no repositório desde a F2-08, a árvore
+completa deixou de exercitar a ausência — e é por isso que o segundo
+teste existe, com uma árvore mínima e totalmente fabricada que **garante**
+essa ausência independentemente do que o repositório tenha hoje. Foi
+escrito a pensar neste dia: `deploy.sh` tem de aceitar um pacote sem
+`api/scripts/` sem morrer (nem com um `rsync` que recuse por a pasta de
+origem não existir), e isso continua a valer para qualquer pacote antigo
+que se volte a correr.
 """
 
 from __future__ import annotations
@@ -156,9 +157,9 @@ def _construir_arvore_trabalho_completa(tmp_path: Path) -> Path:
     """Cópia de trabalho do `backend/` e `deploy/` REAIS do repositório, mais um `frontend/dist` fabricado.
 
     Nunca escreve no repositório real, só lê dele (ver docstring do
-    módulo). `backend/scripts` não é fabricado: não existe no repositório
-    hoje, e é esse o estado que o teste de integração principal, abaixo,
-    exercita a sério.
+    módulo). `backend/scripts` não é fabricado: existe no repositório
+    desde a F2-08, e é esse o estado que o teste de integração principal,
+    abaixo, exercita a sério.
     """
     raiz = tmp_path / "trabalho"
     raiz.mkdir()
@@ -171,7 +172,12 @@ def _construir_arvore_trabalho_completa(tmp_path: Path) -> Path:
 
 
 def _construir_arvore_trabalho_minima_sem_scripts(tmp_path: Path) -> Path:
-    """Árvore pequena e totalmente fabricada, garantida sem `backend/scripts` — independente do estado atual do repositório real."""
+    """Árvore pequena e totalmente fabricada, garantida sem `backend/scripts` — independente do estado atual do repositório real.
+
+    Desde a F2-08 o repositório **tem** `backend/scripts/`, por isso esta
+    árvore é o único sítio onde a ausência se exercita. Era esse o motivo
+    de ela existir desde o início.
+    """
     raiz = tmp_path / "trabalho-minimo"
     raiz.mkdir()
 
@@ -314,9 +320,10 @@ def test_pacote_montado_por_montar_sh_e_aceite_por_deploy_sh(tmp_path: Path) -> 
         f"montar.sh falhou a montar o pacote: {resultado_montar.stderr}"
     )
 
-    # Sanidade: o pacote real, montado hoje, não tem `api/scripts/` —
-    # `backend/scripts` não existe no repositório (só nasce na F2-02).
-    assert not (instalacao.origem / "api" / "scripts").exists()
+    # Sanidade: o pacote real, montado hoje, **tem** `api/scripts/` —
+    # `backend/scripts` existe no repositório desde a F2-08. A ausência
+    # tem o seu próprio teste, mais abaixo, com uma árvore fabricada.
+    assert (instalacao.origem / "api" / "scripts").is_dir()
 
     resultado_deploy = _correr_deploy(instalacao)
 
@@ -333,6 +340,13 @@ def test_pacote_montado_por_montar_sh_e_aceite_por_deploy_sh(tmp_path: Path) -> 
         "o ficheiro antigo de tomazia_api/app/ tem de desaparecer (rsync --delete)"
     )
     assert (instalacao.api / "migrations" / "env.py").is_file()
+    # A F2-08 diz "corre por SSH, no servidor". É aqui que isso se prova:
+    # o importador tem de chegar a `tomazia_api/scripts/`, senão não há o
+    # que correr lá.
+    assert (instalacao.api / "scripts" / "importar_bd_antiga.py").is_file(), (
+        "o `scripts/importar_bd_antiga.py` não chegou à instalação; a F2-08 "
+        "corre-se por SSH no servidor, e sem isto não há o que correr"
+    )
 
     conteudo_version = (instalacao.api / "VERSION").read_text(encoding="utf-8")
     assert conteudo_version == SHA_VALIDO, (
@@ -357,7 +371,7 @@ def test_pacote_montado_por_montar_sh_e_aceite_por_deploy_sh(tmp_path: Path) -> 
 
 
 def test_pacote_sem_scripts_nao_falha_o_deploy(tmp_path: Path) -> None:
-    """`backend/scripts` só nasce na F2-02: um pacote sem `api/scripts/` tem de ser aceite por `deploy.sh` na mesma."""
+    """Um pacote sem `api/scripts/` tem de ser aceite por `deploy.sh` na mesma — e isso deixou de ser o estado do repositório."""
     raiz_trabalho = _construir_arvore_trabalho_minima_sem_scripts(tmp_path)
     instalacao = _preparar_servidor_falso(tmp_path)
 
@@ -374,8 +388,9 @@ def test_pacote_sem_scripts_nao_falha_o_deploy(tmp_path: Path) -> None:
     resultado_deploy = _correr_deploy(instalacao)
 
     assert resultado_deploy.returncode == 0, (
-        "deploy.sh não pode morrer só porque o pacote não tem api/scripts/ "
-        "(essa pasta só nasce na F2-02).\n"
+        "deploy.sh não pode morrer só porque o pacote não tem api/scripts/.\n"
+        "A pasta existe no repositório desde a F2-08, mas um pacote montado "
+        "antes dela — ou um rollback para um — continua a não a ter.\n"
         f"stdout:\n{resultado_deploy.stdout}\nstderr:\n{resultado_deploy.stderr}"
     )
     assert (instalacao.api / "tmp" / "restart.txt").is_file()
