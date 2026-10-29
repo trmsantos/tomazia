@@ -88,8 +88,11 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check .
 
+      # `scripts` entrou na F2-08: um script que escreve na base de dados
+      # do bar merece a mesma rede que o resto. A mesma linha está em
+      # `.claude/skills/verificar/SKILL.md` e no `CLAUDE.md`.
       - name: mypy
-        run: uv run mypy app passenger_wsgi.py
+        run: uv run mypy app passenger_wsgi.py scripts
 
       - name: pytest
         run: uv run pytest -q

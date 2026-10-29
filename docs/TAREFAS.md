@@ -105,6 +105,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 - **Agentes:** qa, backend, dominio-bar.
 - **Depende de:** F2-01.
+- **Como se corre:** `docs/legado/importacao.md`. O procedimento vive lá e não aqui — é um documento para ter à frente numa sessão de SSH, não uma entrada de lista.
 - **Faz:** `POST /novidades` com consentimento obrigatório e versão dos termos; `POST /novidades/cancelar` com token.
 - **Feito quando:** S-08; sem consentimento devolve 422; cancelar apaga o registo.
 - **Herança da F2-01, para não se descobrir a meio:** o `clientes.email` é único mas **sensível a maiúsculas** — `Ana@exemplo.pt` e `ana@exemplo.pt` entram como duas linhas, e aí o cancelamento de uma delas não cala a outra. Fica por decidir aqui, que é onde há contexto: normalizar à entrada, acrescentar um índice único sobre `lower(email)` (aditivo, não cai na regra 7), ou as duas coisas. O `token_cancelar` já tem `CHECK (length >= 32)` desde a F2-01; gerar um mais curto rebenta na escrita, não em silêncio. **E se o índice levar `COLLATE NOCASE`:** a comparação de esquemas de `tests/apoio_esquema.py` não compara collation — é preciso trocar `index_info` por `index_xinfo` nessa mesma tarefa, senão a rede fica a prometer o que não faz.
@@ -117,6 +118,32 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Feito quando:** a importação é idempotente; categorias "Bebidas" e "bebidas" juntam-se; preços em cêntimos certos; texto sem entidades HTML; o Tomás confirma localmente, numa cópia da BD real fora do repositório, 140 produtos e 11 categorias.
 - **Herança da F2-01, para não se descobrir a meio:** `eventos.imagem` e `fotos.ficheiro` são **nomes de ficheiro**, nunca caminhos — a BD recusa `/`, `\` e `..` por `CHECK`. O esquema antigo guarda caminhos (`eventos.imagem_url`, `fotos.caminho`, valores do género `img/uploads/x.jpg`), por isso o importador tem de os reduzir ao nome do ficheiro. Falha alto e linha a linha se não o fizer, com o nome da restrição na mensagem — mas é trabalho a prever, não a descobrir. E as datas entram já em UTC: um `INSERT` em SQL cru com hora local é **rotulado** UTC sem ser convertido (ver `DataHoraUTC`).
 - **Herança da F3-02, do agente de domínio:** cinco das onze categorias reais são garrafas — whiskys, gin, portos, brandy, licores — e aí os nomes de produto vêm com marca: `J&B`, `Ballantine's`, `Chivas 12 anos`, `Four Roses`. **As fixturas do frontend não tinham um único nome de produto com "&", apóstrofo ou algarismo** até a F3-02 os acrescentar, por isso o ecrã da ementa nunca os tinha visto. O "&" e o apóstrofo mexem com o escape; os algarismos mexem com a pesquisa (escrever "12") e com os `tabular-nums` da coluna de preços. Convém que a BD de teste falsa deste importador os traga.
+- **Âmbito e execução, decididos pelo Tomás em 2026-10-29.**
+  - **A galeria começa vazia.** As `fotos` antigas não se importam. O esquema novo exige um `ficheiro` `uuid.webp` único e **existente** em `media/`, e um `ip_hash` que a BD antiga não tem de onde tirar. Importar linhas sem recodificar as imagens e mover os ficheiros dava uma galeria de imagens partidas. Recodificar é o serviço da F2-06, não desta tarefa.
+  - **As imagens dos eventos entram.** O script tem `--imagens <pasta>` e verifica ficheiro a ficheiro, parando no primeiro que falte; tem também `--imagens ignorar`, que mete `imagem = NULL` e lista o que ficou de fora. **Não há omissão:** "este evento não tem imagem" e "ninguém me disse o que fazer às imagens" não podem acabar os dois em `NULL`. Como a importação corre no servidor (abaixo), a pasta `img/uploads/` do site antigo já lá está e não há nada para descarregar.
+  - **Corre por SSH, no servidor.** O `deploy/montar.sh` já leva o `backend/scripts/` para o pacote, por isso funciona. **Mas está dependente da F1-05** — não há servidor configurado até lá. E tem um custo que fica escrito: um erro de importação é um erro em produção, e a F2-02 (que traz o `scripts/backup.py`) ainda não está fundida. Daí as duas redes: o runbook manda copiar a BD de destino à mão antes de aplicar, e **o script simula por omissão**, só escrevendo com `--aplicar`, com o caminho do destino impresso na primeira linha do relatório.
+  - **O `mypy` passa a verificar `scripts/`.** Esta tarefa cria a pasta `backend/scripts/`, e hoje a verificação de tipos só olha para `app` e `passenger_wsgi.py`. Um script que escreve na base de dados do bar merece a mesma rede que o resto. Mexe no `CLAUDE.md`, no `.claude/skills/verificar/SKILL.md` e no `ci.yml`.
+- **As onze categorias, decididas pelo Tomás em 2026-10-29.** O `tipo` da BD antiga passa a `categorias`, com o nome que o cliente lê e a ordem na ementa. A ordem é a forma de um dia: o que se pede de dia primeiro, a prateleira da noite depois.
+
+  | `tipo` antigo | Nome no site | Ordem |
+  | --- | --- | --- |
+  | `cafetaria` | Cafetaria | 1 |
+  | `comidas` | Comidas | 2 |
+  | `Bebidas` + `bebidas` | Bebidas | 3 |
+  | `aguardentes` | Aguardentes | 4 |
+  | `portos` | Vinhos do Porto | 5 |
+  | `licores` | Licores | 6 |
+  | `martinis` | Martinis | 7 |
+  | `brandy` | Brandy | 8 |
+  | `whiskys` | Whisky | 9 |
+  | `gin` | Gin | 10 |
+  | `espirituosas` | Espirituosas | 11 |
+
+  Três mudam de forma e não é cosmético: **"portos" → "Vinhos do Porto"** porque "portos" é o que o empregado diz e não o que uma carta imprime (e é a única que um turista reconhece, o que a v1.1 em inglês agradece); **"whiskys" → "Whisky"** porque "whiskys" é um plural inventado e o singular fica coerente com "Brandy" e "Gin" na mesma barra — nunca "uísque", que é a forma do Brasil; **"espirituosas" fica na forma curta** e não "Bebidas espirituosas", porque pelo ADR 0013 quem escrevesse "bebidas" recebia dois cartões inteiros.
+
+  O Tomás confirmou que **"espirituosas" são vodka, rum e tequila** — logo não é duplicado de "aguardentes" e as categorias são mesmo onze — e que **"martinis" são os vermutes de garrafa**, não cocktails. **"comidas" importa-se como uma categoria só**, fiel ao que ele tem: dividi-la é trabalho editorial dele na F4-02, com a carta à frente, e não de um script a adivinhar pelo nome do produto.
+
+  Consequência mecânica, e é boa: `cafe` é subcadeia de `Cafetaria`, por isso o exemplo que motivou o ADR 0013 — escrever "cafes" e não receber nada — resolve-se sozinho. E nenhum dos onze nomes é subcadeia de outro, logo não há cartões a aparecer aos pares.
 - **Para o Tomás ver depois de importar, não para mudar antes:** a pesquisa condiz com o nome da categoria por **subcadeia** (ADR 0013), e algumas categorias reais têm nomes curtos. Escrever "gin" vai encontrar a categoria **gin**, a **Ginjinha** dos licores e o **Ginger ale** das bebidas. Não é defeito — a pessoa vê o g-i-n dentro de "Ginjinha" e explica o resultado a olhar para o ecrã —, mas é o tipo de ruído que o próprio ADR 0013 diz que justificaria a reversão, e as fixturas escondem-no por completo. Escrever "gin" com os 140 produtos antes de dar o assunto por fechado.
 
 ### F2-09 Contrato da API no frontend
@@ -180,6 +207,8 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Feito quando:** Q-05 validado pelo dominio-bar; o estado "Aberto até às…" tem testes com relógio fixo.
 
 ### F3-07 Qualidade ponta a ponta
+
+- **Herança da F2-08, sugestão do revisor de código:** o teste do `except Exception` do importador prova três coisas que **não dependem de condição nenhuma do mundo real** — o detalhe sai numa linha antes, a conclusão é de uma linha só, a exceção é re-levantada — mas está preso a um gatilho que vai envelhecendo: um índice único que o esquema não tem. Já trocou de gatilho uma vez, porque o anterior (um `MEDIA_DIR` a apontar para um ficheiro) ganhou recusa própria. **À medida que as condições previsíveis ganham nome, o imprevisto tem de ser procurado mais fundo.** Separar o contrato do gatilho — o contrato por `monkeypatch` em processo, o gatilho a sério só para o que só ele prova (o estado de saída através do `SystemExit`, a separação `stdout`/`stderr` a atravessar o processo) — paga isso uma vez só. Não é urgente: o teste degrada **em voz alta**, com uma falha vermelha que manda procurar outro gatilho, e não em silêncio.
 
 - **Agentes:** qa, infra.
 - **Depende de:** F3-02.

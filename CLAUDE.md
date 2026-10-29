@@ -24,7 +24,7 @@ Backend (em `backend/`):
 ```bash
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run mypy app passenger_wsgi.py
+uv run mypy app passenger_wsgi.py scripts
 uv run pytest
 
 # Antes de servir pela primeira vez (a BD de desenvolvimento não existe):
