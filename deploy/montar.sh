@@ -18,7 +18,8 @@ set -euo pipefail
 #
 # O pacote leva, e só, a partir dessa raiz:
 #   backend/app, backend/migrations, backend/scripts (quando existir —
-#   ainda não existe hoje, chega só na F2-02), backend/alembic.ini,
+#   existe desde a F2-08, mas a condição fica para os pacotes montados
+#   antes dela), backend/alembic.ini,
 #   backend/passenger_wsgi.py, backend/requirements.txt, frontend/dist,
 #   deploy/ (a pasta toda, incluindo este script e o `.cpanel.yml`, se já
 #   lá estiver) e `api/VERSION` (o SHA, e mais nada).

@@ -234,11 +234,16 @@ PASSO_ATUAL="a sincronizar o código (api/app/, api/migrations/)"
 # vive o `.env`. O resto copia-se individualmente, sem `--delete`.
 rsync -a --delete "$ORIGEM/api/app/" "$API/app/"
 rsync -a --delete "$ORIGEM/api/migrations/" "$API/migrations/"
-# `scripts/` só nasce na F2-02 (ver `deploy/montar.sh`): `montar.sh` só a
-# copia para o pacote `if [ -d ]`. Sem esta condição, um pacote sem
-# `scripts/` (todo deploy antes da F2-02) fazia o `rsync` falhar com
-# "No such file or directory" (código 23) — o deploy inteiro morria aqui
-# por uma pasta que nem era suposta existir ainda.
+# `scripts/` existe desde a F2-08 (o `importar_bd_antiga.py`), mas o
+# `montar.sh` só a copia para o pacote `if [ -d ]` e a condição aqui tem
+# de ficar: um pacote montado antes da F2-08 — ou um rollback para um —
+# não a tem, e sem esta condição o `rsync` falhava com "No such file or
+# directory" (código 23) e o deploy inteiro morria por uma pasta ausente.
+#
+# Sem `--delete`, ao contrário de `app/` e `migrations/`: um script
+# apagado do repositório sobrevive no servidor. Fica assim de propósito —
+# `tomazia_api/` está fora do `public_html` e só se alcança por SSH — mas
+# está escrito para quem precisar de limpar saber que tem de o fazer à mão.
 if [ -d "$ORIGEM/api/scripts" ]; then
   rsync -a "$ORIGEM/api/scripts/" "$API/scripts/"
 fi
