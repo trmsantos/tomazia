@@ -24,11 +24,12 @@ import { categoriaAtiva } from "./categoria-ativa";
 
 /**
  * A linha de leitura de uma página real: `--ancora-ementa` mais um píxel.
- * Hoje são 0 (cabeçalho) + 61 (barra) + 16 (espaço-4) = 77, logo 78.
+ * Desde a F3-03 são 61 (cabeçalho) + 61 (barra) + 16 (espaço-4) = 138, logo
+ * 139 — eram 78 enquanto `--altura-cabecalho` foi `0px`.
  * O número exacto não interessa a esta função; o que interessa é que seja
  * sempre o mesmo em todos os casos abaixo.
  */
-const LINHA = 78;
+const LINHA = 139;
 
 describe("lista vazia", () => {
   it("sem cartões não há chip ativo — e «nenhum» é null, não zero", () => {

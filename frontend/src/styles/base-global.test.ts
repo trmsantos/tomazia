@@ -186,27 +186,187 @@ describe("o «×» nativo da caixa de pesquisa", () => {
   });
 });
 
+/**
+ * Os termos de uma soma de `calc()`, ao nível de cima.
+ *
+ * Separar por `+` e `-` **à profundidade zero** é o que impede que os
+ * hífenes de `--alvo-toque` sejam lidos como subtrações: eles vivem dentro
+ * do `var(`, logo a um parêntesis de distância.
+ */
+function termosDaSoma(corpo: string): string[] {
+  const termos: string[] = [];
+  let profundidade = 0;
+  let atual = "";
+
+  for (const caractere of corpo) {
+    if (caractere === "(") profundidade += 1;
+    if (caractere === ")") profundidade -= 1;
+    if (profundidade === 0 && (caractere === "+" || caractere === "-")) {
+      termos.push(atual);
+      atual = "";
+      continue;
+    }
+    atual += caractere;
+  }
+  termos.push(atual);
+
+  return termos.map((termo) => termo.trim()).filter((termo) => termo.length > 0);
+}
+
+/** O corpo de cada `calc(` de um valor, com os parêntesis equilibrados. */
+function corposDeCalc(valor: string): string[] {
+  const corpos: string[] = [];
+  let indice = valor.indexOf("calc(");
+
+  while (indice !== -1) {
+    let profundidade = 0;
+    let fim = indice + "calc".length;
+    for (; fim < valor.length; fim += 1) {
+      if (valor[fim] === "(") profundidade += 1;
+      if (valor[fim] === ")") {
+        profundidade -= 1;
+        if (profundidade === 0) break;
+      }
+    }
+    corpos.push(valor.slice(indice + "calc(".length, fim));
+    indice = valor.indexOf("calc(", fim);
+  }
+
+  return corpos;
+}
+
+/** `12px`, `0.5rem`, `100%` — um número **com** unidade. */
+const COM_UNIDADE = /^-?\d*\.?\d+(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|pt|s|ms|deg)$/i;
+/** `0`, `2`, `1.5` — um número **sem** unidade. */
+const SEM_UNIDADE = /^-?\d*\.?\d+$/;
+
 describe("os três tokens da barra fixa", () => {
   /**
-   * **Prova:** que os tokens de 11 existem e que a conta deriva de um só
-   * número. A F3-03 entra mudando `--altura-cabecalho`, e mais nada.
+   * F3-03, 13.1 — **o token que move onze âncoras ao mesmo tempo.**
    *
-   * **Deixa passar:** o valor computado. Que `--altura-barra-chips` dê
-   * mesmo 61 px e que a barra desenhada tenha essa altura é 12.11, medido
-   * num browser — e é a asserção com melhor relação entre uma linha e um
-   * defeito, porque uma barra com 8 px a mais desalinha **todos** os saltos
-   * de categoria e o sintoma aparece longe da causa.
+   * **Prova:** que `--altura-cabecalho` existe, que é uma conta e não um
+   * número solto, e que a conta sai do alvo de toque e do fio. Era `0px`
+   * até à F3-03; o que o teste caçava não era o valor, era a falta de
+   * unidade, e isso tem de sobreviver à mudança — está generalizado no
+   * teste a seguir, para toda a folha de tokens.
+   *
+   * **Deixa passar:** o valor computado. Que dê mesmo 61 px e que o
+   * cabeçalho desenhado meça isso é `e2e/cabecalho.spec.ts` — e é a
+   * asserção com melhor relação entre uma linha e um defeito, porque 8 px a
+   * mais aqui desalinham **todas** as âncoras e o sintoma aparece longe da
+   * causa.
    */
-  it("`--altura-cabecalho` é `0px` e não `0`", () => {
+  it("`--altura-cabecalho` é uma conta com unidade, e não um número solto", () => {
     const tokens = blocosDosTokens();
     const altura = tokens.get(":root")?.get("--altura-cabecalho");
 
     expect(altura, "falta --altura-cabecalho em tokens.css").toBeDefined();
     expect(
       altura,
+      "escrito como a conta e não como `61px`: no dia em que o alvo de toque " +
+        "mudar, o cabeçalho acompanha sozinho (F3-03, secção 3)",
+    ).toContain("--alvo-toque");
+    expect(altura, "o fio de 1 px faz parte da altura do cabeçalho").toContain("--contorno-fino");
+    expect(
+      altura,
       "um `calc()` com um zero sem unidade é inválido e a declaração inteira cai " +
         "em silêncio — e com ela a âncora de todas as categorias",
-    ).toBe("0px");
+    ).not.toMatch(/^0(px)?$/);
+  });
+
+  /**
+   * O defeito do `0` sem unidade, generalizado.
+   *
+   * **Prova:** que nenhum token que entre numa soma de `calc()` — nem
+   * directamente, nem através de uma cadeia de `var()` — é um número sem
+   * unidade. É o mesmo defeito que a asserção do `0px` caçava, escrito uma
+   * vez para a folha inteira em vez de uma vez por token: no dia em que
+   * alguém escrever `--altura-cabecalho: 0` outra vez, ou `--espaco-2: 8`,
+   * ou qualquer outro, o `calc()` que os usa cai em silêncio e leva a
+   * âncora das onze categorias com ele.
+   *
+   * **Deixa passar:** o `calc()` inválido por outras razões (unidades
+   * misturadas, parêntesis a mais) e tudo o que seja valor computado. Quem
+   * vê isso é o browser, em `e2e/cabecalho.spec.ts`.
+   */
+  it("nenhum token usado numa soma de `calc()` é um número sem unidade", () => {
+    const tokens = blocosDosTokens();
+    const raiz = tokens.get(":root");
+    expect(raiz, "falta o bloco `:root` em tokens.css").toBeDefined();
+    if (raiz === undefined) return;
+
+    const ofensas: string[] = [];
+
+    /** Segue a cadeia de `var()` até a um valor que não seja referência. */
+    const resolverCadeia = (nome: string, vistos: string[] = []): string | null => {
+      if (vistos.includes(nome)) return null;
+      const valor = raiz.get(nome);
+      if (valor === undefined) return null;
+      const referencia = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(valor);
+      if (referencia?.[1] !== undefined) return resolverCadeia(referencia[1], [...vistos, nome]);
+      return valor;
+    };
+
+    /**
+     * O que um factor é: um comprimento, um número puro, ou coisa que não
+     * se conseguiu ler. As três são respostas diferentes de propósito —
+     * "não consegui resolver" não pode passar por "está bem".
+     */
+    const classificar = (fator: string): "comprimento" | "numero" | "ilegivel" => {
+      const limpo = fator
+        .trim()
+        .replace(/^\((.*)\)$/s, "$1")
+        .trim();
+      if (SEM_UNIDADE.test(limpo)) return "numero";
+      if (COM_UNIDADE.test(limpo)) return "comprimento";
+      if (limpo.includes("calc(")) return "comprimento";
+
+      const referencia = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(limpo);
+      if (referencia?.[1] === undefined) return "ilegivel";
+      const resolvido = resolverCadeia(referencia[1]);
+      if (resolvido === null) return "ilegivel";
+      return classificar(resolvido);
+    };
+
+    /** Cada addendo de uma soma tem de valer um comprimento, sozinho. */
+    const analisarSoma = (nome: string, corpo: string): void => {
+      for (const termo of termosDaSoma(corpo)) {
+        if (termo.includes("calc(")) {
+          for (const interior of corposDeCalc(termo)) analisarSoma(nome, interior);
+          continue;
+        }
+
+        // Um produto (`2 * var(--espaco-2)`, `var(--texto-nota) *
+        // var(--entrelinha-nota)`) tem factores sem unidade de propósito:
+        // é assim que se multiplica um comprimento. O que ele não pode é
+        // **não ter nenhum** — aí o addendo inteiro é um número puro.
+        const fatores = termo.split(/[*/]/).map((fator) => fator.trim());
+        const tipos = fatores.map(classificar);
+
+        fatores.forEach((fator, indice) => {
+          if (tipos[indice] !== "ilegivel") return;
+          ofensas.push(
+            `${nome}: não consegui resolver «${fator}» — isto é uma falha de leitura ` +
+              "do tokens.css, não um valor errado",
+          );
+        });
+
+        if (tipos.includes("ilegivel")) return;
+        if (tipos.includes("comprimento")) return;
+
+        ofensas.push(
+          `${nome}: o termo «${termo}» vale um número sem unidade. Num \`calc()\` isso ` +
+            "é inválido e a declaração inteira cai em silêncio — e com ela tudo o que " +
+            "dela deriva (F3-03, secção 3)",
+        );
+      }
+    };
+
+    for (const [nome, valor] of raiz) {
+      for (const corpo of corposDeCalc(valor)) analisarSoma(nome, corpo);
+    }
+
+    expect(ofensas).toEqual([]);
   });
 
   it("a âncora deriva da altura do cabeçalho e da altura da barra", () => {

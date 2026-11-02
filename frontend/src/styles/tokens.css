@@ -145,12 +145,20 @@
    * Três valores, e os dois últimos derivam do primeiro: assim há um número
    * para mudar, não três para manter de acordo (F3-02, secção 3).
    *
-   * `--altura-cabecalho` é **0px nesta tarefa**, porque o cabeçalho fixo é da
-   * F3-03. Fica declarado desde já para a F3-03 mudar um valor em vez de
-   * mexer no desenho da ementa: no dia em que o cabeçalho existir, a barra de
-   * chips cola-se por baixo dele e as âncoras passam a descontá-lo sozinhas.
-   * Tem de ser `0px` e não `0`: um `calc()` com um zero sem unidade é
-   * inválido e a declaração inteira cai em silêncio.
+   * `--altura-cabecalho` é o cabeçalho fixo da F3-03: o alvo de toque do
+   * botão "WiFi", a folga de cima e de baixo, e o fio de 1 px que o separa do
+   * que passa por baixo. 61 px. Foi `0px` até à F3-03 e mudou **este valor e
+   * mais nada**: a barra de chips cola-se por baixo dele e as âncoras das
+   * onze categorias passam a descontá-lo sozinhas (F3-03, secção 3).
+   *
+   * **Não é `var(--altura-barra-chips)`**, apesar de dar o mesmo número. As
+   * duas coincidem porque as duas se constroem à volta do mesmo alvo de
+   * toque de 44 px, e isso é uma coincidência, não uma dependência: escrito
+   * assim, abrir a pesquisa um dia mudava a altura do cabeçalho.
+   *
+   * Seja qual for o valor, tem de ter unidade — um `calc()` com um zero sem
+   * unidade é inválido e a declaração inteira cai em silêncio, levando com
+   * ela a âncora de todas as categorias.
    *
    * `--altura-barra-chips` é escrito como a conta que é — o alvo de toque,
    * mais a folga de cima e de baixo, mais o fio de 1 px que separa a barra do
@@ -168,12 +176,18 @@
    * píxel; é essa coincidência que faz o chip em que se carregou ficar logo
    * ativo (F3-02, secção 3.3).
    */
-  --altura-cabecalho: 0px;
+  --altura-cabecalho: calc(var(--alvo-toque) + 2 * var(--espaco-2) + var(--contorno-fino));
   --altura-barra-chips: calc(var(--alvo-toque) + 2 * var(--espaco-2) + var(--contorno-fino));
   --ancora-ementa: calc(var(--altura-cabecalho) + var(--altura-barra-chips) + var(--espaco-4));
 
   /*
-   * O lugar da linha de contagem da pesquisa (F3-02, secção 4.5).
+   * O lugar reservado a **uma linha viva** de `--texto-nota`.
+   *
+   * Dois sítios usam-no, e o nome ficou mais estreito do que o uso: a
+   * contagem de resultados da pesquisa (F3-02, 4.5) e a confirmação do
+   * "Copiar password" na Folha do WiFi (F3-03, 8.2). Mudar-lhe o nome
+   * obrigava a mexer num componente por causa de uma palavra; fica este
+   * comentário em vez disso.
    *
    * Uma linha de `--texto-nota` com a sua entrelinha, mais a folga de cima.
    * Existe como token porque é uma **reserva**, e uma reserva só serve se for
@@ -186,7 +200,9 @@
    * última tecla (as duas temporizações de 4.5 são de propósito). Medido na
    * revisão, isso empurrava o primeiro cartão 31,6 px para baixo com a pessoa
    * já a ler os resultados. O lugar passa a estar ocupado desde que a
-   * pesquisa abre, e o texto chega a um sítio que já era dele.
+   * pesquisa abre, e o texto chega a um sítio que já era dele. Na Folha do
+   * WiFi é a mesma lição: a confirmação não pode empurrar o botão para cima
+   * do polegar que ainda lá está.
    */
   --altura-contagem: calc(var(--espaco-3) + var(--texto-nota) * var(--entrelinha-nota));
 

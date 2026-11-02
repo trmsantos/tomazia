@@ -20,6 +20,21 @@
 /** Tudo o que vem da ementa leva este prefixo. Ver o cabeçalho. */
 const PREFIXO = "ementa-";
 
+/**
+ * O destino da ligação "Saltar para a ementa" (F3-03, 5.2).
+ *
+ * Vive aqui, ao lado do `PREFIXO`, porque o que o torna seguro é uma
+ * propriedade **deste** ficheiro: ele não pode colidir com nenhuma âncora de
+ * categoria, e as âncoras de categoria são as que saem daqui. Escrito noutro
+ * sítio, a garantia ficava a uma distância de leitura do que a dá.
+ *
+ * Não é `ementa` — a barra de chips vive dentro dessa secção, e saltar para lá
+ * deixava as doze paragens exactamente onde estavam. Não é `ementa-conteudo` —
+ * esse começa pelo prefixo, e um `slug` `conteudo`, que a F4-02 vai deixar o
+ * dono escrever, mandava o salto para o sítio errado, em silêncio.
+ */
+export const ID_DA_LISTA_DA_EMENTA = "lista-da-ementa";
+
 /** Um `slug` que se pode usar tal e qual: minúsculas, dígitos e hífen. */
 const SLUG_LIMPO = /^[a-z0-9-]+$/;
 

@@ -20,3 +20,17 @@ export const FICHEIROS_DA_F3_02 = [
   "src/pages/publico/Ementa.tsx",
   "src/components/ui/LinhaDeProduto.tsx",
 ];
+
+/**
+ * O cabeçalho fixo e a Folha do WiFi (F3-03, secção 10, Q-05).
+ *
+ * Lista separada da F3-02 pela mesma razão que essa é separada da F3-01: um
+ * ficheiro desta tarefa não põe vermelhos os testes da anterior. E tem de
+ * existir, senão a varredura de texto passa por cima dos dois ficheiros novos
+ * sem dar por isso — a pasta já existe, por isso nem o guarda de "zero
+ * ficheiros" acusaria.
+ */
+export const FICHEIROS_DA_F3_03 = [
+  "src/pages/publico/Cabecalho.tsx",
+  "src/pages/publico/FolhaWifi.tsx",
+];

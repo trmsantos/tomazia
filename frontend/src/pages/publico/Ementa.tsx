@@ -7,7 +7,7 @@ import { EstadoVazio } from "../../components/ui/EstadoVazio";
 import { LinhaDeProduto } from "../../components/ui/LinhaDeProduto";
 import { ErroDaApi } from "../../lib/api/cliente";
 import { obterEmenta } from "../../lib/api/publico";
-import { ancoraDaCategoria } from "../../lib/ementa/ancoras";
+import { ID_DA_LISTA_DA_EMENTA, ancoraDaCategoria } from "../../lib/ementa/ancoras";
 import { categoriaAtiva } from "../../lib/ementa/categoria-ativa";
 import { filtrarEmenta, indexarEmenta } from "../../lib/ementa/pesquisa";
 import type { CategoriaIndexada, CategoriaPublica } from "../../lib/ementa/pesquisa";
@@ -26,6 +26,13 @@ import type { CategoriaIndexada, CategoriaPublica } from "../../lib/ementa/pesqu
  * acompanha a ementa inteira e desaparece sozinha quando ela acaba, sem uma
  * linha de JavaScript a decidi-lo. Com posição fixa seguiria o utilizador para
  * dentro da galeria e alguém teria de a mandar embora à mão.
+ *
+ * A única coisa que a F3-03 acrescentou a este ecrã é um `id`: o
+ * `ID_DA_LISTA_DA_EMENTA` está em **exactamente um** elemento nos quatro
+ * estados — a lista dos cartões, o bloco que está a carregar, o Estado vazio e
+ * o bloco de erro — e é o destino da ligação "Saltar para a ementa". Um
+ * fragmento que não existe não faz absolutamente nada, em silêncio, e faria
+ * nada exactamente nos estados em que a página já não está bem (F3-03, 5.2).
  *
  * **Armadilha conhecida:** um `overflow-x: hidden` posto em qualquer
  * antepassado — e é o reflexo de quem vê uma barra horizontal a aparecer —
@@ -751,20 +758,23 @@ export function Ementa(): ReactElement {
       </div>
 
       {estado.estado === "a-carregar" && (
-        <ul className="mx-auto flex max-w-coluna flex-col gap-4 px-4 py-4">
+        <ul
+          id={ID_DA_LISTA_DA_EMENTA}
+          className="mx-auto flex max-w-coluna flex-col gap-4 px-4 py-4"
+        >
           <EsqueletoDeCartao />
           <EsqueletoDeCartao />
         </ul>
       )}
 
       {estado.estado === "vazia" && (
-        <div className="px-4">
+        <div id={ID_DA_LISTA_DA_EMENTA} className="px-4">
           <EstadoVazio titulo={TEXTOS.vaziaTitulo} linha={TEXTOS.vaziaLinha} />
         </div>
       )}
 
       {estado.estado === "erro" && (
-        <div className="px-4">
+        <div id={ID_DA_LISTA_DA_EMENTA} className="px-4">
           <EstadoVazio
             tom="erro"
             titulo={TEXTOS.erroTitulo}
@@ -785,13 +795,16 @@ export function Ementa(): ReactElement {
 
       {estado.estado === "pronta" &&
         (semResultados ? (
-          <div className="px-4">
+          <div id={ID_DA_LISTA_DA_EMENTA} className="px-4">
             <EstadoVazio titulo={TEXTOS.semResultadosTitulo} linha={TEXTOS.semResultadosLinha}>
               <Botao onClick={fecharPesquisa}>{TEXTOS.limparPesquisa}</Botao>
             </EstadoVazio>
           </div>
         ) : (
-          <ul className="mx-auto flex max-w-coluna flex-col gap-4 px-4 py-4">
+          <ul
+            id={ID_DA_LISTA_DA_EMENTA}
+            className="mx-auto flex max-w-coluna flex-col gap-4 px-4 py-4"
+          >
             {visiveis.map((categoria) => (
               <CartaoDeCategoria key={ancoraDaCategoria(categoria)} categoria={categoria} />
             ))}

@@ -276,6 +276,8 @@ type ParagemDeFoco = {
   alturaDaJanela: number;
   naBarra: boolean;
   fundoDaBarra: number;
+  /** No centro do controlo focado está ele próprio, ou outra coisa por cima. */
+  descoberto: boolean;
 };
 
 const MENSAGEM_DO_TAPADO =
@@ -307,6 +309,25 @@ async function focarCadaControlo(pagina: Page): Promise<ParagemDeFoco[]> {
         });
 
         const caixa = elemento.getBoundingClientRect();
+        /*
+         * Quem está no ponto decide, e não a aritmética das arestas.
+         *
+         * A F3-03 pôs duas camadas por cima desta página — a ligação de salto
+         * (`z-30`) e o cabeçalho fixo (`z-20`) —, e as duas vivem acima da
+         * barra de chips (`z-10`) **de propósito**. Pela geometria sozinha
+         * elas lêem-se como "tapadas pela barra", porque começam acima do fim
+         * dela; pelo resultado, não: no ponto está cada uma delas.
+         *
+         * Medido assim, isto deixa de ser uma regra sobre a barra e passa a
+         * ser a pergunta que interessa — **este controlo focado está visível
+         * ou está debaixo de alguma coisa?** —, que também apanha quem o tape
+         * sem ser a barra.
+         */
+        const noPonto = document.elementFromPoint(
+          caixa.x + caixa.width / 2,
+          caixa.y + caixa.height / 2,
+        );
+        const descoberto = noPonto !== null && (noPonto === elemento || elemento.contains(noPonto));
         const barraFixa = document.getElementById(idDaBarra);
         const caixaDaBarra = barraFixa?.getBoundingClientRect();
         const nome = (elemento.getAttribute("aria-label") ?? elemento.textContent ?? "")
@@ -320,6 +341,7 @@ async function focarCadaControlo(pagina: Page): Promise<ParagemDeFoco[]> {
           alturaDaJanela: window.innerHeight,
           naBarra: barraFixa !== null && barraFixa.contains(elemento),
           fundoDaBarra: caixaDaBarra === undefined ? Number.NaN : caixaDaBarra.bottom,
+          descoberto,
         });
       }
 
@@ -348,7 +370,10 @@ function foraDaJanela(paragens: ParagemDeFoco[]): string[] {
 
 function tapadosPelaBarra(paragens: ParagemDeFoco[]): string[] {
   return paragens
-    .filter((paragem) => !paragem.naBarra && paragem.topo < paragem.fundoDaBarra - 1)
+    .filter(
+      (paragem) =>
+        !paragem.naBarra && paragem.topo < paragem.fundoDaBarra - 1 && !paragem.descoberto,
+    )
     .map(
       (paragem) =>
         `${paragem.descricao}: topo ${paragem.topo.toFixed(1)}, e a barra acaba em ` +

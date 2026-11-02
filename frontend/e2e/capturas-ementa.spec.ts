@@ -1,9 +1,4 @@
-import { statSync } from "node:fs";
-import { isAbsolute } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { expect, test } from "@playwright/test";
-import type { Locator, Page } from "@playwright/test";
 
 import { EMENTA_VAZIA } from "../src/testes/ementa";
 import {
@@ -17,7 +12,7 @@ import {
   fingirEmentaFixa,
   lupa,
 } from "./apoio/ementa";
-import { focarPorTeclado } from "./apoio/foco";
+import { capturarComAnel, guardar } from "./apoio/capturas";
 
 /**
  * F3-02, 12.12 — as capturas que a revisão ui-ux abre.
@@ -45,34 +40,6 @@ import { focarPorTeclado } from "./apoio/foco";
  * gritar mais alto do que o nome do produto na `390-ementa.png`, o
  * `--cor-pontilhado` passa a `var(--cor-fio-interno)` e nada mais muda.**
  */
-
-const PASTA = fileURLToPath(new URL("../test-results/capturas", import.meta.url));
-const CORRIDA_COMECOU_EM = Date.now();
-
-async function guardar(nome: string, escrever: (caminho: string) => Promise<unknown>) {
-  expect(
-    isAbsolute(PASTA),
-    "o caminho das capturas tem de ser absoluto e ancorado neste ficheiro",
-  ).toBe(true);
-
-  const caminho = `${PASTA}/${nome}.png`;
-  await escrever(caminho);
-
-  // Confirmar que ficou escrita **agora**: uma captura que fosse parar a
-  // outro sítio passava em silêncio, e a revisão avaliava imagens velhas
-  // sem nada a dizer que o eram.
-  const estado = statSync(caminho);
-  expect(
-    estado.mtimeMs,
-    `${caminho} não foi escrita nesta corrida — a revisão ia olhar para uma ` +
-      "captura antiga sem saber",
-  ).toBeGreaterThanOrEqual(CORRIDA_COMECOU_EM);
-}
-
-async function capturarComAnel(pagina: Page, alvo: Locator, nome: string) {
-  await focarPorTeclado(pagina, alvo);
-  await guardar(nome, (caminho) => pagina.screenshot({ path: caminho }));
-}
 
 test.describe("390 × 844", () => {
   test("a ementa inteira, e o pontilhado que fica em vigilância", async ({ page }) => {

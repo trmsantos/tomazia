@@ -1,10 +1,7 @@
-import { statSync } from "node:fs";
-import { isAbsolute } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
+import { guardar } from "./apoio/capturas";
 import { focarPorTeclado } from "./apoio/foco";
 import {
   CAMINHO_DA_DEMONSTRACAO,
@@ -27,78 +24,15 @@ import {
  * abrir ou se uma secção faltar.
  *
  * As imagens vão para `frontend/test-results/capturas/`, que o `.gitignore`
- * da raiz já ignora: não se versionam, anexam-se ao PR. O caminho é
- * absoluto e ancorado neste ficheiro — ver a nota do `PASTA`.
+ * da raiz já ignora: não se versionam, anexam-se ao PR. O caminho absoluto e
+ * a confirmação de que cada ficheiro ficou escrito **nesta** corrida vivem em
+ * `e2e/apoio/capturas.ts`, partilhados com as capturas da F3-02 e da F3-03.
  *
  * **Duas delas são de foco e não são opcionais.** "Foco visível" é critério
  * Q-04, e até aqui nenhuma das nove capturas mostrava um anel: a revisora
  * teve de as gerar à mão para poder avaliar. Uma revisão que depende de
  * alguém se lembrar de ir carregar no `Tab` não é uma revisão.
  */
-
-/**
- * Ancorado na pasta deste ficheiro, e não no `process.cwd()`.
- *
- * Um caminho relativo num `screenshot({ path })` resolve-se a partir de
- * onde o processo foi lançado; o `outputDir` do `playwright.config.ts`
- * resolve-se a partir da pasta do ficheiro de configuração. Lançado de
- * `frontend/` os dois coincidem — lançado da raiz do repositório, que é o
- * que um `/verificar` no topo faz, separam-se: os artefactos vão para
- * `frontend/test-results/` e as capturas para `test-results/` na raiz.
- *
- * Não suja o git (as duas pastas estão ignoradas), e é pior do que isso:
- * quem for ver as capturas abre a pasta do costume e encontra lá as da
- * corrida **anterior**, sem nada a dizer que são velhas. Uma captura velha
- * a passar por captura nova é a mesma família de defeito que o resto deste
- * ficheiro existe para apanhar.
- */
-const PASTA = fileURLToPath(new URL("../test-results/capturas", import.meta.url));
-
-/**
- * O instante em que este ficheiro foi carregado. Serve de corte para
- * distinguir uma captura desta corrida de uma que ficou da anterior.
- */
-const CORRIDA_COMECOU_EM = Date.now();
-
-/**
- * Guardar uma captura e **confirmar que ela ficou escrita agora**.
- *
- * Sem esta confirmação, uma captura que fosse parar a outro sítio passava
- * em silêncio: o teste passava, a pasta do costume continuava a ter os
- * ficheiros da corrida anterior e a revisão avaliava imagens velhas sem
- * nada a dizer que o eram. É o mesmo defeito de família que o resto deste
- * ficheiro existe para apanhar, virado para dentro.
- */
-async function guardar(nome: string, escrever: (caminho: string) => Promise<unknown>) {
-  expect(
-    isAbsolute(PASTA),
-    "o caminho das capturas tem de ser absoluto e ancorado neste ficheiro. Um caminho " +
-      "relativo resolve-se a partir de onde o processo foi lançado, e o `outputDir` do " +
-      "`playwright.config.ts` resolve-se a partir da pasta do config: lançados da raiz do " +
-      "repositório, os dois separam-se.",
-  ).toBe(true);
-
-  const caminho = `${PASTA}/${nome}.png`;
-  await escrever(caminho);
-
-  let escritaEm: number;
-  try {
-    escritaEm = statSync(caminho).mtimeMs;
-  } catch {
-    throw new Error(
-      `A captura ${nome} não ficou em ${caminho}. Foi escrita noutro sítio — ` +
-        "provavelmente a partir do `process.cwd()`.",
-    );
-  }
-
-  // Um segundo de folga para relógios de sistema de ficheiros com pouca
-  // resolução; é folga que chega e não chega para uma corrida anterior.
-  expect(
-    escritaEm,
-    `a captura ${nome} em ${caminho} é de antes desta corrida: é uma imagem velha a ` +
-      "passar por nova, e é sobre ela que a revisão ia decidir.",
-  ).toBeGreaterThanOrEqual(CORRIDA_COMECOU_EM - 1000);
-}
 
 async function abrir(pagina: Page): Promise<void> {
   const resposta = await pagina.goto(CAMINHO_DA_DEMONSTRACAO);
