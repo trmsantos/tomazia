@@ -14,23 +14,31 @@
  * `src/pages/publico/Ementa.test.tsx` trata disso. E a ordem visual, que em
  * jsdom não existe.
  *
- * O `<h1>` vive aqui até a F3-03 o levar para o cabeçalho. Sem ele o axe
- * acusa e a página fica sem nome.
+ * Desde a F3-03 o `<h1>` vive dentro do cabeçalho fixo, e é de lá que ele
+ * chega a esta árvore. Continua a ser um só e continua a ser o nome do bar.
  */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import { INFO_SEM_REDE } from "./testes/cabecalho";
 import { EMENTA_DE_TESTE, ID_DA_SECCAO, NOME_DO_BAR, TEXTOS_DA_EMENTA } from "./testes/ementa";
 import { instalarDeslocamento, instalarMatchMedia } from "./testes/jsdom-da-ementa";
-import { obterEmenta } from "./lib/api/publico";
+import { obterEmenta, obterInfo } from "./lib/api/publico";
 
-vi.mock("./lib/api/publico", () => ({ obterEmenta: vi.fn() }));
+/*
+ * Desde a F3-03 o `App` pede duas coisas ao montar: a ementa e o `/info`, que
+ * desce por propriedade até ao cabeçalho. O `obterInfo` tem de estar aqui —
+ * uma fábrica de mock substitui o módulo inteiro, e uma exportação que falte
+ * chega ao código como `undefined` em vez de dar erro no mock.
+ */
+vi.mock("./lib/api/publico", () => ({ obterEmenta: vi.fn(), obterInfo: vi.fn() }));
 
 async function desenhar() {
   const deslocamento = instalarDeslocamento();
   const media = instalarMatchMedia();
   vi.mocked(obterEmenta).mockResolvedValue(EMENTA_DE_TESTE);
+  vi.mocked(obterInfo).mockResolvedValue(INFO_SEM_REDE);
 
   const resultado = render(<App />);
   await screen.findByRole("navigation", { name: TEXTOS_DA_EMENTA.nomeDaBarra });

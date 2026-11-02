@@ -43,6 +43,22 @@
    */
   html {
     scroll-padding-top: var(--ancora-ementa);
+
+    /*
+     * O lugar da barra de deslocamento está sempre reservado (F3-03, 4.4).
+     *
+     * O travão do fundo da Folha é `.sem-deslizar { overflow: hidden }` no
+     * `<body>`. Numa plataforma com barras clássicas — Linux, Windows, e é
+     * Linux que corre no CI —, esconder o transbordo alarga a janela de
+     * layout pela largura da barra, e **tudo o que é `position: fixed` salta
+     * para a direita** nesse instante. Até à F3-03 o defeito existia e não se
+     * via: nada estava fixo no topo. Com o cabeçalho, vê-se.
+     *
+     * No macOS as barras são sobrepostas e o deslocamento é 0 px com e sem
+     * esta linha — foi por isso que o teste que a protege mede **a aresta
+     * direita do cabeçalho** e não a presença desta declaração.
+     */
+    scrollbar-gutter: stable;
   }
 
   /*
@@ -191,6 +207,21 @@
      nunca `document.body.style.overflow`. */
   .sem-deslizar {
     overflow: hidden;
+  }
+
+  /*
+   * A password do WiFi parte onde calhar (F3-03, 7.2).
+   *
+   * O `break-words` do Tailwind é `overflow-wrap: break-word`, que só quebra
+   * uma palavra quando ela **sozinha** não cabe na linha — e uma password
+   * precedida de outra coisa na mesma linha transbordava na mesma. `anywhere`
+   * é o que também conta a quebra ao calcular a largura mínima do conteúdo, e
+   * é o que impede uma password de 24 caracteres de empurrar o painel da
+   * Folha para fora do ecrã. Fica aqui porque o Tailwind não gera nenhuma
+   * utilidade para este valor e um `style` inline é bloqueado pela CSP.
+   */
+  .quebra-onde-calhar {
+    overflow-wrap: anywhere;
   }
 
   /* A cortina da Folha. O `::backdrop` herda as variáveis do elemento que o

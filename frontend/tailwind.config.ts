@@ -212,7 +212,13 @@ export default {
     ringOffsetColor: { DEFAULT: "var(--cor-fundo-local)" },
 
     extend: {
-      minHeight: { toque: "var(--alvo-toque)" },
+      minHeight: {
+        toque: "var(--alvo-toque)",
+        // O lugar da linha viva da Folha do WiFi (F3-03, 8.2). `min-h` e não
+        // `h`: a reserva é de uma linha, mas com o tamanho de letra do sistema
+        // no dobro a frase passa a duas e tem de poder crescer.
+        contagem: "var(--altura-contagem)",
+      },
       minWidth: {
         toque: "var(--alvo-toque)",
         // O pontilhado da Linha de produto nunca encolhe abaixo disto. Sem um
@@ -230,6 +236,12 @@ export default {
       // onde ela pára quando cola. Os dois saem do mesmo sítio que a âncora
       // das categorias, para não haver duas contas a discordar.
       inset: { cabecalho: "var(--altura-cabecalho)" },
+      // A folga do `<main>` por baixo do cabeçalho fixo (F3-03, secção 2). O
+      // `inset` acima dá `top-cabecalho` e **não** dá `padding`: a escala de
+      // espaçamento deste projeto é substituída, por isso um `pt-cabecalho`
+      // sem esta entrada não gera classe nenhuma e falha em silêncio — com o
+      // título da ementa a nascer por baixo do cabeçalho.
+      padding: { cabecalho: "var(--altura-cabecalho)" },
       // O carril e o manípulo do Interruptor: 48 × 28 e 24 × 24 não são passos
       // da escala de espaçamento, por isso têm tokens próprios.
       width: { carril: "var(--carril-largura)", manipulo: "var(--manipulo)" },
@@ -237,6 +249,10 @@ export default {
         carril: "var(--carril-altura)",
         manipulo: "var(--manipulo)",
         barra: "var(--altura-barra-chips)",
+        // A altura do cabeçalho fixo, do mesmo sítio de onde sai a âncora das
+        // categorias. 8 px a mais aqui desalinham os onze saltos de uma vez, e
+        // o sintoma aparece longe da causa (F3-03, secção 3).
+        cabecalho: "var(--altura-cabecalho)",
         // O lugar reservado à contagem da pesquisa. Ocupa-se à abertura, para
         // que o texto que chega 500 ms depois não empurre a lista para baixo
         // com a pessoa já a lê-la (F3-02, secção 4.5).

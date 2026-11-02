@@ -39,7 +39,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
-import { FICHEIROS_DA_F3_02 } from "./testes/ecras";
+import { FICHEIROS_DA_F3_02, FICHEIROS_DA_F3_03 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -104,14 +104,20 @@ function ficheirosDaInterface(): string[] {
 }
 
 /**
- * As sentinelas das duas tarefas juntas.
+ * As sentinelas das três tarefas juntas.
  *
  * Crescem com os ficheiros novos de propósito: sem a linha da F3-02, a
  * varredura de uma `src/pages/` vazia (ou inexistente) devolveria zero
  * ficheiros, encontraria zero violações e passaria. "Não consegui procurar"
  * a dar o mesmo resultado que "não encontrei" é a regra 10 do `CLAUDE.md`.
+ *
+ * A linha da F3-03 é mais estreita do que a da F3-02 e mais necessária: a
+ * pasta `src/pages/publico/` **já existe**, por isso o guarda de "zero
+ * ficheiros" nunca dispararia, e o cabeçalho e a Folha do WiFi podiam nascer
+ * com texto por rever sem nenhuma varredura lhes tocar (F3-03, secção 10,
+ * Q-05).
  */
-const SENTINELAS = [...COMPONENTES_DA_F3_01, ...FICHEIROS_DA_F3_02];
+const SENTINELAS = [...COMPONENTES_DA_F3_01, ...FICHEIROS_DA_F3_02, ...FICHEIROS_DA_F3_03];
 
 describe("texto visível em português de Portugal", () => {
   it("nenhuma palavra de outro português, nem gerúndio brasileiro", () => {
