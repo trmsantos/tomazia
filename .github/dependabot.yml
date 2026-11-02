@@ -54,6 +54,26 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@eslint/js"
         update-types: ["version-update:semver-major"]
+      # O `@typescript-eslint/parser` declara
+      # `peer typescript@">=4.8.4 <6.1.0"`. Com o TypeScript 7 o `npm ci`
+      # rebenta com ERESOLVE — e, pior, essa falha esconde as outras sete
+      # subidas do mesmo grupo, que é exactamente o que o comentário acima
+      # descreve a propósito do eslint e do PR #6. Medido no PR #33.
+      #
+      # Sai daqui no dia em que o `@typescript-eslint` abrir o intervalo
+      # para o TypeScript 7 — não quando o TypeScript 7 sair, que já saiu.
+      #
+      # **Major e menor**, e é aqui que este teto difere dos outros quatro:
+      # o intervalo deles acaba em `<6.1.0`, que é um limite **menor**. Uma
+      # subida de 6.0 para 6.1 rebenta o `npm ci` exactamente como o 7, e um
+      # `ignore` só de major deixava-a passar — um teto que não cobre o modo
+      # de falha é pior do que nenhum, porque dá a impressão de o cobrir.
+      # As correções (6.0.x) continuam a chegar.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+
     groups:
       dependencias-de-desenvolvimento:
         dependency-type: "development"

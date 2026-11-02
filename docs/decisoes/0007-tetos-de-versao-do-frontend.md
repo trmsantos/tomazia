@@ -13,13 +13,19 @@ Nenhuma das três decisões estava escrita em lado nenhum. A do Tailwind tinha s
 
 ## Decisão
 
-Quatro `ignore` de major em `.github/dependabot.yml`, no ecossistema npm, cada um com a sua razão e o seu critério de levantamento.
+Cinco `ignore` de major em `.github/dependabot.yml`, no ecossistema npm, cada um com a sua razão e o seu critério de levantamento. Eram quatro quando este ADR foi escrito; o quinto entrou em 2026-11-02 e está abaixo, com a data, porque a lista cresce e a razão de cada entrada tem de continuar a ler-se sem escavar o histórico.
 
 **`tailwindcss`, fica na 3.4.** A v4 não é uma atualização, é outra ferramenta: a configuração passa a ser em CSS e o `tailwind.config.ts` deixa de ser lido. Como os tokens de design do projeto vivem lá (ver `frontend/CLAUDE.md`), subir era reescrever a camada de estilos inteira, não atualizar uma dependência. **Levanta-se** quando houver uma tarefa própria para a migração, com o `tokens.css` e o `tailwind.config.ts` portados e revistos pelo ui-ux — nunca por um PR automático.
 
 **`@types/node`, acompanha o `.nvmrc`.** O ficheiro diz 22; tipos de Node 26 descrevem uma biblioteca padrão que não corremos, e o `tsc` passaria a aceitar código que rebenta em execução. **Levanta-se** no mesmo PR em que o `.nvmrc` subir, nunca antes nem depois.
 
 **`eslint` e `@eslint/js`, ficam no 9.** O `eslint-plugin-jsx-a11y` ainda não declara suporte para o 10, e sem ele o projeto perde as regras de acessibilidade — que são critério Q-03 da especificação, não conforto. **Levanta-se** quando o `eslint-plugin-jsx-a11y` publicar uma versão com `peer eslint` a incluir o 10.
+
+**`typescript`, fica no 6.0** (acrescentado em 2026-11-02). O `@typescript-eslint/parser` declara `peer typescript@">=4.8.4 <6.1.0"`, e com o TypeScript 7 o `npm ci` rebenta com `ERESOLVE`. **Levanta-se** quando o `@typescript-eslint` abrir o intervalo para o 7 — e não quando o TypeScript 7 sair, que já saiu.
+
+É o único dos cinco que ignora **major e menor**, e a razão é o próprio intervalo deles: `<6.1.0` é um limite **menor**, não maior. Uma subida de 6.0 para 6.1 rebenta o `npm ci` exactamente como o 7, e um `ignore` só de major deixava-a passar. A primeira versão desta entrada tinha esse defeito e foi corrigida antes de sair do branch — **um teto que não cobre o modo de falha é pior do que nenhum, porque dá a impressão de o cobrir.** As correções (6.0.x) continuam a chegar.
+
+Este é a repetição exacta do PR #6, cinco meses depois e com outro pacote: o PR #33 trazia oito subidas do grupo de desenvolvimento, uma só delas rebentava o `npm ci`, e essa falha escondia que as outras sete estavam boas. Vale a pena notar o que isso diz sobre a forma do problema: o teto não existe porque o major seja mau, existe porque **um grupo que falha por um motivo faz com que os outros motivos não cheguem a ser vistos** — e o remédio é tirar do grupo quem não devia lá estar, não desligar a verificação.
 
 ## Consequências
 
