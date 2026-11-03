@@ -126,7 +126,7 @@ Uma página, de cima para baixo. O QR code da mesa abre diretamente aqui, sem fo
 1. Cabeçalho fixo: logótipo e botão "WiFi", que abre uma folha com rede, password grande e "Copiar password".
 2. Chips de categoria fixos, que acompanham o scroll; lupa que filtra por nome de produto ou de categoria (ADR 0013).
 3. Ementa: um cartão creme por categoria; linhas com nome, pontilhado e preço; descrição opcional por baixo; indisponíveis escondidos.
-4. Esta semana: até três eventos, data grande em Playfair; a secção some sem eventos.
+4. Próximos eventos: até três, data grande em Playfair; a secção some sem eventos (ADR 0015).
 5. Galeria: grelha de duas colunas com as seis últimas fotos; ecrã inteiro com deslizar; "Enviar uma foto" numa folha.
 6. Visita-nos: horário com estado atual ("Aberto até às 02:00"), morada com "Abrir no Maps", telefone, Instagram. Sem mapa embutido.
 7. Rodapé: "Receber novidades" (folha com consentimento por marcar), política de privacidade, Livro de Reclamações Eletrónico.
