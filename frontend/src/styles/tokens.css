@@ -141,6 +141,22 @@
   --altura-folha: 85dvh; /* dvh e não vh: com a barra do Safari, 85vh corta o botão de baixo */
 
   /*
+   * A caixa do cartaz de um evento (F3-04, 6.2).
+   *
+   * **Fixa, e tem de ser.** `GET /eventos` manda um nome de ficheiro e mais
+   * nada — não há largura nem altura no contrato. Sem uma proporção reservada,
+   * a imagem só ocupa lugar depois de chegar e a página salta por baixo de
+   * quem está a ler, numa ligação de dados móveis, que é quando mais salta.
+   *
+   * 3:2 e não 16:9: os cartazes do bar são **horizontais** (confirmado pelo
+   * Tomás em 2026-11-02, F3-04, 14), por isso a 3:2 o `object-fit: cover`
+   * tira margem e pouco mais. A 390 px, 3:2 dá 216 px de altura e 16:9 dava
+   * 182 — a diferença entre uma imagem e uma tira. Cortar é aceitável porque
+   * o cartão já diz em texto tudo o que o cartaz diz em desenho (F3-04, 4.3).
+   */
+  --cartaz-proporcao: 3 / 2;
+
+  /*
    * O que fica fixo no topo da área pública, e o que isso obriga a descontar.
    * Três valores, e os dois últimos derivam do primeiro: assim há um número
    * para mudar, não três para manter de acordo (F3-02, secção 3).

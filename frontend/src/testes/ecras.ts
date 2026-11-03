@@ -34,3 +34,17 @@ export const FICHEIROS_DA_F3_03 = [
   "src/pages/publico/Cabecalho.tsx",
   "src/pages/publico/FolhaWifi.tsx",
 ];
+
+/**
+ * A secção dos próximos eventos e a tabela dos dias e dos meses (F3-04, 9).
+ *
+ * **O segundo caminho não está em `src/pages/`**, e é por isso que esta lista
+ * obrigou a varredura do Q-05 a crescer: as dezanove palavras portuguesas que
+ * um ICU reduzido substituiria por inglês vivem em `src/lib/formato/`, numa
+ * pasta que nenhuma varredura de texto olhava (F3-04, 5.4 e 9). Uma pasta
+ * que não se varre não pode passar por "não encontrei nada".
+ */
+export const FICHEIROS_DA_F3_04 = [
+  "src/pages/publico/Eventos.tsx",
+  "src/lib/formato/data-do-evento.ts",
+];

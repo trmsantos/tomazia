@@ -5,10 +5,12 @@ import type { Ementa } from "../../src/lib/api/publico";
 import {
   EMENTA_DE_TESTE,
   ID_DA_BARRA,
+  ID_DA_SECCAO,
   SELETOR_DOS_CARTOES,
   SELETOR_DOS_CHIPS,
   TEXTOS_DA_EMENTA,
 } from "../../src/testes/ementa";
+import { SEM_EVENTOS } from "../../src/testes/eventos";
 
 /**
  * Conduzir a página da ementa a partir de um Playwright.
@@ -23,10 +25,25 @@ import {
  * vez de passar a verde contra uma forma que já não existe.
  */
 
-export { EMENTA_DE_TESTE, ID_DA_BARRA, SELETOR_DOS_CARTOES, SELETOR_DOS_CHIPS, TEXTOS_DA_EMENTA };
+export {
+  EMENTA_DE_TESTE,
+  ID_DA_BARRA,
+  ID_DA_SECCAO,
+  SELETOR_DOS_CARTOES,
+  SELETOR_DOS_CHIPS,
+  TEXTOS_DA_EMENTA,
+};
 
 /** O padrão que o `page.route` intercepta. */
 export const ROTA_DA_EMENTA = "**/api/ementa";
+
+/**
+ * O padrão da lista de eventos, fingida pelo `abrirAEmenta`.
+ *
+ * Está aqui e não só em `apoio/eventos.ts` porque quem precisa dela deste
+ * lado precisa dela **vazia**: é a ementa que estes ficheiros medem.
+ */
+export const ROTA_DOS_EVENTOS = "**/api/eventos";
 
 /**
  * Quantas vezes a página pediu a ementa, por corrida de teste.
@@ -110,6 +127,33 @@ export function fingirEmentaFixa(pagina: Page, corpo: Ementa = EMENTA_DE_TESTE) 
  * outra coisa qualquer.
  */
 export async function abrirAEmenta(pagina: Page): Promise<void> {
+  /*
+   * **`GET /api/eventos` responde «não há», e responde-o sempre.**
+   *
+   * Sem isto, estes testes dependiam de haver um backend ligado: o
+   * Playwright só arranca o Vite, o pedido dos eventos falhava, e a secção
+   * da F3-04 desenhava-se em **erro** por baixo da ementa — um bloco de
+   * altura acidental, que aparecia ou não consoante a máquina de quem
+   * corre. Tudo o que se mede aqui por píxeis e por deslocamento passava a
+   * depender dele.
+   *
+   * Vazia e não cheia: estes ficheiros são sobre a ementa e o cabeçalho, e
+   * com a secção dos eventos fora do DOM a página volta a acabar onde a
+   * ementa acaba — que é a geometria para a qual o scroll-spy de 3.3 foi
+   * escrito. Quem quer a página **com** eventos tem o `abrirComEventos` de
+   * `apoio/eventos.ts`.
+   *
+   * Antes do `goto`, obrigatoriamente: uma rota registada depois já não
+   * apanha o pedido que a aplicação fez ao montar.
+   */
+  await pagina.route(ROTA_DOS_EVENTOS, async (rota) => {
+    await rota.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(SEM_EVENTOS),
+    });
+  });
+
   const resposta = await pagina.goto("/");
 
   expect(
@@ -173,7 +217,23 @@ export async function esperarQueAPaginaPare(pagina: Page): Promise<void> {
   );
 }
 
-/** A página está no seu máximo de deslocamento? (guarda 2 de 3.3) */
+/**
+ * A página está no seu máximo de deslocamento?
+ *
+ * **É este o predicado, e não «a ementa acabou».** O que as duas asserções
+ * alternativas de `provarOSalto` desculpam é sempre a mesma coisa — *o
+ * browser não conseguiu deslizar mais* —, e é exactamente a condição que o
+ * `noFundo` de `Ementa.tsx` mede em produção para ligar o guarda 2 de 3.3.
+ *
+ * Durante a F3-04 isto passou a `noFimDaEmenta`, a medir o fundo da secção
+ * da ementa em vez do fundo do documento, porque a secção dos eventos ficou
+ * por baixo. Era mais **permissivo**: com conteúdo por baixo, o fim da
+ * página implica o fim da ementa e nunca o contrário, por isso a janela em
+ * que uma falha era desculpada crescia a altura do que lá estivesse — e o
+ * que lá estava, nestes ficheiros, era um bloco de erro acidental. O
+ * `abrirAEmenta` passou a responder «não há eventos», a página volta a
+ * acabar onde a ementa acaba, e o predicado volta a ser o estrito.
+ */
 export function noFimDaPagina(pagina: Page): Promise<boolean> {
   return pagina.evaluate(
     () =>

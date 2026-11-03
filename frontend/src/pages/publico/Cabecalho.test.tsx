@@ -39,7 +39,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../../App";
-import { obterEmenta, obterInfo } from "../../lib/api/publico";
+import { obterEmenta, obterEventos, obterInfo } from "../../lib/api/publico";
 import { ErroDaApi } from "../../lib/api/cliente";
 import {
   A_CARREGAR,
@@ -55,7 +55,11 @@ import { instalarDeslocamento, instalarMatchMedia } from "../../testes/jsdom-da-
 import type { DeslocamentoFalso, MediaFalsa } from "../../testes/jsdom-da-ementa";
 import { Cabecalho } from "./Cabecalho";
 
-vi.mock("../../lib/api/publico", () => ({ obterEmenta: vi.fn(), obterInfo: vi.fn() }));
+vi.mock("../../lib/api/publico", () => ({
+  obterEmenta: vi.fn(),
+  obterEventos: vi.fn(),
+  obterInfo: vi.fn(),
+}));
 
 /**
  * O `Cabecalho` passa inteiro, embrulhado num espião — a mesma técnica que o
@@ -92,6 +96,11 @@ beforeEach(() => {
   media = instalarMatchMedia();
   pedirEmenta.mockReset();
   pedirInfo.mockReset();
+  // A F3-04 pôs uma terceira secção dentro do `App`, e ela pede sozinha ao
+  // montar. Sem eventos marcados não existe — que é o que este ficheiro
+  // quer: o cabeçalho e o salto, sem nada de novo por baixo.
+  vi.mocked(obterEventos).mockReset();
+  vi.mocked(obterEventos).mockResolvedValue({ eventos: [] });
   cabecalhoEspiado.mockClear();
 });
 
