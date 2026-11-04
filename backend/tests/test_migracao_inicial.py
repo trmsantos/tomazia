@@ -110,6 +110,7 @@ RESTRICOES_ESPERADAS = frozenset(
 #: texto.
 OMISSOES_ESPERADAS = {
     "admins.criado_em": "CURRENT_TIMESTAMP",
+    "admins.sessao_versao": "0",
     "admins.tentativas_falhadas": "0",
     "categorias.ordem": "0",
     "categorias.visivel": "1",

@@ -2,7 +2,7 @@
 
 Não é um ficheiro de testes (não começa por `test_`). Existe para o padrão
 do critério S-04 — "lista gerada a partir das rotas" — que a F2-03 estreia
-com as rotas públicas e a F2-04 vai usar para exigir 401 em todas as de
+com as rotas públicas e a F2-04 usa para exigir 401 em todas as de
 `/gestao/*`.
 
 ## Porque é que isto não é um `for rota in app.routes`
@@ -29,6 +29,36 @@ Daí as duas defesas deste módulo:
 ASGI que não seja FastAPI (não tem `routes` para percorrer), e as rotas que
 o `app.openapi()` esconde com `include_in_schema=False` — por isso a
 travessia é a fonte e o OpenAPI é só o controlo, nunca o contrário.
+
+## A segunda armadilha, dentro da primeira (achado da F2-04)
+
+Medido de novo com FastAPI 0.162.0 — a versão instalada nesta tarefa — a
+forma não mudou: `rota.include_context` continua a ser um
+`fastapi.routing._RouterIncludeContext` com `.prefix` e `.included_router`.
+**A armadilha sobreviveu ao upgrade 0.161.1 → 0.162.0**, que é o argumento
+mais forte a favor da verificação explícita abaixo continuar a existir: um
+upgrade que não a rebente é "ainda não aconteceu", nunca "nunca vai
+acontecer".
+
+Até à F2-04, o código lia o prefixo com `getattr(contexto, "prefix", "")`.
+Nenhum router incluído até então usava `prefix=` em `include_router()` — só
+`/gestao`, que a F2-04 estreia, usa — por isso o `getattr` nunca tinha
+sido posto à prova com um prefixo a sério: um router sem `prefix=` dá
+`contexto.prefix == ""`, e o `getattr` com omissão `""` acerta por
+coincidência, não porque soubesse o que fazer.
+
+Isto é exatamente a troca que a regra 10 do `CLAUDE.md` proíbe: um
+`getattr(contexto, "prefix", "")` não distingue "este router não tem
+prefixo" (`""`, legítimo) de "esta versão do FastAPI deixou de ter
+`.prefix` no contexto de inclusão" (também cai em `""`, por acidente). Se
+uma versão futura do FastAPI renomear ou tirar `.prefix`, uma rota
+registada com `app.include_router(r, prefix="/gestao")` passaria a
+aparecer como `/categorias`, em silêncio — e o S-04 passaria a verificar
+zero rotas de gestão, a verde, exatamente o modo de falha que este
+ficheiro inteiro existe para impedir. Por isso a travessia agora verifica
+`.prefix` e `.included_router` explicitamente e **rebenta em voz alta**
+quando um dos dois falta, em vez de assumir um valor que dá a duas coisas
+diferentes o mesmo resultado.
 """
 
 from __future__ import annotations
@@ -66,11 +96,37 @@ def rotas_declaradas(aplicacao: Any) -> dict[str, frozenset[str]]:
                 # `_IncludedRouter` (FastAPI >= 0.161): o prefixo do
                 # `include_router()` está aqui, não no caminho das rotas.
                 contexto = rota.include_context
-                por_visitar.append(
-                    (
-                        prefixo + getattr(contexto, "prefix", ""),
-                        contexto.included_router,
+                # Verificação explícita, não `getattr(contexto, "prefix", "")`:
+                # um valor por omissão `""` dá o mesmo resultado a "este
+                # router não tem prefixo" (legítimo) e a "esta versão do
+                # FastAPI deixou de ter `.prefix` aqui" (grave) — é a troca
+                # que a regra 10 do `CLAUDE.md` proíbe, e o motivo de ela
+                # nunca ter sido posta à prova está na segunda secção do
+                # docstring deste ficheiro. `included_router` teria o mesmo
+                # problema com um `AttributeError` cru, sem explicação.
+                if not hasattr(contexto, "prefix") or not hasattr(
+                    contexto, "included_router"
+                ):
+                    raise AssertionError(
+                        "o contexto de inclusão de "
+                        f"{type(rota).__module__}.{type(rota).__name__} não "
+                        "tem `.prefix` e/ou `.included_router` "
+                        f"(tem: {sorted(vars(contexto)) if hasattr(contexto, '__dict__') else dir(contexto)}). "
+                        'Saltar isto com um `getattr(..., "")` trataria uma '
+                        "mudança na forma do contexto de inclusão como "
+                        "'este router não tem prefixo' — exatamente o mesmo "
+                        "resultado que um router incluído sem `prefix=`, e é "
+                        "assim que uma rota de "
+                        '`app.include_router(r, prefix="/gestao")` passaria '
+                        "a aparecer sem o `/gestao`, em silêncio, e o S-04 "
+                        "passaria a verificar `/categorias` em vez de "
+                        "`/gestao/categorias` — zero rotas de gestão "
+                        "encontradas, testes todos verdes. Atualiza "
+                        "`tests/apoio_rotas.py` para a nova forma do "
+                        "contexto de inclusão desta versão do FastAPI."
                     )
+                por_visitar.append(
+                    (prefixo + contexto.prefix, contexto.included_router)
                 )
             elif isinstance(rota, Mount):
                 por_visitar.append((prefixo + rota.path, rota))
