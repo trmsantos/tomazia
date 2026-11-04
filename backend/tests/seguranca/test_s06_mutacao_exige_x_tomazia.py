@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from app.marca import MENSAGEM_CABECALHO_EM_FALTA
 from tests.apoio_auth import CREDENCIAIS_FALSAS
 
 if TYPE_CHECKING:
@@ -76,6 +77,13 @@ class TestGuardaEstruturalSobreOMetodo:
         cliente = _cliente_para(metodo)
         resposta = getattr(cliente, metodo.lower())(CAMINHO_DA_SONDA)
         assert resposta.status_code == 403
+        corpo = resposta.json()
+        assert corpo["erro"] == "cabecalho_x_tomazia_em_falta"
+        # Texto do ui-ux: a frase anterior nomeava o cabeçalho e o valor
+        # exato esperado — divulgação desnecessária, mesmo não sendo uma
+        # vulnerabilidade (a guarda não depende de segredo nenhum).
+        assert corpo["mensagem"] == MENSAGEM_CABECALHO_EM_FALTA
+        assert "X-Tomazia" not in corpo["mensagem"]
 
     @pytest.mark.parametrize("metodo", METODOS_DE_MUTACAO)
     def test_mutacao_com_cabecalho_correto_nao_e_bloqueada_por_este_guarda(

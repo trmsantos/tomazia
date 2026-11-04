@@ -91,6 +91,12 @@ class TestCorpoInvalido:
             isinstance(corpo_da_resposta["mensagem"], str)
             and corpo_da_resposta["mensagem"]
         )
+        # O código, não só a forma: ver o comentário equivalente em
+        # `tests/auth/test_eu_e_logout.py`.
+        assert corpo_da_resposta["erro"] == "dados_invalidos"
+        assert corpo_da_resposta["mensagem"] == (
+            "Os dados enviados não são válidos. Verifica os campos e tenta novamente."
+        )
 
 
 #: As três formas de falhar um login, que a especificação exige
@@ -129,6 +135,7 @@ class TestRespostaIndistinguivelAsFalhas:
             "/auth/login", json=corpo, headers=CABECALHO_MUTACAO
         )
         assert resposta.status_code == 400
+        assert resposta.json()["erro"] == "credenciais_invalidas"
 
     def test_as_tres_falhas_dao_exatamente_a_mesma_resposta(
         self, cliente_seguro: TestClient
@@ -151,3 +158,5 @@ class TestRespostaIndistinguivelAsFalhas:
             "de um atacante distinguir 'o utilizador existe' de 'o "
             "utilizador não existe' sem gastar uma tentativa visível a mais"
         )
+        (corpo_partilhado,) = valores_unicos
+        assert dict(corpo_partilhado)["erro"] == "credenciais_invalidas"

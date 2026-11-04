@@ -114,20 +114,28 @@ def registar_admin(
 
     Não é o `scripts/criar_admin.py` da F2-02 (que não depende desta
     tarefa e pode nem existir ainda): é a forma destes testes semearem uma
-    conta, já que S-05 proíbe uma rota que crie admins. O hash é real
-    (`argon2.PasswordHasher().hash`, não o texto fixo de
-    `tests.modelos.apoio.novo_admin`) porque o caminho feliz do login
-    precisa de uma verificação argon2id que passe de verdade.
+    conta, já que S-05 proíbe uma rota que crie admins.
+
+    Chama `app.services.auth.registar_admin` — a mesma função que o
+    `scripts/criar_admin.py` da F2-02 vai chamar — em vez de montar o hash
+    e o `Admin` aqui à parte. Achado em revisão da F2-04: nada no projeto
+    chamava `app.services.auth.registar_admin`, nem a app nem os testes
+    (que tinham a sua própria cópia, com `PasswordHasher()` à mão); uma
+    função sem um único lugar que a exercite é código morto disfarçado de
+    reutilizável, e ficava por estrear até a F2-02 aterrar. `**campos`
+    continua a existir para outras colunas que um teste queira forçar
+    depois de criada a conta (por exemplo, um `tentativas_falhadas` ou
+    `bloqueado_ate` específicos); hoje nenhum teste usa isto, mas
+    removê-lo quebraria silenciosamente um teste futuro que precisasse.
     """
-    from argon2 import PasswordHasher
+    from app.services.auth import registar_admin as registar_admin_de_verdade
 
-    from tests.modelos.apoio import novo_admin
-
-    hash_password = PasswordHasher().hash(password)
-    admin = novo_admin(utilizador=utilizador, hash_password=hash_password, **campos)
-    sessao.add(admin)
-    sessao.commit()
-    sessao.refresh(admin)
+    admin = registar_admin_de_verdade(sessao, utilizador, password)
+    if campos:
+        for campo, valor in campos.items():
+            setattr(admin, campo, valor)
+        sessao.commit()
+        sessao.refresh(admin)
     return admin
 
 

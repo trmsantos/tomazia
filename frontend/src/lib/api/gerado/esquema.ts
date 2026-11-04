@@ -62,13 +62,16 @@ export interface paths {
          * Logout
          * @description Fecha a sessão, apagando o cookie. Idempotente: não exige sessão.
          *
-         *     Também incrementa `admins.sessao_versao` (`servico.terminar_sessoes`)
-         *     quando o cookie recebido ainda é válido (assinatura e validade): um
+         *     Quando o cookie recebido tem assinatura e validade boas, tenta
+         *     incrementar `admins.sessao_versao` (`servico.terminar_sessoes`) — um
          *     cookie assinado, sozinho, continuaria a servir até às 12 horas mesmo
          *     depois de um logout, porque a assinatura e a validade no tempo não
-         *     sabem que houve um pedido de logout entretanto. Sem cookie, ou com um
-         *     cookie que já não é válido por nenhuma razão, não há nada para
-         *     invalidar — fica à mesma em 204, sem tocar na base de dados.
+         *     sabem que houve um pedido de logout entretanto. "Tenta" porque
+         *     `terminar_sessoes` só mexe na linha se a versão que o cookie leva
+         *     ainda for a atual da conta: um cookie já revogado por um logout
+         *     anterior (replay) não volta a incrementar nada. Sem cookie nenhum, ou
+         *     com um cookie inválido por qualquer outra razão (assinatura,
+         *     validade), não há sequer essa tentativa. Nos três casos, 204.
          *
          *     Isto termina **todas** as sessões daquele admin, não só a deste
          *     browser; com uma conta só, por agora, não há diferença visível.
@@ -455,7 +458,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                sessao_tomazia?: string | null;
+                "__Host-sessao_tomazia"?: string | null;
             };
         };
         requestBody?: never;
@@ -519,7 +522,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                sessao_tomazia?: string | null;
+                "__Host-sessao_tomazia"?: string | null;
             };
         };
         requestBody?: never;

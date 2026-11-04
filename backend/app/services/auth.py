@@ -46,6 +46,19 @@ mecanismo chega, sem coluna nova nenhuma, à rota de mudar password que
 falta à especificação (ver `docs/TAREFAS.md`, F2-05): bastaria incrementar
 `sessao_versao` ao mudar a password, pelo mesmo caminho — não
 implementado aqui.
+
+**Achado em revisão, corrigido na mesma ronda:** uma primeira versão deste
+mecanismo incrementava `sessao_versao` sem verificar se o cookie recebido
+no logout ainda era a versão *atual* da conta. Isso abre um replay: guarda
+um cookie já revogado por um logout anterior e reenvia-o a
+`POST /auth/logout` outra vez — o incremento repete-se e mata qualquer
+sessão mais recente da mesma conta, incluindo uma legítima aberta depois
+do primeiro logout. `terminar_sessoes` por isso leva a versão que o
+cookie tinha e só incrementa **atomicamente**, com essa versão no `WHERE`
+do próprio `UPDATE` — não com um `SELECT` seguido de um `UPDATE`, que
+deixaria uma janela entre os dois para duas chamadas simultâneas lerem o
+mesmo valor antigo e incrementarem a partir dele duas vezes. Ver
+`tests/seguranca/test_logout_nao_aceita_cookie_revogado.py`.
 """
 
 from __future__ import annotations
@@ -61,7 +74,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerificationError, VerifyMismatchError
 from fastapi import Cookie, HTTPException
 from itsdangerous import BadSignature, Signer
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import obter_definicoes
@@ -81,7 +94,15 @@ DURACAO_DO_BLOQUEIO = timedelta(minutes=15)
 LIMITE_DE_TENTATIVAS = 5
 
 #: O nome do cookie de sessão. Não está fixado em `docs/ESPECIFICACAO.md`.
-NOME_DO_COOKIE = "sessao_tomazia"
+#: O prefixo `__Host-` (revisão da F2-04) é uma instrução ao **browser**,
+#: não ao servidor: só aceita gravar o cookie se vier com `Secure`,
+#: `Path=/` e sem `Domain` — os três já eram verdade aqui. Sem o prefixo,
+#: quem controle um subdomínio do domínio de produção pode escrever um
+#: `sessao_tomazia` com `Domain=` do domínio-pai e ensombrar o verdadeiro,
+#: deixando o dono aparentemente sem sessão até limpar os cookies. Sem
+#: clientes em produção ainda, muda-se agora por uma linha; depois seria
+#: uma migração de verdade.
+NOME_DO_COOKIE = "__Host-sessao_tomazia"
 
 #: O `salt` do `itsdangerous.Signer`: deriva uma chave própria para a
 #: sessão a partir do `segredo_sessao` único de `app/config.py`, para o
@@ -94,12 +115,15 @@ ETIQUETA_DO_SEGREDO = b"sessao.v1"
 #: `:`, `.`, `+`).
 SEPARADOR_DO_VALOR = "|"
 
-MENSAGEM_CREDENCIAIS_INVALIDAS = "Utilizador ou password inválidos."
-MENSAGEM_CONTA_BLOQUEADA = (
-    "Conta temporariamente bloqueada depois de várias tentativas falhadas. "
-    "Tenta novamente mais tarde."
+#: Texto do ui-ux, revisto em revisão da F2-04.
+MENSAGEM_CREDENCIAIS_INVALIDAS = (
+    "Utilizador ou password inválidos. Confirma os dois e tenta novamente."
 )
-MENSAGEM_SESSAO_EM_FALTA = "Sessão inexistente ou expirada."
+MENSAGEM_CONTA_BLOQUEADA = (
+    "Conta bloqueada durante 15 minutos, depois de várias tentativas falhadas. "
+    "Tenta novamente depois desse tempo."
+)
+MENSAGEM_SESSAO_EM_FALTA = "Sessão inexistente ou expirada. Inicia sessão novamente."
 
 #: `GET /auth/eu` e os `401` de sessão nunca podem ficar em cache — nem no
 #: browser, nem num proxy partilhado.
@@ -272,25 +296,35 @@ def exigir_admin(
     return admin
 
 
-def terminar_sessoes(sessao: Session, admin_id: int) -> None:
+def terminar_sessoes(sessao: Session, admin_id: int, sessao_versao: int) -> None:
     """Invalida todas as sessões de `admin_id`, incrementando `sessao_versao`.
 
-    Chamada por `POST /auth/logout` quando o cookie recebido é válido
-    (assinatura e validade) e ainda identifica uma conta existente — é o
-    próprio router que faz essa verificação com `ler_sessao`, antes de
-    chamar esta função. Sem conta (apagada entretanto), não há nada para
-    incrementar: fica calado, para o logout continuar idempotente.
+    Chamada por `POST /auth/logout` com o `admin_id` e a `versao` que
+    `ler_sessao` leu do cookie recebido — é o próprio router que valida a
+    assinatura e a validade antes de chamar esta função.
 
-    Incrementar em vez de guardar "a versão atual" é o que torna isto
-    seguro contra duas chamadas simultâneas (um duplo-clique no botão de
-    logout): as duas leem e escrevem o número, mas qualquer uma das duas
-    ordens finais deixa a conta com uma versão maior do que a de qualquer
-    cookie emitido antes — nunca igual.
+    **`sessao_versao` entra na condição do `UPDATE`, não só no `admin_id`.**
+    Um `UPDATE ... WHERE id = :id AND sessao_versao = :versao` só mexe na
+    linha se o cookie ainda for a versão *atual* da conta — nem conta
+    apagada (zero linhas), nem **cookie já revogado por um logout
+    anterior** (a versão que ele leva já não bate com a da linha, zero
+    linhas). Sem esta condição, repetir um `POST /auth/logout` com um
+    cookie antigo incrementava o contador outra vez e matava qualquer
+    sessão mais recente da mesma conta — um replay que torna o logout uma
+    arma contra sessões legítimas, achado em revisão.
+
+    É também o que torna isto seguro contra duas chamadas verdadeiramente
+    simultâneas (um duplo-clique no botão de logout): um `UPDATE` só, com
+    a condição e o incremento na mesma instrução SQL, não tem a janela
+    entre "ler o valor" e "escrever o valor + 1" que um `SELECT` seguido
+    de um `UPDATE` teria — a segunda chamada simultânea já não encontra a
+    versão que leu, porque a primeira já a mudou, e não faz nada.
     """
-    admin = sessao.get(Admin, admin_id)
-    if admin is None:
-        return
-    admin.sessao_versao += 1
+    sessao.execute(
+        update(Admin)
+        .where(Admin.id == admin_id, Admin.sessao_versao == sessao_versao)
+        .values(sessao_versao=Admin.sessao_versao + 1)
+    )
     sessao.commit()
 
 

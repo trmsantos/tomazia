@@ -123,6 +123,10 @@ class TestMaquinaDeEstados:
         corpo = resposta.json()
         assert {"erro", "mensagem", "segundos_em_falta"} <= set(corpo)
         assert 0 < corpo["segundos_em_falta"] <= DURACAO_DO_BLOQUEIO.total_seconds()
+        # O código, não só a forma: a F4-01 vai ramificar por este valor
+        # para mostrar o tempo que falta, e um rename silencioso passaria
+        # com o `<=` acima sozinho.
+        assert corpo["erro"] == "conta_bloqueada"
 
     def test_bloqueio_regista_cinco_tentativas_e_quinze_minutos_na_bd(
         self,

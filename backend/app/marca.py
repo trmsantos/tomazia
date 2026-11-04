@@ -36,7 +36,13 @@ VALOR_EXIGIDO = "1"
 #: `HEAD` a cada `GET`.
 METODOS_DE_MUTACAO = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-MENSAGEM_CABECALHO_EM_FALTA = "Esta operação exige o cabeçalho X-Tomazia com o valor 1."
+#: Texto do ui-ux, revisto em revisão da F2-04: a frase anterior nomeava o
+#: cabeçalho e o valor exato esperado. Não é uma vulnerabilidade — a guarda
+#: não depende de o nome ser secreto, depende de um browser não conseguir
+#: pôr um cabeçalho à sua escolha num pedido de outra origem — mas é
+#: divulgação desnecessária, e lia-se como avaria nossa em vez de um
+#: pedido recusado de propósito.
+MENSAGEM_CABECALHO_EM_FALTA = "Não foi possível processar este pedido a partir daqui."
 
 
 class GuardaXTomazia(BaseHTTPMiddleware):
