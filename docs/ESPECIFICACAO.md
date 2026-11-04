@@ -88,6 +88,18 @@ Fotos: ignora nome e `Content-Type` do cliente; Pillow abre e valida (JPEG, PNG,
 | S-12 | Pasta de deploy com `.claude/`, `CLAUDE.md`, `docs/`, `tests/` ou `e2e/` | CI falha |
 | S-13 | `dangerouslySetInnerHTML` no frontend | ESLint falha |
 
+O S-07 tem uma consequência que é melhor estar escrita do que ser redescoberta
+como se fosse defeito: **a sexta tentativa revela que a conta existe.** Quem
+mande seis passwords erradas recebe `429 conta_bloqueada` se o utilizador
+existir, e `400` para sempre se não existir — a paridade perfeita das respostas
+de falha, que o login mantém até à quinta, não sobrevive ao bloqueio. Decidido
+pelo Tomás a 4 de novembro de 2026: fica como está. O que se revela é que
+existe uma conta com aquele nome, num site com **uma só** conta de admin, criada
+por SSH, cujo nome não é segredo. Fechá-lo custaria ou deixar o dono bloqueado
+sem explicação durante 15 minutos (e a F4-01 sem o contador que vai mostrar),
+ou uma tabela de tentativas por IP.
+
+
 ## Critérios de qualidade
 
 | ID | Critério |
