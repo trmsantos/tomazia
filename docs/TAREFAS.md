@@ -188,9 +188,15 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 ### F3-04 Eventos
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa.
+- **O que se sabe do bar, e com que confiança** (perguntado ao Tomás em 2026-11-02). Fica escrito porque esta é a área onde mais vezes se inventaram factos nesta sessão, e porque a diferença entre «sabemos» e «achamos» desapareceu duas vezes ao ser repetida:
+  - **Há uma noite de samba às quintas-feiras.** Confirmado pelo Tomás.
+  - **A cadência é incerta.** Palavras dele: «é sempre na 3ª quinta-feira do mês, penso eu, não tenho a certeza». Qualquer desenho que dependa de ser a 1.ª, a 3.ª ou todas as semanas está a assumir o que ninguém confirmou.
+  - **A entrada é sempre livre.** Não há eventos pagos nem consumo mínimo — logo o cartão não fala de preço, e isso é uma decisão, não uma omissão.
+  - **A hora mostra-se sempre.** O Tomás recusou a convenção de `00:00` significar «sem hora»: é escondida, e prefere não a ter.
+- **Consequência de haver repetição:** três cartões podem ser o mesmo evento em três datas, e aí a secção não diz mais nada a quem olha. **Não se desduplica por título** — é frágil, e faria o dono perguntar porque é que o evento dele desapareceu do site.
 - **Depende de:** F3-01, F2-09.
-- **Faz:** secção "Esta semana" com até três eventos.
-- **Feito quando:** secção escondida sem eventos; datas em `Europe/Lisbon`.
+- **Faz:** secção "Próximos eventos" com até três (ADR 0015 — o título era "Esta semana" e mentia com um evento a três semanas).
+- **Feito quando:** secção escondida sem eventos; datas em `Europe/Lisbon`. E «sem eventos» e «não consegui perguntar» não podem dar o mesmo ecrã: sem eventos a secção some, com o pedido falhado ela aparece com o erro.
 
 ### F3-05 Galeria e envio de fotos
 

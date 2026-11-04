@@ -187,6 +187,14 @@ export default {
     },
     borderWidth: { 0: "0px", DEFAULT: "var(--contorno-fino)" },
 
+    // A caixa do cartaz de um evento (F3-04, 6.2). Substituída e não
+    // estendida, como as outras escalas: `aspect-square` e `aspect-video`
+    // deixam de existir e `aspect-cartaz` passa a ser o único nome que há.
+    // Não havia um único `aspect-*` em `src/` antes desta entrada, por isso
+    // substituir não tira nada a ninguém; a grelha da galeria (F3-05)
+    // acrescenta aqui o nome dela quando precisar.
+    aspectRatio: { cartaz: "var(--cartaz-proporcao)" },
+
     // Existem para o caso de alguém precisar de afinar o anel num sítio; a
     // regra `:focus-visible` da camada base é que o desenha em todo o lado,
     // por isso estas utilidades não chegam a ser geradas.

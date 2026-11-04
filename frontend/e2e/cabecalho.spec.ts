@@ -238,8 +238,8 @@ test.describe("as duas camadas, a 390", () => {
       if (caixaDoTitulo.y < fundoDasCamadas - PIXEL && !(await noFimDaPagina(page))) {
         falhas.push(
           `${nome}: o título ficou em y=${caixaDoTitulo.y.toFixed(1)}, tapado pelas duas ` +
-            `camadas que acabam em ${fundoDasCamadas.toFixed(1)}, e a página não está ` +
-            "no fim",
+            `camadas que acabam em ${fundoDasCamadas.toFixed(1)}, e a ementa ainda ` +
+            "podia subir",
         );
       }
 

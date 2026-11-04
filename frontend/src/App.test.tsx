@@ -24,7 +24,7 @@ import App from "./App";
 import { INFO_SEM_REDE } from "./testes/cabecalho";
 import { EMENTA_DE_TESTE, ID_DA_SECCAO, NOME_DO_BAR, TEXTOS_DA_EMENTA } from "./testes/ementa";
 import { instalarDeslocamento, instalarMatchMedia } from "./testes/jsdom-da-ementa";
-import { obterEmenta, obterInfo } from "./lib/api/publico";
+import { obterEmenta, obterEventos, obterInfo } from "./lib/api/publico";
 
 /*
  * Desde a F3-03 o `App` pede duas coisas ao montar: a ementa e o `/info`, que
@@ -32,13 +32,24 @@ import { obterEmenta, obterInfo } from "./lib/api/publico";
  * uma fábrica de mock substitui o módulo inteiro, e uma exportação que falte
  * chega ao código como `undefined` em vez de dar erro no mock.
  */
-vi.mock("./lib/api/publico", () => ({ obterEmenta: vi.fn(), obterInfo: vi.fn() }));
+vi.mock("./lib/api/publico", () => ({
+  obterEmenta: vi.fn(),
+  obterEventos: vi.fn(),
+  obterInfo: vi.fn(),
+}));
 
 async function desenhar() {
   const deslocamento = instalarDeslocamento();
   const media = instalarMatchMedia();
   vi.mocked(obterEmenta).mockResolvedValue(EMENTA_DE_TESTE);
   vi.mocked(obterInfo).mockResolvedValue(INFO_SEM_REDE);
+  /*
+   * Sem eventos marcados: a secção da F3-04 não existe, e a árvore que este
+   * ficheiro mede é a mesma de antes dela. O `mockResolvedValue` é
+   * obrigatório e não higiene — um `vi.fn()` sem valor devolve `undefined`,
+   * e o `.then` do componente rebenta dentro do efeito.
+   */
+  vi.mocked(obterEventos).mockResolvedValue({ eventos: [] });
 
   const resultado = render(<App />);
   await screen.findByRole("navigation", { name: TEXTOS_DA_EMENTA.nomeDaBarra });

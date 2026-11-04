@@ -212,18 +212,19 @@ async function provarOSalto(pagina: Page): Promise<void> {
       continue;
     }
 
-    // Ou o título está abaixo da barra, ou a página está no seu máximo de
-    // deslocamento. O segundo ramo é o caso da última categoria com um
-    // cartão curto: nesta tarefa a ementa é a última coisa da página e não
-    // há conteúdo por baixo para a empurrar. **Não se resolve com um
-    // preenchimento falso no fim da página**; resolve-se sozinho na F3-06,
-    // quando houver rodapé. Fica como nota para a F3-07 reconfirmar.
+    // Ou o título está abaixo da barra, ou **o browser já não conseguiu
+    // deslizar mais**. O segundo ramo é o caso da última categoria com um
+    // cartão curto, e a desculpa que ele codifica é literalmente "a página
+    // está no fundo" — por isso o predicado é o estrito. Com a secção dos
+    // eventos fingida vazia (`abrirAEmenta`), o fundo da página é o fundo
+    // da ementa e a barra de chips ainda está no ecrã, que é a geometria
+    // para a qual o scroll-spy de 3.3 foi escrito.
     const tapado = caixaDoTitulo.y < caixaDaBarra.y + caixaDaBarra.height - 1;
     if (tapado && !(await noFimDaPagina(pagina))) {
       falhas.push(
         `${nome}: o título ficou em y=${caixaDoTitulo.y.toFixed(1)}, tapado pela barra ` +
-          `que acaba em ${(caixaDaBarra.y + caixaDaBarra.height).toFixed(1)}, e a página ` +
-          "não está no fim. É o `scroll-padding-top` de 11 que faz isto passar.",
+          `que acaba em ${(caixaDaBarra.y + caixaDaBarra.height).toFixed(1)}, e a ementa ` +
+          "ainda podia subir. É o `scroll-padding-top` de 11 que faz isto passar.",
       );
     }
 
@@ -240,14 +241,15 @@ async function provarOSalto(pagina: Page): Promise<void> {
     // A mesma alternativa escrita da asserção do "tapado", e pela mesma
     // razão: com a página no seu máximo de deslocamento, o guarda 2 de 3.3
     // manda ativar a **última** categoria, e nenhum salto a pode
-    // contrariar. Nesta tarefa a ementa é a última coisa da página; com o
-    // rodapé da F3-06 estes casos deixam de existir.
+    // contrariar. O predicado é o mesmo que o `noFundo` de `Ementa.tsx`
+    // avalia em produção — qualquer um mais largo desculpava falhas que o
+    // guarda 2 nunca chegou a causar.
     const ultimo = await chips(pagina).last().getAttribute("href");
     if ((await noFimDaPagina(pagina)) && ativo === ultimo) continue;
 
     falhas.push(
       `${nome}: carreguei no chip «${href}», o ativo ficou «${String(ativo)}» e a ` +
-        "página não está no fim — é o «mais um píxel» da linha de leitura (3.3) a " +
+        "ementa ainda podia subir — é o «mais um píxel» da linha de leitura (3.3) a " +
         "faltar, ou a linha está a ser comparada com o topo do título em vez do " +
         "topo da secção, que é o que o `scroll-padding-top` alinha.",
     );
@@ -278,10 +280,23 @@ test.describe("o salto para uma categoria", () => {
       "no topo da página, a primeira categoria (guarda 1 de 3.3)",
     ).toHaveAttribute("href", (await chips(page).first().getAttribute("href")) ?? "");
 
+    /*
+     * **E o fim da página é o fim da ementa** — não por acaso, mas porque o
+     * `abrirAEmenta` responde «não há eventos» a `GET /api/eventos` (F3-04,
+     * 14). Sem isso, a secção dos eventos ficava por baixo, aqui em baixo a
+     * barra de chips já estava fora do ecrã, e esta asserção falava de um
+     * chip que ninguém podia ver. O guarda a seguir é o que o escreve.
+     */
     await page.evaluate(() => {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     });
     await esperarQueAPaginaPare(page);
+    await expect(
+      barra(page),
+      "no fundo desta página a barra de chips tem de continuar à vista — se não " +
+        "estiver, alguém pôs conteúdo por baixo da ementa e esta asserção passou a " +
+        "ser sobre um chip fora do ecrã",
+    ).toBeVisible();
     await expect(page.locator('[aria-current="true"]')).toHaveCount(1);
     await expect(
       page.locator('[aria-current="true"]'),

@@ -39,7 +39,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
-import { FICHEIROS_DA_F3_02, FICHEIROS_DA_F3_03 } from "./testes/ecras";
+import { FICHEIROS_DA_F3_02, FICHEIROS_DA_F3_03, FICHEIROS_DA_F3_04 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -100,6 +100,12 @@ function ficheirosDaInterface(): string[] {
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "components"), { extensoes: [".ts", ".tsx"] }),
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "demonstracao"), { extensoes: [".ts", ".tsx"] }),
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "pages"), { extensoes: [".ts", ".tsx"] }),
+    // `src/lib/formato/` entra na F3-04: é lá que vive a tabela dos sete dias
+    // e dos doze meses, dezanove palavras visíveis que não estão escritas em
+    // mais lado nenhum (F3-04, 5.4 e 9, Q-05).
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "formato"), {
+      extensoes: [".ts", ".tsx"],
+    }),
   ].filter((ficheiro) => !/\.test\.tsx?$/.test(ficheiro));
 }
 
@@ -117,7 +123,12 @@ function ficheirosDaInterface(): string[] {
  * com texto por rever sem nenhuma varredura lhes tocar (F3-03, secção 10,
  * Q-05).
  */
-const SENTINELAS = [...COMPONENTES_DA_F3_01, ...FICHEIROS_DA_F3_02, ...FICHEIROS_DA_F3_03];
+const SENTINELAS = [
+  ...COMPONENTES_DA_F3_01,
+  ...FICHEIROS_DA_F3_02,
+  ...FICHEIROS_DA_F3_03,
+  ...FICHEIROS_DA_F3_04,
+];
 
 describe("texto visível em português de Portugal", () => {
   it("nenhuma palavra de outro português, nem gerúndio brasileiro", () => {

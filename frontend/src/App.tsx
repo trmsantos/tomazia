@@ -5,6 +5,7 @@ import { obterInfo } from "./lib/api/publico";
 import { Cabecalho } from "./pages/publico/Cabecalho";
 import type { EstadoDoInfo } from "./pages/publico/Cabecalho";
 import { Ementa } from "./pages/publico/Ementa";
+import { Eventos } from "./pages/publico/Eventos";
 
 /**
  * A página pública (F3-02, secção 2; F3-03, secção 2).
@@ -83,6 +84,19 @@ function App(): ReactElement {
        */}
       <main className="pt-cabecalho">
         <Ementa />
+        {/*
+         * Os eventos entram **depois** da ementa (F3-04, 2.1), e é isso que
+         * deixa a ligação "Saltar para a ementa" do cabeçalho a aterrar onde
+         * aterrava: não há nada entre o cabeçalho e a ementa. Postos antes,
+         * o salto passava por cima de três cartões de evento e a correção
+         * era uma segunda ligação de salto — mais uma paragem de `Tab` para
+         * toda a gente.
+         *
+         * A secção não volta a descontar o cabeçalho: isso é do `<main>`.
+         * E pode não existir de todo — sem eventos marcados não há título,
+         * não há espaço e não há secção (F3-04, 8).
+         */}
+        <Eventos />
       </main>
     </>
   );
