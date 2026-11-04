@@ -17,7 +17,7 @@ Sobre `git diff main...HEAD` (ou o diff do PR), verifica:
 - **Segredos e dados:** nenhum `.env`, `.db`, token, password ou dado pessoal real no diff, nem na pasta de deploy.
 - **Servidor:** sem CORS aberto; CSP, HSTS e `nosniff` no `htaccess.exemplo`; scripts executáveis bloqueados em `media/`.
 - **Workflows:** permissões mínimas, ações fixadas por SHA, secrets só no ambiente `production`, nada de `pull_request_target` com checkout do PR.
-- **Dependências:** localmente, `uv run pip-audit` e `npm audit --audit-level=high`.
+- **Dependências:** localmente, `uvx pip-audit --no-deps --strict -r backend/requirements.txt` e `npm audit --audit-level=high`. **O `uv run pip-audit` nu audita o ambiente da própria ferramenta, não o do projeto** — avisa-o em `stderr` e mesmo assim produz um relatório, com CVEs de pacotes que não são nossos (o `filelock` nem sequer está no `uv.lock`). É a mesma forma que o `ci.yml` usa, para a auditoria local e a do CI responderem à mesma pergunta. Em algumas máquinas a forma do CI rebenta no `ensurepip`; se isso acontecer, diz que não conseguiste auditar em vez de dar por limpo.
 
 Localmente, corre `uv run pytest tests/seguranca -q` em `backend/`. Se `GITHUB_ACTIONS` for `true`, não corras testes: o CI já os corre.
 

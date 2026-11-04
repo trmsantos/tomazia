@@ -99,7 +99,6 @@ por SSH, cujo nome não é segredo. Fechá-lo custaria ou deixar o dono bloquead
 sem explicação durante 15 minutos (e a F4-01 sem o contador que vai mostrar),
 ou uma tabela de tentativas por IP.
 
-
 ## Critérios de qualidade
 
 | ID | Critério |
