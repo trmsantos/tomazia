@@ -22,10 +22,20 @@ dicionário na forma `{"erro", "mensagem"}` — que é o caso do
 `exigir_admin`, obrigado a isso por ter de funcionar também numa app sem
 os nossos tratadores registados.
 
-**O que este teste deixa passar:** só olha para literais. Um
-`raise HTTPException(404, detail=mensagem)` com a mensagem numa variável
-passa. Prende a forma que alguém escreve por distração, não a que alguém
-escreve de propósito — e é a primeira que faz falta apanhar.
+**O que este teste deixa passar**, e a primeira versão dizia menos do
+que a verdade: passa um `detail` numa variável, um `HTTPException`
+importado com outro nome (`from fastapi import HTTPException as HE`), e
+um `detail` que entre por `**kwargs`. A f-string **era** o buraco que
+importava — `f"Categoria {nome} não existe."` é um `ast.JoinedStr` e não
+um `ast.Constant`, e é precisamente a forma mais provável do erro real,
+porque a mensagem que alguém quer escrever é a que nomeia o recurso.
+Apanhada em revisão e fechada: os dois nós são tratados igual.
+
+A concatenação implícita de literais adjacentes é apanhada de graça — o
+parser funde-as num só `Constant`.
+
+Os três buracos que ficam **falham fechados**: o `detail` descartado vira
+a frase genérica em PT-PT, nunca uma fuga.
 
 A leitura é por AST e não por `grep`: um `grep` que não consiga procurar
 e um `grep` que não encontre nada saem os dois com estado diferente de
@@ -62,6 +72,21 @@ def _detalhe_da_chamada(chamada: ast.Call) -> ast.expr | None:
     return None
 
 
+def _texto_do_detalhe(detalhe: ast.expr | None) -> str | None:
+    """O `detail` quando é texto escrito à mão, senão `None`.
+
+    Reconhece o literal (`ast.Constant`) **e** a f-string
+    (`ast.JoinedStr`). A segunda é a que faz falta apanhar: quem escreve
+    uma mensagem de erro quer nomear o recurso, logo escreve
+    `f"Categoria {nome} não existe."` — e essa não é um `Constant`.
+    """
+    if isinstance(detalhe, ast.Constant) and isinstance(detalhe.value, str):
+        return repr(detalhe.value)
+    if isinstance(detalhe, ast.JoinedStr):
+        return f"f-string em {ast.unparse(detalhe)[:60]!r}"
+    return None
+
+
 def test_nenhuma_http_exception_da_app_leva_um_detail_em_texto() -> None:
     ficheiros = sorted(PASTA_DA_APP.rglob("*.py"))
 
@@ -84,10 +109,11 @@ def test_nenhuma_http_exception_da_app_leva_um_detail_em_texto() -> None:
 
         for chamada in _chamadas_a_http_exception(arvore):
             detalhe = _detalhe_da_chamada(chamada)
-            if isinstance(detalhe, ast.Constant) and isinstance(detalhe.value, str):
+            texto = _texto_do_detalhe(detalhe)
+            if texto is not None:
                 faltas.append(
                     f"{ficheiro.relative_to(PASTA_DA_APP.parent)}:{chamada.lineno} "
-                    f"-> detail={detalhe.value!r}"
+                    f"-> detail={texto}"
                 )
 
     assert not faltas, (

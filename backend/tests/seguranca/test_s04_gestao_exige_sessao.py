@@ -235,9 +235,8 @@ class TestCamada4Estrutural:
         protege qualquer rota que a F2-05 e a F2-06 lá venham a pôr, sem
         ninguém ter de se lembrar de o repetir rota a rota.
         """
-        from app.services.auth import exigir_admin
-
         from app.routers import gestao
+        from app.services.auth import exigir_admin
 
         dependencias = {d.dependency for d in gestao.router.dependencies}
         assert exigir_admin in dependencias, (
