@@ -17,7 +17,9 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from app.config import obter_definicoes
-from app.routers import publico, saude
+from app.erros import registar_tratadores_de_erro
+from app.marca import GuardaXTomazia
+from app.routers import auth, gestao, publico, saude
 
 #: Instante, em UTC, em que este *processo* importou `app.main` — não em
 #: que um pedido chegou, nem em que `criar_app()` correu. É calculado uma
@@ -64,8 +66,15 @@ def criar_app() -> FastAPI:
     # é sempre o mesmo porque a constante já estava calculada antes.
     aplicacao.state.arrancado_em = ARRANCADO_EM
 
+    # Middleware sobre o método, não `Depends` por rota (S-06): aplica-se a
+    # qualquer pedido, incluindo rotas acrescentadas depois deste ponto.
+    aplicacao.add_middleware(GuardaXTomazia)
+    registar_tratadores_de_erro(aplicacao)
+
     aplicacao.include_router(saude.router)
     aplicacao.include_router(publico.router)
+    aplicacao.include_router(auth.router)
+    aplicacao.include_router(gestao.router, prefix="/gestao", tags=["gestao"])
     return aplicacao
 
 

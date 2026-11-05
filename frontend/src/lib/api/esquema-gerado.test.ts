@@ -45,7 +45,22 @@ const CAMINHO_DO_ESQUEMA = join(RAIZ_FRONTEND, "src", "lib", "api", "gerado", "e
  * saúde do servidor), mas faz parte do contrato e a sua ausência aqui
  * quereria dizer que o esquema foi gerado de um `app/main.py` incompleto.
  */
-const ROTAS = ["/ementa", "/eventos", "/galeria", "/health", "/info"];
+/**
+ * As rotas que fazem parte do contrato versionado. As três de `/auth/*`
+ * entraram na F2-04: a partir daí o ecrã de gestão da F4-01 depende
+ * delas, e uma que desapareça do OpenAPI sem ninguém dar por isso só
+ * se nota no browser.
+ */
+const ROTAS = [
+  "/auth/eu",
+  "/auth/login",
+  "/auth/logout",
+  "/ementa",
+  "/eventos",
+  "/galeria",
+  "/health",
+  "/info",
+];
 
 /** Os quatro envelopes nomeados de `app/schemas/publico.py`. */
 const ENVELOPES = ["RespostaEmenta", "RespostaEventos", "RespostaGaleria", "RespostaInfo"];

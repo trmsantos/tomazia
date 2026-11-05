@@ -16,6 +16,18 @@ dependencies = [
     # `ZoneInfoNotFoundError`. O `tzdata` é um pacote só de dados, puro
     # Python, e torna o comportamento independente da máquina.
     "tzdata",
+    # F2-04 (autenticação): `docs/ESPECIFICACAO.md` fixa argon2id para o
+    # hash das passwords dos admins. Adicionado já pela F2-04 porque os
+    # testes de login precisam de criar uma conta com um hash verdadeiro
+    # (não há rota de registo — S-05 — por isso os testes semeiam a conta
+    # diretamente, em `tests/apoio_auth.py::registar_admin`); o serviço de
+    # autenticação em `app/services/auth.py` é quem o usa em produção.
+    "argon2-cffi",
+    # F2-04 (autenticação), decisão do Tomás de 4 de novembro de 2026: o
+    # cookie de sessão é assinado com `itsdangerous`, não com `hmac` escrito
+    # à mão — num primitivo de segurança, código revisto por muita gente em
+    # vez de trinta linhas nossas.
+    "itsdangerous",
 ]
 
 [dependency-groups]

@@ -4,6 +4,89 @@
  */
 
 export interface paths {
+    "/auth/eu": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Eu
+         * @description Quem está autenticado. `401 {"erro": "sessao_em_falta"}` sem sessão válida.
+         */
+        get: operations["eu_auth_eu_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login
+         * @description Verifica as credenciais e abre sessão.
+         *
+         *     `400 {"erro": "credenciais_invalidas"}` para utilizador inexistente,
+         *     password errada, ou os dois — sempre a mesma resposta (ver
+         *     `app.services.auth.autenticar`). `429 {"erro": "conta_bloqueada", ...}`
+         *     depois de 5 falhas seguidas.
+         */
+        post: operations["login_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Fecha a sessão, apagando o cookie. Idempotente: não exige sessão.
+         *
+         *     Quando o cookie recebido tem assinatura e validade boas, tenta
+         *     incrementar `admins.sessao_versao` (`servico.terminar_sessoes`) — um
+         *     cookie assinado, sozinho, continuaria a servir até às 12 horas mesmo
+         *     depois de um logout, porque a assinatura e a validade no tempo não
+         *     sabem que houve um pedido de logout entretanto. "Tenta" porque
+         *     `terminar_sessoes` só mexe na linha se a versão que o cookie leva
+         *     ainda for a atual da conta: um cookie já revogado por um logout
+         *     anterior (replay) não volta a incrementar nada. Sem cookie nenhum, ou
+         *     com um cookie inválido por qualquer outra razão (assinatura,
+         *     validade), não há sequer essa tentativa. Nos três casos, 204.
+         *
+         *     Isto termina **todas** as sessões daquele admin, não só a deste
+         *     browser; com uma conta só, por agora, não há diferença visível.
+         *
+         *     O `delete_cookie` repete exatamente `path` e `samesite` do
+         *     `set_cookie` do login — um atributo diferente faz o browser tratá-los
+         *     como dois cookies distintos e não apaga nada.
+         */
+        post: operations["logout_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ementa": {
         parameters: {
             query?: never;
@@ -201,6 +284,21 @@ export interface components {
             /** Id */
             id: number;
         };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * PedidoLogin
+         * @description Corpo de `POST /auth/login`.
+         */
+        PedidoLogin: {
+            /** Password */
+            password: string;
+            /** Utilizador */
+            utilizador: string;
+        };
         /**
          * PeriodoDoHorario
          * @description Um intervalo de um dia, em hora de relógio de `Europe/Lisbon`.
@@ -230,6 +328,19 @@ export interface components {
             nome: string;
             /** Preco Cent */
             preco_cent: number;
+        };
+        /**
+         * RespostaAdmin
+         * @description Corpo de `GET /auth/eu` e do sucesso de `POST /auth/login`.
+         *
+         *     Nunca o `hash_password`: só o que a área de gestão precisa para saber
+         *     quem está autenticado.
+         */
+        RespostaAdmin: {
+            /** Id */
+            id: number;
+            /** Utilizador */
+            utilizador: string;
         };
         /**
          * RespostaEmenta
@@ -303,6 +414,19 @@ export interface components {
             /** Versao */
             versao: string;
         };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+        };
         /**
          * WifiPublico
          * @description Rede e password do WiFi, as duas juntas porque a folha as mostra juntas.
@@ -328,6 +452,99 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    eu_auth_eu_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoLogin"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaAdmin"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     obter_ementa_ementa_get: {
         parameters: {
             query?: never;
