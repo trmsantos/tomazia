@@ -17,7 +17,14 @@ redescobrir):
   muda com uma versão nova do Pillow que o Dependabot sobe sozinho. Só
   `Image.frombytes(im.mode, im.size, im.tobytes())`, sobre os píxeis nus,
   esvazia o `info` por completo (e com ele o `xmp`, o `icc_profile` e o
-  `comment`, que também vivem lá).
+  `comment`, que também vivem lá);
+- **deitar fora o EXIF sem aplicar a orientação primeiro deixa a foto
+  deitada.** Um telemóvel grava a imagem tal como o sensor a viu e guarda
+  a rotação só na etiqueta `Orientation` — o caso **normal**, não a
+  exceção. `ImageOps.exif_transpose(imagem)` lê essa etiqueta e roda os
+  píxeis antes de o `frombytes` apagar o EXIF; sem isto, o `frombytes`
+  livra-se da etiqueta mas nunca da rotação que ela descrevia, e a galeria
+  do bar enchia-se de fotos de lado.
 
 `Image.MAX_IMAGE_PIXELS` fica fixado ao `LIMITE_DE_PIXEIS` à importação
 deste módulo — como segunda camada, não a única: quem decide é mesmo a
@@ -28,7 +35,7 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 #: Decisão do Tomás, 5 de novembro de 2026.
 LIMITE_DE_PIXEIS = 30_000_000
@@ -103,12 +110,23 @@ def recodificar(origem: bytes) -> bytes:
     except OSError as erro:
         raise ImagemInvalida("a imagem está truncada ou corrompida") from erro
 
+    # Aplica a rotação da etiqueta EXIF `Orientation` aos píxeis **antes**
+    # de o `frombytes`, mais abaixo, apagar essa etiqueta para sempre — o
+    # caso normal de uma foto de telemóvel, não a exceção. Nome novo
+    # (`endireitada`, não `imagem`): o mypy tinha `imagem` como
+    # `ImageFile`, estreito demais para o que `exif_transpose` devolve.
+    endireitada = ImageOps.exif_transpose(imagem)
+    # `None` só é possível com `in_place=True` (não é o que usamos acima):
+    # com o omisso `in_place=False`, a função devolve sempre uma imagem,
+    # cópia ou transposta.
+    assert endireitada is not None
+
     # `convert("RGB")` antes do `frombytes`: uma imagem `P` (paleta, comum
     # em PNG) só faz sentido lida através da sua paleta — tirar os bytes
     # nus do modo `P` sem converter primeiro trocava as cores por índices
     # de paleta perdidos. A conversão corre sobre `imagem` (que ainda tem
     # metadados); é o `frombytes` a seguir que os descarta.
-    convertida = imagem.convert("RGB")
+    convertida = endireitada.convert("RGB")
     sem_metadados = Image.frombytes(
         convertida.mode, convertida.size, convertida.tobytes()
     )

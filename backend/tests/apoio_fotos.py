@@ -351,9 +351,6 @@ def cliente_admin_com_ip(ip: str, porta: int = 54321) -> TestClient:
 MODULOS_COM_RELOGIO_FOTOS = (
     "app.routers.fotos",
     "app.services.fotos",
-    "app.services.imagens",
-    "app.routers.publico",
-    "app.routers.gestao",
 )
 
 

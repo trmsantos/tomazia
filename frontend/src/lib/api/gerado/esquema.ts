@@ -765,7 +765,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    descricao?: string;
+                    enviada_por?: string;
+                    /** Format: binary */
+                    ficheiro: string;
+                    website?: string;
+                };
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {

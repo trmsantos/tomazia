@@ -37,12 +37,25 @@ BASE = datetime(2026, 6, 20, 10, 0, tzinfo=UTC)
 
 
 def _semear_pendente(sessao: Session, *, id_foto: int, criada_em: datetime) -> None:
+    """Semeia uma linha `pendente` **e** o ficheiro falso que lhe corresponde.
+
+    Achado em revisão: uma primeira versão só semeava a linha, sem bytes
+    nenhuns em `pendentes/`. Isso moldava `app.services.fotos.aprovar` a
+    ter de tolerar um `os.replace` sobre um ficheiro inexistente — o
+    molde certo é o oposto: um envio real tem sempre ficheiro, e é isso
+    que esta fixture passa a garantir. `app.services.fotos.aprovar`
+    continua a distinguir "não havia nada para mover" (`FileNotFoundError`)
+    de qualquer outro `OSError`, mas nenhum teste desta bateria precisa já
+    de exercitar esse caminho através de uma linha sem ficheiro.
+    """
+    from app.config import obter_definicoes
     from app.models.fotos import EstadoFoto, Foto
 
+    ficheiro = f"00000000-0000-4000-8000-{id_foto:012d}.webp"
     sessao.add(
         Foto(
             id=id_foto,
-            ficheiro=f"00000000-0000-4000-8000-{id_foto:012d}.webp",
+            ficheiro=ficheiro,
             estado=EstadoFoto.PENDENTE,
             descricao=None,
             enviada_por=None,
@@ -52,6 +65,10 @@ def _semear_pendente(sessao: Session, *, id_foto: int, criada_em: datetime) -> N
         )
     )
     sessao.commit()
+
+    definicoes = obter_definicoes()
+    definicoes.pendentes_dir.mkdir(parents=True, exist_ok=True)
+    (definicoes.pendentes_dir / ficheiro).write_bytes(b"bytes-falsos-de-uma-foto")
 
 
 class TestListaDeModeracao:

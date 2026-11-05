@@ -22,6 +22,10 @@ from app.schemas.fotos import RespostaFilaDeModeracao, RespostaModeracao
 from app.services import fotos as servico
 from app.services.auth import exigir_admin
 
+#: Nunca em cache: a foto que o dono acabou de rejeitar não pode continuar
+#: a aparecer a partir da cache do browser dele.
+SEM_CACHE = "no-store"
+
 router = APIRouter(dependencies=[Depends(exigir_admin)])
 
 
@@ -35,7 +39,11 @@ def listar_fotos_pendentes(sessao: SessaoDaBD) -> RespostaFilaDeModeracao:
 def obter_imagem_pendente(id: int, sessao: SessaoDaBD) -> Response:
     """Os bytes de uma foto, pendente ou já aprovada. `404` sem ela (S-03)."""
     conteudo = servico.obter_bytes_da_imagem(sessao, id)
-    return Response(content=conteudo, media_type="image/webp")
+    return Response(
+        content=conteudo,
+        media_type="image/webp",
+        headers={"Cache-Control": SEM_CACHE},
+    )
 
 
 @router.post("/fotos/{id}/aprovar", response_model=RespostaModeracao)

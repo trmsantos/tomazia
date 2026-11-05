@@ -55,6 +55,9 @@ TABELAS_ESPERADAS = frozenset(
         "clientes",
         "admins",
         "definicoes",
+        # F2-06: sustenta o limite de 5 envios por hora por IP, contando
+        # tentativas (não só envios aceites) — ver `app/models/limites.py`.
+        "tentativas_de_envio",
     }
 )
 
@@ -97,13 +100,14 @@ def _caminho_da_base_de_dados() -> Path:
     return Path(url.database)
 
 
-def _exigir_as_sete_tabelas(motor_da_sessao: Engine, origem: str) -> None:
+def _exigir_as_tabelas_esperadas(motor_da_sessao: Engine, origem: str) -> None:
     from sqlalchemy import inspect
 
     tabelas = set(inspect(motor_da_sessao).get_table_names()) - {"alembic_version"}
     assert tabelas == set(TABELAS_ESPERADAS), (
         f"o esquema construído por `{origem}` tem {sorted(tabelas)} em vez "
-        f"das sete tabelas. A falha é da fixture, não do teste"
+        f"das {len(TABELAS_ESPERADAS)} tabelas esperadas. A falha é da "
+        "fixture, não do teste"
     )
 
 
@@ -123,6 +127,7 @@ def motor(request: pytest.FixtureRequest, origem_do_esquema: str) -> Iterator[En
         ementa,
         eventos,
         fotos,
+        limites,
     )
 
     if origem_do_esquema == "migracao":
@@ -142,7 +147,7 @@ def motor(request: pytest.FixtureRequest, origem_do_esquema: str) -> Iterator[En
     if origem_do_esquema == "modelos":
         Base.metadata.create_all(motor_da_sessao)
 
-    _exigir_as_sete_tabelas(motor_da_sessao, origem_do_esquema)
+    _exigir_as_tabelas_esperadas(motor_da_sessao, origem_do_esquema)
 
     yield motor_da_sessao
     motor_da_sessao.dispose()

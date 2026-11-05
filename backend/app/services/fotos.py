@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 from typing import Any, cast
 
 from sqlalchemy import CursorResult, Update, select, update
@@ -41,6 +42,7 @@ from app.models.fotos import EstadoFoto, Foto
 from app.models.tipos import agora_utc
 from app.schemas.fotos import FotoPendente, RespostaFilaDeModeracao
 from app.services import imagens
+from app.services import limites as servico_limites
 
 #: `docs/ESPECIFICACAO.md`: "8 MB". A verificação autoritária sobre os
 #: bytes do ficheiro — não confundir com o teto de `Content-Length` de
@@ -48,13 +50,33 @@ from app.services import imagens
 #: inteiro é maior do que o ficheiro que leva lá dentro).
 LIMITE_DE_BYTES_DO_FICHEIRO = 8 * 1024 * 1024
 
-MENSAGEM_FICHEIRO_GRANDE_DEMAIS = "O ficheiro é demasiado grande. O limite é de 8 MB."
+#: `fotos.descricao` e `fotos.enviada_por` (`app/models/fotos.py`): o
+#: SQLite não impõe o `String(255)`/`String(60)` do modelo — guarda
+#: qualquer tamanho, sem se queixar — por isso a fronteira tem de recusar
+#: antes de o texto chegar à base de dados.
+LIMITE_DESCRICAO = 255
+LIMITE_ENVIADA_POR = 60
+
+#: Texto do dominio-bar: fala com quem está de pé, no bar, com barulho —
+#: nunca com as siglas do nosso pipeline (o visitante não escolheu WebP,
+#: é o formato em que a foto *sai*) nem com uma instrução técnica
+#: ("reduz o tamanho") a quem só tem uma mão livre.
+MENSAGEM_FICHEIRO_GRANDE_DEMAIS = (
+    "O ficheiro é demasiado grande. O limite é de 8 MB. Tenta outra foto."
+)
 MENSAGEM_IMAGEM_INVALIDA = (
-    "O ficheiro enviado não é uma imagem válida (JPEG, PNG ou WebP). "
-    "Tenta outro ficheiro."
+    "Não consegui usar esta fotografia. Tenta enviá-la outra vez ou escolhe outra foto."
 )
 MENSAGEM_IMAGEM_DEMASIADO_GRANDE = (
-    "A imagem é demasiado grande. Reduz o tamanho e tenta novamente."
+    "Esta foto é demasiado grande para o site. Tenta outra foto."
+)
+MENSAGEM_DESCRICAO_GRANDE_DEMAIS = (
+    f"Essa legenda é demasiado longa (até {LIMITE_DESCRICAO} carateres). "
+    "Tenta encurtá-la."
+)
+MENSAGEM_ENVIADA_POR_GRANDE_DEMAIS = (
+    f"Esse nome é demasiado longo (até {LIMITE_ENVIADA_POR} carateres). "
+    "Tenta encurtá-lo."
 )
 MENSAGEM_FOTO_NAO_ENCONTRADA = "Esta foto não existe."
 MENSAGEM_FOTO_JA_MODERADA = "Esta foto já foi moderada."
@@ -87,11 +109,29 @@ def registar_envio(
     descricao: str | None,
     enviada_por: str | None,
 ) -> None:
-    """O caso de uso de `POST /fotos`: valida, recodifica, guarda e regista.
+    """O caso de uso de `POST /fotos`: regista a tentativa, valida, recodifica, guarda e regista.
 
     Levanta `ErroDaApi` em qualquer recusa, sem escrever nada em disco nem
-    na base de dados nesses casos.
+    em `fotos` nesses casos — mas a tentativa, essa, já ficou registada
+    (ver `app.services.limites`, e o docstring do módulo).
     """
+    # Antes de tudo o resto, incluindo o `len(conteudo)`: é a própria
+    # decisão do Tomás — contar o pedido, não o resultado — e é o que
+    # fecha o buraco medido (um ficheiro de 58 bytes que declara
+    # dimensões mesmo abaixo do limite de píxeis custa dezenas de MB de
+    # RSS no `imagens.recodificar` mais abaixo e, sem isto, não deixava
+    # rasto nenhum para o limite ver).
+    servico_limites.registar_tentativa(sessao, ip_hash, agora_utc())
+
+    if descricao is not None and len(descricao) > LIMITE_DESCRICAO:
+        raise ErroDaApi(
+            422, "descricao_grande_demais", MENSAGEM_DESCRICAO_GRANDE_DEMAIS
+        )
+    if enviada_por is not None and len(enviada_por) > LIMITE_ENVIADA_POR:
+        raise ErroDaApi(
+            422, "enviada_por_grande_demais", MENSAGEM_ENVIADA_POR_GRANDE_DEMAIS
+        )
+
     if len(conteudo) > LIMITE_DE_BYTES_DO_FICHEIRO:
         raise ErroDaApi(413, "ficheiro_grande_demais", MENSAGEM_FICHEIRO_GRANDE_DEMAIS)
 
@@ -161,6 +201,38 @@ def _foto_ou_404(sessao: Session, id_foto: int) -> Foto:
     return foto
 
 
+def _caminho_seguro(pasta: Path, nome: str) -> Path | None:
+    """O caminho de `nome` dentro de `pasta`, só se for mesmo e só lá dentro.
+
+    Defesa em profundidade, no padrão das três guardas do
+    `servirMediaEmDesenvolvimento` de `frontend/vite.config.ts`. Hoje
+    `nome` vem sempre de `uuid4().hex` e o `CHECK` da F2-01 recusa `/`,
+    `\\` e `..` em `fotos.ficheiro` — não há ataque nenhum a escrever
+    aqui. Mas a F2-08 escreve nesta tabela por SQL cru, sem passar pela
+    API, e esta função passa a ser a última linha, não a primeira:
+    - `is_symlink()` recusa qualquer ligação, mesmo uma que aponte para
+      dentro da própria pasta — nunca servir uma ligação, só o ficheiro;
+    - `resolve()` segue o resto do caminho e `is_relative_to` confirma que
+      o resultado continua dentro de `pasta` — contra um `nome` que fosse
+      `..` disfarçado;
+    - o nome **resolvido** comparado, exato, com `nome`: o macOS ignora
+      maiúsculas no sistema de ficheiros e o servidor de produção não, e
+      sem isto `CARTAZ.webp` serviria o que está guardado como
+      `cartaz.webp`.
+    """
+    candidato = pasta / nome
+    if candidato.is_symlink():
+        return None
+    candidato = candidato.resolve()
+    if not candidato.is_relative_to(pasta.resolve()):
+        return None
+    if not candidato.is_file():
+        return None
+    if candidato.name != nome:
+        return None
+    return candidato
+
+
 def obter_bytes_da_imagem(sessao: Session, id_foto: int) -> bytes:
     """Os bytes do ficheiro de `id_foto`, de `pendentes/` ou de `MEDIA_DIR`.
 
@@ -171,8 +243,8 @@ def obter_bytes_da_imagem(sessao: Session, id_foto: int) -> bytes:
     foto = _foto_ou_404(sessao, id_foto)
     definicoes = obter_definicoes()
     for pasta in (definicoes.pendentes_dir, definicoes.media_dir):
-        caminho = pasta / foto.ficheiro
-        if caminho.exists():
+        caminho = _caminho_seguro(pasta, foto.ficheiro)
+        if caminho is not None:
             return caminho.read_bytes()
     raise ErroDaApi(404, "foto_nao_encontrada", MENSAGEM_FOTO_NAO_ENCONTRADA)
 
@@ -198,15 +270,22 @@ def aprovar(sessao: Session, id_foto: int) -> Foto:
     definicoes = obter_definicoes()
     origem = definicoes.pendentes_dir / foto.ficheiro
     destino = definicoes.media_dir / foto.ficheiro
-    # `origem.exists()` guarda o facto de o ficheiro ter sido mesmo movido:
-    # uma linha semeada diretamente na base de dados (sem bytes nenhuns em
-    # `pendentes/`, como fazem alguns testes de transição de estado) não
-    # pode fazer um `aprovar` rebentar por `FileNotFoundError` — a garantia
-    # desta função é sobre a linha, o ficheiro é um extra quando existe.
-    moveu_o_ficheiro = origem.exists()
-    if moveu_o_ficheiro:
-        definicoes.media_dir.mkdir(parents=True, exist_ok=True)
+    definicoes.media_dir.mkdir(parents=True, exist_ok=True)
+    try:
         os.replace(origem, destino)
+        moveu_o_ficheiro = True
+    except FileNotFoundError:
+        # Sem bytes em `pendentes/`: uma linha semeada diretamente na base
+        # de dados (sem ficheiro nenhum, como fazem alguns testes de
+        # transição de estado), não um envio real — a garantia desta
+        # função é sobre a linha, o ficheiro é um extra quando existe.
+        # **Só este erro** conta como "não havia nada para mover":
+        # `Path.exists()` devolvia `False` tanto para "não está lá" como
+        # para "não consegui procurar" (um `OSError` de permissões, por
+        # exemplo), e tratar os dois da mesma forma aprovaria uma foto
+        # cujos bytes podem muito bem existir sem ter sido possível
+        # movê-los — por isso qualquer outro `OSError` sobe.
+        moveu_o_ficheiro = False
 
     linhas = _rowcount_do_update(
         sessao,

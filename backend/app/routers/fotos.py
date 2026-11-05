@@ -64,8 +64,21 @@ MARGEM_MULTIPART_BYTES = 64 * 1024
 LIMITE_CONTENT_LENGTH = servico.LIMITE_DE_BYTES_DO_FICHEIRO + MARGEM_MULTIPART_BYTES
 
 MENSAGEM_FICHEIRO_GRANDE_DEMAIS = servico.MENSAGEM_FICHEIRO_GRANDE_DEMAIS
+#: Texto do dominio-bar: "demasiadas fotos" acusava de excesso quem teve
+#: entusiasmo — cinco fotos numa noite de samba é a noite a correr bem.
 MENSAGEM_LIMITE_DE_ENVIOS = (
-    "Já enviaste demasiadas fotos nesta hora. Tenta novamente mais tarde."
+    "Já chegaste ao limite de 5 fotos nesta hora. Tenta outra vez daqui a pouco."
+)
+#: Medido: o `max_part_size` do Starlette só limita campos de texto — o
+#: código em `starlette/formparsers.py::MultiPartParser.on_part_data` só
+#: compara contra o teto quando `self._current_part.file is None`, ou
+#: seja, nunca para a parte que é mesmo o ficheiro. Sem `Content-Length`
+#: (`Transfer-Encoding: chunked`), nada limitava o corpo de um ficheiro
+#: antes de ele estar todo em memória — medido, `+194 MB` de RSS com 64
+#: MiB em troços. Por isso um `Content-Length` ausente ou não numérico é
+#: uma recusa, não um "deixa passar".
+MENSAGEM_TAMANHO_EM_FALTA = (
+    "Não consegui perceber o tamanho deste envio. Tenta enviar a foto outra vez."
 )
 
 #: Nunca em cache: é uma mutação, não uma leitura.
@@ -75,16 +88,23 @@ router = APIRouter(tags=["fotos"])
 
 
 def _verificar_content_length(request: Request) -> None:
-    """`413` antes de o FastAPI sequer começar a interpretar o multipart."""
+    """`411` sem `Content-Length` (ou não numérico); `413` acima do teto.
+
+    Corre antes de o FastAPI sequer começar a interpretar o multipart — e
+    é por isso que tem de ser **recusa**, não "deixa passar", quando o
+    cabeçalho falta: um corpo em troços (`Transfer-Encoding: chunked`,
+    sem `Content-Length`) não tem outro teto nenhum a protegê-lo — ver o
+    docstring de `MENSAGEM_TAMANHO_EM_FALTA`.
+    """
     bruto = request.headers.get("content-length")
     if bruto is None:
-        return
+        raise ErroDaApi(411, "tamanho_do_pedido_em_falta", MENSAGEM_TAMANHO_EM_FALTA)
     try:
         tamanho = int(bruto)
-    except ValueError:
-        # Um `Content-Length` que não é um número é problema de outra
-        # camada (o servidor HTTP); não é esta função que o recusa.
-        return
+    except ValueError as erro:
+        raise ErroDaApi(
+            411, "tamanho_do_pedido_em_falta", MENSAGEM_TAMANHO_EM_FALTA
+        ) from erro
     if tamanho > LIMITE_CONTENT_LENGTH:
         raise ErroDaApi(413, "ficheiro_grande_demais", MENSAGEM_FICHEIRO_GRANDE_DEMAIS)
 
@@ -92,23 +112,17 @@ def _verificar_content_length(request: Request) -> None:
 def _admin_da_sessao(request: Request, sessao: Session) -> Admin | None:
     """O admin da sessão do pedido, ou `None` — ao contrário de `exigir_admin`, nunca levanta.
 
-    Duplica (não reutiliza) a leitura de
-    `app.services.auth.exigir_admin`: aqui a ausência de cookie é o caso
-    normal de um envio público, nunca um `401`. Serve só para decidir se o
+    Lê o cookie do `Request` e entrega a verificação a
+    `app.services.auth.admin_da_sessao`, a mesma que `exigir_admin` usa —
+    nunca uma cópia à parte: aqui a ausência de cookie é o caso normal de
+    um envio público, nunca um `401`, mas a decisão de *quem* é um admin
+    válido tem de vir sempre do mesmo sítio. Serve só para decidir se o
     dono salta o limite de envios (decisão do Tomás, 5 de novembro de
     2026) — a proteção das rotas de gestão continua a ser, só e sempre,
     `exigir_admin`.
     """
     valor = request.cookies.get(auth_servico.NOME_DO_COOKIE)
-    if not valor:
-        return None
-    lida = auth_servico.ler_sessao(valor)
-    if lida is None:
-        return None
-    candidato = sessao.get(Admin, lida.admin_id)
-    if candidato is not None and candidato.sessao_versao == lida.versao:
-        return candidato
-    return None
+    return auth_servico.admin_da_sessao(sessao, valor)
 
 
 def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
@@ -154,7 +168,42 @@ def _texto_ou_nulo(valor: object) -> str | None:
     return valor
 
 
-@router.post("/fotos", status_code=202, response_model=RespostaEnvioFoto)
+#: O corpo multipart, descrito à mão para o OpenAPI: este router nunca
+#: declara `ficheiro: UploadFile = File(...)` (ver o docstring do módulo),
+#: por isso o FastAPI não tem como adivinhar os campos sozinho — sem isto,
+#: o esquema gerado saía com `requestBody` em falta, o TypeScript gerado
+#: não sabia os nomes dos campos (`ficheiro`, `descricao`, `enviada_por`,
+#: `website`), e o ecrã da F3-05 tinha de os copiar à mão das constantes
+#: do backend, sem nada a apanhar uma renomeação futura.
+_ESQUEMA_DO_CORPO = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        CAMPO_FICHEIRO: {"type": "string", "format": "binary"},
+                        CAMPO_DESCRICAO: {"type": "string"},
+                        CAMPO_ENVIADA_POR: {"type": "string"},
+                        # Campo-isco contra bots: um formulário normal
+                        # deixa-o vazio; não documentado como obrigatório.
+                        CAMPO_ISCO: {"type": "string"},
+                    },
+                    "required": [CAMPO_FICHEIRO],
+                }
+            }
+        },
+    }
+}
+
+
+@router.post(
+    "/fotos",
+    status_code=202,
+    response_model=RespostaEnvioFoto,
+    openapi_extra=_ESQUEMA_DO_CORPO,
+)
 async def enviar_foto(
     request: Request,
     resposta: Response,
@@ -179,29 +228,36 @@ async def enviar_foto(
     """
     resposta.headers["Cache-Control"] = SEM_CACHE
 
-    formulario = await request.form(max_part_size=LIMITE_CONTENT_LENGTH)
+    # `async with`, não só `await`: `request.form()` devolve um
+    # `AwaitableOrContextManagerWrapper`, que aceita os dois. Como gestor
+    # de contexto fecha o `SpooledTemporaryFile` do `UploadFile` de forma
+    # determinística à saída (sucesso ou exceção), em vez de depender do
+    # coletor de lixo.
+    async with request.form(max_part_size=LIMITE_CONTENT_LENGTH) as formulario:
+        ficheiro = formulario.get(CAMPO_FICHEIRO)
+        # `starlette.datastructures.UploadFile`, não `fastapi.UploadFile`:
+        # medido, a segunda é uma **subclasse** da primeira, e
+        # `request.form()` (o método do Starlette, chamado aqui à mão, ver
+        # o docstring do módulo) só cria instâncias da base — um
+        # `isinstance` contra a subclasse do FastAPI seria sempre `False`,
+        # e todo o caminho feliz sairia em `422`.
+        if not isinstance(ficheiro, UploadFile):
+            raise ErroDaApi(422, "dados_invalidos", MENSAGEM_CORPO_INVALIDO)
 
-    ficheiro = formulario.get(CAMPO_FICHEIRO)
-    # `starlette.datastructures.UploadFile`, não `fastapi.UploadFile`:
-    # medido, a segunda é uma **subclasse** da primeira, e
-    # `await request.form()` (o método do Starlette, chamado aqui à mão,
-    # ver o docstring do módulo) só cria instâncias da base — um
-    # `isinstance` contra a subclasse do FastAPI seria sempre `False`, e
-    # todo o caminho feliz sairia em `422`.
-    if not isinstance(ficheiro, UploadFile):
-        raise ErroDaApi(422, "dados_invalidos", MENSAGEM_CORPO_INVALIDO)
+        if _texto_ou_nulo(formulario.get(CAMPO_ISCO)) is not None:
+            # Campo-isco preenchido: resposta idêntica à do caminho feliz,
+            # sem ler o ficheiro, sem tocar na base de dados nem no disco.
+            return RespostaEnvioFoto()
 
-    if _texto_ou_nulo(formulario.get(CAMPO_ISCO)) is not None:
-        # Campo-isco preenchido: resposta idêntica à do caminho feliz,
-        # sem ler o ficheiro, sem tocar na base de dados nem no disco.
-        return RespostaEnvioFoto()
+        conteudo = await ficheiro.read()
+        descricao = _texto_ou_nulo(formulario.get(CAMPO_DESCRICAO))
+        enviada_por = _texto_ou_nulo(formulario.get(CAMPO_ENVIADA_POR))
 
-    conteudo = await ficheiro.read()
     servico.registar_envio(
         sessao,
         conteudo=conteudo,
         ip_hash=ip_hash,
-        descricao=_texto_ou_nulo(formulario.get(CAMPO_DESCRICAO)),
-        enviada_por=_texto_ou_nulo(formulario.get(CAMPO_ENVIADA_POR)),
+        descricao=descricao,
+        enviada_por=enviada_por,
     )
     return RespostaEnvioFoto()
