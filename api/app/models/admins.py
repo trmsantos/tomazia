@@ -29,6 +29,26 @@ class Admin(Base):
         Integer, nullable=False, default=0, server_default=text("0")
     )
     bloqueado_ate: Mapped[datetime | None] = mapped_column(DataHoraUTC, nullable=True)
+    # F2-04, decisão do Tomás de 4 de novembro de 2026: a revogação de
+    # sessão vive aqui, não numa lista em memória. Um `POST /auth/logout`
+    # incrementa este número; o valor assinado no cookie leva a versão que
+    # tinha quando foi emitido, e `exigir_admin` compara as duas — se não
+    # baterem certo, a sessão não serve, mesmo com assinatura e validade
+    # boas. Ao contrário de um conjunto em memória, isto sobrevive a um
+    # reinício do processo e é a mesma linha para todos os processos do
+    # Passenger que partilhem a base de dados.
+    #
+    # **O que isto garante, e o que não garante:** o logout termina
+    # *todas* as sessões daquele admin, não só a do browser que carregou
+    # no botão — com um admin só, por agora, isso não custa nada. O mesmo
+    # mecanismo serve, sem coluna nova nenhuma, para a rota de mudar
+    # password que falta à especificação (ver `docs/TAREFAS.md`, F2-05):
+    # bastaria incrementar `sessao_versao` ao mudar a password, para matar
+    # as sessões antigas pela mesma via — não implementado aqui, é da
+    # F2-05.
+    sessao_versao: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     # `server_default` pela mesma razão que a coluna acima, e não só por
     # simetria: sem ele, o `criar_admin.py` da F2-02 a escrever em SQL
     # cru rebentava aqui — `NOT NULL constraint failed: admins.criado_em`
