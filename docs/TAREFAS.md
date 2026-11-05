@@ -111,6 +111,11 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-04.
 - **Faz:** `POST /fotos`; serviço de imagens com Pillow; moderação (`/gestao/fotos`, aprovar, rejeitar, imagem pendente servida só a admins); mover aprovadas para `MEDIA_DIR`.
 - **Feito quando:** S-01, S-02, S-03, S-11; EXIF removido (testado com uma imagem com GPS); limite de 5 por hora por IP.
+- **Esta é a tarefa que estreia rotas `/gestao/*` a sério**, porque o `/gestao/fotos` chega antes da F2-05. Três consequências, todas da F2-04:
+  1. **A Camada 3 do teste do S-04 vai ficar vermelha, e isso é o desenho a funcionar.** `backend/tests/seguranca/test_s04_gestao_exige_sessao.py` tem `ROTAS_DE_GESTAO_ESPERADAS = frozenset()` escrito à mão, com a razão por escrito: com zero rotas, um teste parametrizado sobre a lista gerada produzia zero casos e ficava verde sem verificar nada. A primeira rota de gestão torna o conjunto diferente do esperado e obriga alguém a abrir o ficheiro. **Atualizar o conjunto é o trabalho certo; apagar o teste não.** E a partir daqui liga-se o parametrizado (cada rota × cada método → 401 sem cookie), que é o que o critério pede.
+  2. **As heranças que ficaram escritas na F2-05 aplicam-se aqui primeiro:** o `getattr(atual, "routes", [])` do `tests/apoio_rotas.py`, o OpenAPI a prometer `422 → HTTPValidationError` quando a app devolve o envelope, e o `detail` em texto que o tratador descarta em silêncio. Lê-as lá antes de começar.
+  3. **O router de gestão já existe e já traz o `exigir_admin` nas `dependencies`** (`app/routers/gestao.py`, montado com `prefix="/gestao"`). As rotas novas nascem protegidas sem fazer nada; o que **não** se pode fazer é criar outro router para as fotos e esquecer a guarda.
+- **O `media/` já é servido em desenvolvimento**, pelo plugin `servirMediaEmDesenvolvimento` do `frontend/vite.config.ts`, escrito na F3-04 e endurecido depois de quatro achados de segurança (travessia de caminho, symlinks, maiúsculas no macOS, `nosniff`). A F3-05 herda-o. O importador da F2-08 já recusa symlinks e extensões que não sejam de imagem para dentro do `media/` — **o caminho de upload desta tarefa tem de recusar pelo menos o mesmo**, e convém comparar as duas listas em vez de escrever uma nova de memória.
 
 ### F2-07 Novidades
 
