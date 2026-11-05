@@ -92,8 +92,16 @@ class TestEnumeracaoDasRotas:
 
         Em vez de o saltar — o que daria a "não há nada a verificar" o
         mesmo resultado que a "está tudo verificado" —, falha a dizer que a
-        tabela tem de crescer. Quando a F2-06 acrescentar
-        `GET /fotos/{id}`, é aqui que se decide como se testa.
+        tabela tem de crescer, se algum dia uma rota pública trouxer um
+        parâmetro no caminho.
+
+        **A F2-06 não traz isso.** Uma versão anterior deste comentário
+        prometia `GET /fotos/{id}` público; o Tomás decidiu que a imagem
+        de uma foto pendente é só de admins
+        (`GET /gestao/fotos/{id}/imagem`, atrás de `exigir_admin`), nunca
+        pública. A F2-06 acrescenta só `POST /fotos`, sem parâmetro nenhum
+        no caminho (ver `tests/apoio_publico.py::CONTRATO_PUBLICO`), e este
+        guarda continua com zero casos depois dela.
 
         Deixa passar: nada; é um guarda, não um teste de comportamento.
         """

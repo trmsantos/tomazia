@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from app.config import obter_definicoes
 from app.erros import registar_tratadores_de_erro
 from app.marca import GuardaXTomazia
-from app.routers import auth, gestao, publico, saude
+from app.routers import auth, fotos, gestao, publico, saude
 
 #: Instante, em UTC, em que este *processo* importou `app.main` — não em
 #: que um pedido chegou, nem em que `criar_app()` correu. É calculado uma
@@ -73,6 +73,7 @@ def criar_app() -> FastAPI:
 
     aplicacao.include_router(saude.router)
     aplicacao.include_router(publico.router)
+    aplicacao.include_router(fotos.router)
     aplicacao.include_router(auth.router)
     aplicacao.include_router(gestao.router, prefix="/gestao", tags=["gestao"])
     return aplicacao

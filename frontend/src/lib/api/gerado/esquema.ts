@@ -131,6 +131,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fotos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enviar Foto
+         * @description Envia uma foto para moderação.
+         *
+         *     Ignora o nome e o `Content-Type` do cliente por completo — é o Pillow
+         *     (`app/services/imagens.py`) quem decide se é uma imagem válida.
+         *
+         *     `422` sem o campo `ficheiro`. `413` acima de 8 MB. `400
+         *     {"erro": "imagem_invalida"}` se o Pillow não conseguir abrir, ou se o
+         *     formato não for JPEG/PNG/WebP. `400 {"erro":
+         *     "imagem_demasiado_grande"}` acima do limite de píxeis (S-11). `429`
+         *     com `Retry-After` e `segundos_em_falta` acima de 5 envios na última
+         *     hora para o mesmo IP, salvo com sessão de admin válida.
+         *
+         *     O campo escondido `website`, se preenchido, devolve exatamente a mesma
+         *     resposta do caminho feliz sem escrever nada: um robô que o preencha
+         *     não tem como distinguir os dois casos.
+         */
+        post: operations["enviar_foto_fotos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/galeria": {
         parameters: {
             query?: never;
@@ -149,6 +183,86 @@ export interface paths {
         get: operations["obter_galeria_galeria_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/fotos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Fotos Pendentes
+         * @description A fila de moderação, da foto mais antiga para a mais recente.
+         */
+        get: operations["listar_fotos_pendentes_gestao_fotos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/fotos/{id}/aprovar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Aprovar Foto
+         * @description Move a foto para `MEDIA_DIR` e marca-a aprovada. `409` se já moderada.
+         */
+        post: operations["aprovar_foto_gestao_fotos__id__aprovar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/fotos/{id}/imagem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Obter Imagem Pendente
+         * @description Os bytes de uma foto, pendente ou já aprovada. `404` sem ela (S-03).
+         */
+        get: operations["obter_imagem_pendente_gestao_fotos__id__imagem_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/fotos/{id}/rejeitar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rejeitar Foto
+         * @description Marca a foto rejeitada e apaga os bytes. A linha nunca se apaga.
+         */
+        post: operations["rejeitar_foto_gestao_fotos__id__rejeitar_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -246,6 +360,12 @@ export interface components {
             periodos: components["schemas"]["PeriodoDoHorario"][];
         };
         /**
+         * EstadoFoto
+         * @description Os três estados de `docs/ESPECIFICACAO.md`.
+         * @enum {string}
+         */
+        EstadoFoto: "pendente" | "aprovada" | "rejeitada";
+        /**
          * EventoPublico
          * @description Um evento publicado, a partir de hoje.
          *
@@ -271,6 +391,25 @@ export interface components {
             inicio: string;
             /** Titulo */
             titulo: string;
+        };
+        /**
+         * FotoPendente
+         * @description Uma linha da fila de moderação (`GET /gestao/fotos`). Nunca leva `ip_hash`.
+         */
+        FotoPendente: {
+            /**
+             * Criada Em
+             * Format: date-time
+             */
+            criada_em: string;
+            /** Descricao */
+            descricao: string | null;
+            /** Enviada Por */
+            enviada_por: string | null;
+            /** Ficheiro */
+            ficheiro: string;
+            /** Id */
+            id: number;
         };
         /**
          * FotoPublica
@@ -351,12 +490,37 @@ export interface components {
             categorias: components["schemas"]["CategoriaPublica"][];
         };
         /**
+         * RespostaEnvioFoto
+         * @description Corpo de sucesso de `POST /fotos`.
+         *
+         *     Sem `id`, de propósito: é o que torna este corpo **byte a byte igual**
+         *     ao de um envio apanhado pelo campo-isco contra bots — inventar um `id`
+         *     para um envio que nunca aconteceu distinguiria os dois casos, e é
+         *     exatamente essa distinção que o isco não pode dar a um robô.
+         */
+        RespostaEnvioFoto: {
+            /**
+             * Estado
+             * @default pendente
+             * @constant
+             */
+            estado: "pendente";
+        };
+        /**
          * RespostaEventos
          * @description Corpo de `GET /eventos`.
          */
         RespostaEventos: {
             /** Eventos */
             eventos: components["schemas"]["EventoPublico"][];
+        };
+        /**
+         * RespostaFilaDeModeracao
+         * @description Corpo de `GET /gestao/fotos`.
+         */
+        RespostaFilaDeModeracao: {
+            /** Fotos */
+            fotos: components["schemas"]["FotoPendente"][];
         };
         /**
          * RespostaGaleria
@@ -395,6 +559,15 @@ export interface components {
             /** Telefone */
             telefone: string | null;
             wifi: components["schemas"]["WifiPublico"];
+        };
+        /**
+         * RespostaModeracao
+         * @description Corpo de sucesso de aprovar ou rejeitar uma foto.
+         */
+        RespostaModeracao: {
+            estado: components["schemas"]["EstadoFoto"];
+            /** Id */
+            id: number;
         };
         /**
          * RespostaSaude
@@ -585,6 +758,26 @@ export interface operations {
             };
         };
     };
+    enviar_foto_fotos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaEnvioFoto"];
+                };
+            };
+        };
+    };
     obter_galeria_galeria_get: {
         parameters: {
             query?: never;
@@ -601,6 +794,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RespostaGaleria"];
+                };
+            };
+        };
+    };
+    listar_fotos_pendentes_gestao_fotos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaFilaDeModeracao"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aprovar_foto_gestao_fotos__id__aprovar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaModeracao"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    obter_imagem_pendente_gestao_fotos__id__imagem_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rejeitar_foto_gestao_fotos__id__rejeitar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaModeracao"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -342,6 +342,15 @@ CONTRATO_PUBLICO: dict[str, ContratoDeRota] = {
     # cabeçalho, a password e a morada ficam pesquisáveis a partir de
     # fora, para sempre e sem ninguém pedir.
     "/info": ContratoDeRota(cache="no-store", robots=SEM_INDEXACAO_ESPERADA),
+    # F2-06: `POST /fotos` é a única rota pública de escrita. `no-store`
+    # porque uma mutação nunca se guarda em cache; sem `GET`, por isso não
+    # entra em `CAMINHOS_PUBLICOS_GET` nem nos testes de `Cache-Control`
+    # que iteram respostas 200 de leitura. Acrescentá-la aqui é a rede que
+    # impede uma rota de moderação de fotos (que é de admins, vive em
+    # `/gestao`) de nascer fora do `/gestao` sem ninguém reparar: sem esta
+    # entrada, `test_a_tabela_tem_exatamente_as_rotas_publicas_da_app`
+    # fica vermelho assim que a F2-06 registar a rota.
+    "/fotos": ContratoDeRota(cache="no-store", metodos=frozenset({"POST"})),
 }
 
 #: Os caminhos públicos que respondem a GET — os que os testes de cache e
