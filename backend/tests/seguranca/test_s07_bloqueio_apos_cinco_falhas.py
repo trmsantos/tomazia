@@ -127,6 +127,14 @@ class TestMaquinaDeEstados:
         # para mostrar o tempo que falta, e um rename silencioso passaria
         # com o `<=` acima sozinho.
         assert corpo["erro"] == "conta_bloqueada"
+        # A frase, literal: é a mensagem que o dono mais provavelmente lê
+        # num momento mau, e a F4-01 vai depender dela. Literal, não a
+        # constante importada do serviço — comparar a resposta com a
+        # própria fonte que a produz nunca cai (achado em revisão).
+        assert corpo["mensagem"] == (
+            "Conta bloqueada durante 15 minutos, depois de várias "
+            "tentativas falhadas. Tenta novamente depois desse tempo."
+        )
 
     def test_bloqueio_regista_cinco_tentativas_e_quinze_minutos_na_bd(
         self,

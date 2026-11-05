@@ -37,7 +37,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException
 
 MENSAGEM_CORPO_INVALIDO = (
@@ -46,6 +46,11 @@ MENSAGEM_CORPO_INVALIDO = (
 MENSAGEM_ERRO_INESPERADO = (
     "Ocorreu um erro inesperado. O problema é nosso; tenta novamente daqui a pouco."
 )
+#: O fundo dos 4xx. A `MENSAGEM_ERRO_INESPERADO` pede desculpa, e isso
+#: serve um 500 mas **mente** num 413 ou num 415: a culpa é do pedido,
+#: não nossa. Separar as duas famílias é o que impede um upload grande
+#: demais, na F2-06, de sair a dizer que a avaria foi do servidor.
+MENSAGEM_PEDIDO_RECUSADO = "O pedido não pôde ser processado."
 
 #: Um código curto por estado HTTP, para o tratador de `HTTPException`
 #: nunca inventar um `"erro"` vazio. Não é um mapa exaustivo — só os
@@ -53,12 +58,8 @@ MENSAGEM_ERRO_INESPERADO = (
 #: FastAPI ou pelo próprio Starlette (404, 405) podem razoavelmente
 #: trazer; qualquer outro cai no genérico `"erro"`.
 _CODIGOS_POR_ESTADO: dict[int, str] = {
-    status.HTTP_400_BAD_REQUEST: "pedido_invalido",
-    status.HTTP_401_UNAUTHORIZED: "nao_autenticado",
-    status.HTTP_403_FORBIDDEN: "acesso_negado",
     status.HTTP_404_NOT_FOUND: "nao_encontrado",
     status.HTTP_405_METHOD_NOT_ALLOWED: "metodo_nao_permitido",
-    status.HTTP_429_TOO_MANY_REQUESTS: "demasiados_pedidos",
 }
 
 #: O texto em PT-PT a par de `_CODIGOS_POR_ESTADO` — nunca o `detail` em
@@ -66,21 +67,30 @@ _CODIGOS_POR_ESTADO: dict[int, str] = {
 #: "Not Found", "Method Not Allowed"). Regra 6 do `CLAUDE.md`: texto
 #: visível em português de Portugal, sempre.
 _MENSAGENS_POR_ESTADO: dict[int, str] = {
-    status.HTTP_400_BAD_REQUEST: "O pedido não pôde ser processado.",
-    status.HTTP_401_UNAUTHORIZED: "É preciso iniciar sessão para continuar.",
-    status.HTTP_403_FORBIDDEN: "Não tens permissão para este pedido.",
     status.HTTP_404_NOT_FOUND: "O endereço pedido não existe.",
     status.HTTP_405_METHOD_NOT_ALLOWED: "Este método não é suportado neste endereço.",
-    status.HTTP_429_TOO_MANY_REQUESTS: "Demasiados pedidos. Tenta novamente mais tarde.",
 }
 
 
+def _e_do_cliente(estado: int) -> bool:
+    """4xx é o pedido que está mal; 5xx somos nós."""
+    return status.HTTP_400_BAD_REQUEST <= estado < status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
 def _codigo_de_estado(estado: int) -> str:
-    return _CODIGOS_POR_ESTADO.get(estado, "erro")
+    conhecido = _CODIGOS_POR_ESTADO.get(estado)
+    if conhecido is not None:
+        return conhecido
+    return "pedido_recusado" if _e_do_cliente(estado) else "erro"
 
 
 def _mensagem_de_estado(estado: int) -> str:
-    return _MENSAGENS_POR_ESTADO.get(estado, MENSAGEM_ERRO_INESPERADO)
+    conhecida = _MENSAGENS_POR_ESTADO.get(estado)
+    if conhecida is not None:
+        return conhecida
+    return (
+        MENSAGEM_PEDIDO_RECUSADO if _e_do_cliente(estado) else MENSAGEM_ERRO_INESPERADO
+    )
 
 
 class ErroDaApi(Exception):
@@ -121,8 +131,21 @@ def _tratar_erro_da_api(_pedido: Request, excecao: Exception) -> JSONResponse:
     )
 
 
-def _tratar_http_exception(_pedido: Request, excecao: Exception) -> JSONResponse:
+#: Os dois estados que, por norma, não podem ter corpo. O
+#: `ExceptionMiddleware.http_exception` do Starlette abre com esta mesma
+#: verificação; ao registar o nosso tratador pela classe-mãe passámos a
+#: substituí-lo, e o guarda desapareceu em silêncio junto com ele. Sem
+#: isto, um `HTTPException(304)` sai com corpo JSON num estado que não o
+#: pode ter: o `TestClient` engole, o h11 por baixo do uvicorn não.
+_ESTADOS_SEM_CORPO = frozenset(
+    {status.HTTP_204_NO_CONTENT, status.HTTP_304_NOT_MODIFIED}
+)
+
+
+def _tratar_http_exception(_pedido: Request, excecao: Exception) -> Response:
     assert isinstance(excecao, HTTPException)
+    if excecao.status_code in _ESTADOS_SEM_CORPO:
+        return Response(status_code=excecao.status_code, headers=excecao.headers)
     detalhe = excecao.detail
     if (
         isinstance(detalhe, dict)

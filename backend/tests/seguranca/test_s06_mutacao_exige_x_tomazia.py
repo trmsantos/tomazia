@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.marca import MENSAGEM_CABECALHO_EM_FALTA
 from tests.apoio_auth import CREDENCIAIS_FALSAS
 
 if TYPE_CHECKING:
@@ -82,7 +81,13 @@ class TestGuardaEstruturalSobreOMetodo:
         # Texto do ui-ux: a frase anterior nomeava o cabeçalho e o valor
         # exato esperado — divulgação desnecessária, mesmo não sendo uma
         # vulnerabilidade (a guarda não depende de segredo nenhum).
-        assert corpo["mensagem"] == MENSAGEM_CABECALHO_EM_FALTA
+        #
+        # Literal, não a constante importada de `app.marca`: comparar a
+        # resposta com a própria fonte que a produz nunca cai, nem que o
+        # texto mude amanhã para outra coisa qualquer (achado em revisão).
+        assert corpo["mensagem"] == (
+            "Não foi possível processar este pedido a partir daqui."
+        )
         assert "X-Tomazia" not in corpo["mensagem"]
 
     @pytest.mark.parametrize("metodo", METODOS_DE_MUTACAO)
