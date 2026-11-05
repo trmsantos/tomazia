@@ -44,10 +44,31 @@ descomprime sem nunca chegar a guardar nada.
 `tentativas_de_envio(id, ip_hash, criada_em)`, acrescentada por migração
 aditiva (regra 7).
 
-O registo da tentativa é a **primeira** instrução de `registar_envio`, e é
-commitado logo: antes da validação do tamanho dos campos de texto, antes do
-teto de 8 MB, e antes de `imagens.recodificar` tocar num único byte da
-imagem. Sobrevive a qualquer exceção posterior, que é precisamente o ponto.
+O registo da tentativa acontece **dentro do `Depends` que verifica o
+limite**, antes de o corpo do pedido sequer ser interpretado. Grava-se
+primeiro, conta-se depois, e compara-se com `>`: o `INSERT` serializa no
+SQLite, por isso a contagem a seguir já é autoritativa.
+
+A primeira versão punha o registo como primeira instrução de
+`registar_envio`, que é mais tarde. Três coisas obrigaram a mudá-lo, todas
+medidas em revisão:
+
+- **O campo-isco não contava tentativa nenhuma.** Devolvia `202` antes de
+  chegar ao `registar_envio`. Preencher o campo anti-bot era, literalmente,
+  a forma de arranjar um endpoint sem contador. O mesmo valia para o `422`
+  de um pedido sem ficheiro.
+- **Doze pedidos simultâneos do mesmo IP liam todos o contador antes de
+  qualquer um gravar.** Medido: `[400]×12`, **zero** `429`, doze
+  descompressões em vez de cinco — exatamente o custo que este ADR existe
+  para limitar.
+- **O dono gastava o balde do próprio IP.** Saltava a verificação mas
+  gravava a tentativa, e no bar o telemóvel dele e os dos clientes saem
+  todos pelo mesmo IP do WiFi: cinco fotos do dono e o cliente seguinte
+  levava `429` a dizer que já tinha chegado ao limite. Com sessão de admin
+  válida, agora não se grava nada.
+
+A regra que fica: **o contador é o primeiro efeito de escrita do pedido**,
+antes de qualquer caminho que possa devolver cedo.
 
 ## Consequências
 
