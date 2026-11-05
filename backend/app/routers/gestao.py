@@ -15,7 +15,9 @@ aprovar/rejeitar. Sem lógica aqui — o trabalho é todo de
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Path, Response
 
 from app.dependencias import SessaoDaBD
 from app.schemas.fotos import RespostaFilaDeModeracao, RespostaModeracao
@@ -26,6 +28,21 @@ from app.services.auth import exigir_admin
 #: a aparecer a partir da cache do browser dele.
 SEM_CACHE = "no-store"
 
+#: `alias="id"`: o parâmetro do URL continua a chamar-se `id` (é o que
+#: `tests/seguranca/test_s04_gestao_exige_sessao.py` tem fixado, por
+#: string literal, como a lista de rotas de gestão) — só o nome da
+#: variável Python muda, para não tapar o `id` nativo da linguagem dentro
+#: da função. O serviço (`app/services/fotos.py`) já usa `id_foto`.
+IdDaFoto = Annotated[int, Path(alias="id")]
+
+#: Para o OpenAPI: `GET /fotos/{id}/imagem` devolve bytes de imagem, nunca
+#: JSON — sem isto, o esquema gerado prometia `application/json` (o
+#: omisso do FastAPI) e o TypeScript gerado tratava a resposta como se
+#: fosse um objeto. Mesma família de achado da herança da F2-04.
+_RESPOSTA_IMAGEM: dict[int | str, dict[str, Any]] = {
+    200: {"content": {"image/webp": {}}}
+}
+
 router = APIRouter(dependencies=[Depends(exigir_admin)])
 
 
@@ -35,10 +52,10 @@ def listar_fotos_pendentes(sessao: SessaoDaBD) -> RespostaFilaDeModeracao:
     return servico.listar_pendentes(sessao)
 
 
-@router.get("/fotos/{id}/imagem")
-def obter_imagem_pendente(id: int, sessao: SessaoDaBD) -> Response:
+@router.get("/fotos/{id}/imagem", responses=_RESPOSTA_IMAGEM)
+def obter_imagem_pendente(id_foto: IdDaFoto, sessao: SessaoDaBD) -> Response:
     """Os bytes de uma foto, pendente ou já aprovada. `404` sem ela (S-03)."""
-    conteudo = servico.obter_bytes_da_imagem(sessao, id)
+    conteudo = servico.obter_bytes_da_imagem(sessao, id_foto)
     return Response(
         content=conteudo,
         media_type="image/webp",
@@ -47,14 +64,14 @@ def obter_imagem_pendente(id: int, sessao: SessaoDaBD) -> Response:
 
 
 @router.post("/fotos/{id}/aprovar", response_model=RespostaModeracao)
-def aprovar_foto(id: int, sessao: SessaoDaBD) -> RespostaModeracao:
+def aprovar_foto(id_foto: IdDaFoto, sessao: SessaoDaBD) -> RespostaModeracao:
     """Move a foto para `MEDIA_DIR` e marca-a aprovada. `409` se já moderada."""
-    foto = servico.aprovar(sessao, id)
+    foto = servico.aprovar(sessao, id_foto)
     return RespostaModeracao(id=foto.id, estado=foto.estado)
 
 
 @router.post("/fotos/{id}/rejeitar", response_model=RespostaModeracao)
-def rejeitar_foto(id: int, sessao: SessaoDaBD) -> RespostaModeracao:
+def rejeitar_foto(id_foto: IdDaFoto, sessao: SessaoDaBD) -> RespostaModeracao:
     """Marca a foto rejeitada e apaga os bytes. A linha nunca se apaga."""
-    foto = servico.rejeitar(sessao, id)
+    foto = servico.rejeitar(sessao, id_foto)
     return RespostaModeracao(id=foto.id, estado=foto.estado)

@@ -11,6 +11,19 @@ e a galeria passava a listar uma imagem partida, em silêncio.
 
 A correção distingue pelo tipo da exceção: só `FileNotFoundError` conta
 como "não havia nada para mover"; qualquer outro `OSError` sobe.
+
+**Achado numa revisão posterior:** o teste que devia provar o ramo
+`except FileNotFoundError` (`test_filenotfound_continua_a_tratar_se_como_nao_havia_nada_para_mover`,
+abaixo) envia uma foto a sério, cujo ficheiro existe de verdade em
+`pendentes/` — por isso o `os.replace` tem sempre sucesso, e o ramo
+`except FileNotFoundError` nunca corre. Uma mutação `if True:`/`if False:`
+nesse ramo deixava a bateria inteira verde. A causa é a própria correção
+do C2: mandar `tests/fotos/test_moderacao.py::_semear_pendente` escrever
+também o ficheiro falso (para não moldar o código de produção à forma de
+uma fixture sem bytes nenhuns) tirou a única cobertura que este ramo
+tinha. `test_sem_ficheiro_nenhum_o_filenotfound_e_tratado_como_nao_havia_nada`,
+acrescentado aqui, semeia a linha **sem** o ficheiro — de propósito, só
+neste ficheiro de segurança, nunca na fixture partilhada.
 """
 
 from __future__ import annotations
@@ -62,7 +75,13 @@ def test_um_oserror_que_nao_e_filenotfound_sobe_em_vez_de_ser_engolido(
 def test_filenotfound_continua_a_tratar_se_como_nao_havia_nada_para_mover(
     cliente: TestClient, sessao: Session
 ) -> None:
-    """Controlo: o caso real (um envio genuíno) continua a aprovar normalmente."""
+    """Controlo: o caso real (um envio genuíno, com ficheiro) continua a aprovar normalmente.
+
+    **Não prende o ramo `except FileNotFoundError`** — o ficheiro existe
+    de verdade, por isso `os.replace` nunca rebenta. Ver
+    `test_sem_ficheiro_nenhum_o_filenotfound_e_tratado_como_nao_havia_nada`,
+    abaixo, para esse ramo.
+    """
     from app.models.fotos import EstadoFoto, Foto
 
     resposta = apoio_fotos.enviar_foto(cliente, apoio_fotos.jpeg_valido())
@@ -73,3 +92,43 @@ def test_filenotfound_continua_a_tratar_se_como_nao_havia_nada_para_mover(
 
     aprovada = servico.aprovar(sessao, linha.id)
     assert aprovada.estado == EstadoFoto.APROVADA
+
+
+def test_sem_ficheiro_nenhum_o_filenotfound_e_tratado_como_nao_havia_nada(
+    sessao: Session,
+) -> None:
+    """O ramo que o teste de cima não prende: uma linha sem ficheiro nenhum em `pendentes/`.
+
+    Não é um envio real — é o cenário que a F2-08 pode produzir (uma linha
+    escrita por SQL cru) e que alguns testes de transição de estado também
+    semeiam diretamente. `aprovar` tem de aprovar na mesma, sem rebentar.
+    """
+    from app.config import obter_definicoes
+    from app.models.fotos import EstadoFoto, Foto
+    from app.services import fotos as servico
+
+    nome_ficheiro = "00000000-0000-4000-8000-000000009009.webp"
+    sessao.add(
+        Foto(
+            id=9009,
+            ficheiro=nome_ficheiro,
+            estado=EstadoFoto.PENDENTE,
+            descricao=None,
+            enviada_por=None,
+            ip_hash="hash-falso-de-ip-sem-ficheiro",
+        )
+    )
+    sessao.commit()
+
+    definicoes = obter_definicoes()
+    assert not (definicoes.pendentes_dir / nome_ficheiro).exists(), (
+        "o cenário depende de não haver ficheiro nenhum — é isso que força "
+        "o `FileNotFoundError` dentro de `aprovar`"
+    )
+
+    aprovada = servico.aprovar(sessao, 9009)
+
+    assert aprovada.estado == EstadoFoto.APROVADA
+    assert not (definicoes.media_dir / nome_ficheiro).exists(), (
+        "sem ficheiro nenhum para mover, nada pode aparecer em MEDIA_DIR"
+    )

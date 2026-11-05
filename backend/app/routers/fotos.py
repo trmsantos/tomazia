@@ -16,15 +16,15 @@ custo do envio: o multipart já tinha sido interpretado e escrito num
 ficheiro temporário antes de a recusa correr.
 
 Por isso este endpoint recebe o `Request` em bruto e só lê o corpo (
-`await request.form(...)`) **dentro do seu próprio código**, depois de os
-dois `Depends` (`_verificar_content_length`, `_exigir_limite_de_envios`)
-já terem corrido — é isto, e não a ordem dos parâmetros, que faz o `429`
-não pagar o envio.
+`await request.form(...)`) **dentro do seu próprio código**, depois de o
+único `Depends` (`_exigir_limite_de_envios`, que chama
+`_verificar_content_length` como primeiro passo) já ter corrido — é isto,
+e não a ordem dos parâmetros, que faz o `429` não pagar o envio.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
@@ -42,6 +42,7 @@ from app.services.limites import (
     LIMITE_POR_HORA,
     envios_na_ultima_hora,
     hash_do_ip,
+    registar_tentativa,
     segundos_ate_haver_vaga,
 )
 
@@ -126,18 +127,45 @@ def _admin_da_sessao(request: Request, sessao: Session) -> Admin | None:
 
 
 def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
-    """O `ip_hash` do pedido, depois de aplicar o limite de 5 por hora (salvo para admins).
+    """O `ip_hash` do pedido, depois de registar a tentativa e aplicar o limite (salvo para admins).
 
     Corre como `Depends`, antes de este router ler o corpo do pedido (ver
-    o docstring do módulo).
+    o docstring do módulo) — e é por isso que é **aqui**, não em
+    `app.services.fotos.registar_envio`, que a tentativa fica registada
+    (achado em revisão da F2-06, substituindo a primeira versão desta
+    correção): qualquer pedido que chegue até aqui com um IP não-admin
+    conta, **mesmo que** o campo `ficheiro` falte ou o campo-isco esteja
+    preenchido — os dois caminhos que, antes, pagavam o `request.form()`
+    inteiro (até 8 MiB) sem nunca gastar balde nenhum, porque a tentativa
+    só era registada depois de o corpo já estar interpretado.
+
+    **A ordem fecha também a corrida.** Primeiro grava-se a tentativa
+    (`registar_tentativa`, com o seu próprio `commit`), só depois se conta
+    (`envios_na_ultima_hora`) e se compara a `LIMITE_POR_HORA` com `>`, não
+    `>=`: o `INSERT` serializa no SQLite (um escritor de cada vez, mesmo em
+    WAL), por isso a contagem feita a seguir ao próprio `INSERT` já reflete
+    todas as tentativas de outros pedidos que tenham commitado primeiro.
+    Contar antes de gravar (a versão anterior) deixava N pedidos verdadeiramente
+    simultâneos lerem todos o mesmo valor antigo antes de qualquer um
+    escrever — medido, 12 pedidos simultâneos do mesmo IP a dar
+    `[400]×12`, zero `429`.
     """
     _verificar_content_length(request)
 
     ip = ip_do_cliente(request)
+    # `""` quando não há par TCP (`ip_do_cliente` devolve `None`, nunca
+    # inventa um IP nem rebenta — ver ADR 0017). Todos os pedidos sem par
+    # TCP partilham, por isso, o mesmo balde — é a escolha conservadora:
+    # mais seguro um balde partilhado do que um `500` ou um limite que
+    # nunca se enche. Documentado e testado em
+    # `tests/seguranca/test_sem_ip_partilha_balde.py`.
     ip_hash = hash_do_ip(ip if ip is not None else "")
 
     if _admin_da_sessao(request, sessao) is not None:
-        # O dono salta o limite, mesmo com o balde do próprio IP cheio.
+        # O dono salta o limite por inteiro — nem conta, nem regista
+        # tentativa nenhuma. Sem isto, as próprias fotos do dono gastavam
+        # o balde do IP do bar (ADR 0017/0018), e o cliente seguinte no
+        # mesmo WiFi via 429 por fotos que nunca enviou.
         return ip_hash
 
     # `agora_utc()` chamado aqui, pelo nome do módulo — nunca
@@ -145,8 +173,9 @@ def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
     # (ver o docstring desse módulo): é este módulo, `app.routers.fotos`,
     # que `tests/apoio_fotos.py::fixar_relogio_fotos` sabe congelar.
     agora = agora_utc()
+    registar_tentativa(sessao, ip_hash, agora)
     quantidade = envios_na_ultima_hora(sessao, ip_hash, agora)
-    if quantidade >= LIMITE_POR_HORA:
+    if quantidade > LIMITE_POR_HORA:
         segundos = segundos_ate_haver_vaga(sessao, ip_hash, agora)
         raise ErroDaApi(
             429,
@@ -198,11 +227,33 @@ _ESQUEMA_DO_CORPO = {
 }
 
 
+#: Documenta, para o OpenAPI, os erros que o docstring da rota promete —
+#: sem isto, `openapi_extra` descrevia o corpo do pedido mas não os
+#: códigos de erro possíveis, e o esquema gerado prometia só o `202`.
+_RESPOSTAS_DE_ERRO: dict[int | str, dict[str, Any]] = {
+    400: {
+        "description": (
+            "A imagem é inválida (formato fora de JPEG/PNG/WebP, dados "
+            "corrompidos) ou tem mais píxeis do que o limite."
+        )
+    },
+    411: {"description": "Falta o `Content-Length`, ou não é um número."},
+    413: {"description": "O ficheiro, ou o corpo do pedido, é maior do que o limite."},
+    422: {
+        "description": (
+            "Falta o campo `ficheiro`, ou `descricao`/`enviada_por` é demasiado longo."
+        )
+    },
+    429: {"description": "Mais de 5 envios na última hora para este IP."},
+}
+
+
 @router.post(
     "/fotos",
     status_code=202,
     response_model=RespostaEnvioFoto,
     openapi_extra=_ESQUEMA_DO_CORPO,
+    responses=_RESPOSTAS_DE_ERRO,
 )
 async def enviar_foto(
     request: Request,

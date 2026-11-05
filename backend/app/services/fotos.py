@@ -21,13 +21,17 @@ apanhar a linha (perdeu a corrida contra outra moderação da mesma foto), o
 ficheiro volta para trás.
 
 **Ao rejeitar:** o `UPDATE` primeiro, os bytes depois — decisão do Tomás,
-5 de novembro de 2026: **rejeitar apaga os bytes do disco**, mas **a linha
-de `fotos` nunca se apaga** (é ela que sustenta o limite de envios por
-IP). Se o `UPDATE` não apanhar a linha, não se toca em ficheiro nenhum.
+5 de novembro de 2026: **rejeitar apaga os bytes do disco**, porque é a
+foto de um terceiro que o dono decidiu não publicar. A linha de `fotos`
+continua a não se apagar, mas já não é por sustentar o limite de envios
+por IP — isso passou para `tentativas_de_envio` (ADR 0018) — é só por não
+haver razão nenhuma para a apagar. Se o `UPDATE` não apanhar a linha, não
+se toca em ficheiro nenhum.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 from pathlib import Path
@@ -42,7 +46,6 @@ from app.models.fotos import EstadoFoto, Foto
 from app.models.tipos import agora_utc
 from app.schemas.fotos import FotoPendente, RespostaFilaDeModeracao
 from app.services import imagens
-from app.services import limites as servico_limites
 
 #: `docs/ESPECIFICACAO.md`: "8 MB". A verificação autoritária sobre os
 #: bytes do ficheiro — não confundir com o teto de `Content-Length` de
@@ -109,20 +112,17 @@ def registar_envio(
     descricao: str | None,
     enviada_por: str | None,
 ) -> None:
-    """O caso de uso de `POST /fotos`: regista a tentativa, valida, recodifica, guarda e regista.
+    """O caso de uso de `POST /fotos`: valida, recodifica, guarda e regista.
 
     Levanta `ErroDaApi` em qualquer recusa, sem escrever nada em disco nem
-    em `fotos` nesses casos — mas a tentativa, essa, já ficou registada
-    (ver `app.services.limites`, e o docstring do módulo).
+    na base de dados nesses casos. **Não regista a tentativa** — isso já
+    aconteceu em `app.routers.fotos._exigir_limite_de_envios`, antes de o
+    corpo do pedido sequer ser lido (achado em revisão da F2-06: uma
+    primeira versão registava a tentativa aqui, e dois caminhos nunca
+    chegavam a esta função — o campo-isco preenchido e um pedido sem
+    `ficheiro` — por isso nunca contavam, apesar de pagarem o
+    `request.form()` inteiro).
     """
-    # Antes de tudo o resto, incluindo o `len(conteudo)`: é a própria
-    # decisão do Tomás — contar o pedido, não o resultado — e é o que
-    # fecha o buraco medido (um ficheiro de 58 bytes que declara
-    # dimensões mesmo abaixo do limite de píxeis custa dezenas de MB de
-    # RSS no `imagens.recodificar` mais abaixo e, sem isto, não deixava
-    # rasto nenhum para o limite ver).
-    servico_limites.registar_tentativa(sessao, ip_hash, agora_utc())
-
     if descricao is not None and len(descricao) > LIMITE_DESCRICAO:
         raise ErroDaApi(
             422, "descricao_grande_demais", MENSAGEM_DESCRICAO_GRANDE_DEMAIS
@@ -287,20 +287,47 @@ def aprovar(sessao: Session, id_foto: int) -> Foto:
         # movê-los — por isso qualquer outro `OSError` sobe.
         moveu_o_ficheiro = False
 
-    linhas = _rowcount_do_update(
-        sessao,
-        update(Foto)
-        .where(Foto.id == id_foto, Foto.estado == EstadoFoto.PENDENTE)
-        .values(estado=EstadoFoto.APROVADA, moderada_em=agora_utc()),
-    )
+    def _desfazer_o_movimento() -> None:
+        sessao.rollback()
+        if not moveu_o_ficheiro:
+            return
+        # `contextlib.suppress`, não um `except` mudo: não deixa uma falha
+        # a devolver o ficheiro mascarar a causa original (o `409` da
+        # corrida perdida, ou o que quer que tenha feito o
+        # `UPDATE`/`commit` rebentar) — essa causa é sempre a que sai,
+        # mesmo que o ficheiro fique em `MEDIA_DIR` com a linha por
+        # aprovar.
+        with contextlib.suppress(OSError):
+            os.replace(destino, origem)
+
+    try:
+        linhas = _rowcount_do_update(
+            sessao,
+            update(Foto)
+            .where(Foto.id == id_foto, Foto.estado == EstadoFoto.PENDENTE)
+            .values(estado=EstadoFoto.APROVADA, moderada_em=agora_utc()),
+        )
+    except Exception:
+        # O `UPDATE` em si rebentou (por exemplo, "database is locked"
+        # depois do `busy_timeout` — vários processos do Passenger, um
+        # `commit` por envio, não é hipotético). O ficheiro já tinha sido
+        # movido; sem isto, ficava em `MEDIA_DIR` — a pasta que o Apache
+        # serve — com a linha ainda `pendente`, a invariante que o S-03
+        # afirma, partida.
+        _desfazer_o_movimento()
+        raise
+
     if linhas == 0:
         # Perdeu a corrida contra outra moderação da mesma foto (um duplo
         # clique): o ficheiro volta para onde estava.
-        sessao.rollback()
-        if moveu_o_ficheiro:
-            os.replace(destino, origem)
+        _desfazer_o_movimento()
         raise ErroDaApi(409, "foto_ja_moderada", MENSAGEM_FOTO_JA_MODERADA)
-    sessao.commit()
+
+    try:
+        sessao.commit()
+    except Exception:
+        _desfazer_o_movimento()
+        raise
     sessao.refresh(foto)
     return foto
 

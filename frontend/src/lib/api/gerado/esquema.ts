@@ -786,6 +786,41 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaEnvioFoto"];
                 };
             };
+            /** @description A imagem é inválida (formato fora de JPEG/PNG/WebP, dados corrompidos) ou tem mais píxeis do que o limite. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Falta o `Content-Length`, ou não é um número. */
+            411: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description O ficheiro, ou o corpo do pedido, é maior do que o limite. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Falta o campo `ficheiro`, ou `descricao`/`enviada_por` é demasiado longo. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Mais de 5 envios na última hora para este IP. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     obter_galeria_galeria_get: {
@@ -892,6 +927,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Validation Error */

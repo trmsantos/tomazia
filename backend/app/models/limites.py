@@ -10,12 +10,18 @@ RSS em três pedidos, medido). Essa recusa é um `400` sem linha nenhuma em
 `fotos`; um balde que conta só envios aceites nunca a vê, e o mesmo
 ficheiro de 58 bytes repete-se sem fim, anónimo.
 
-`tentativas_de_envio` conta o pedido em si — antes de o Pillow tocar no
-ficheiro, nunca depois. É `app.services.fotos.registar_envio` quem grava a
-linha, logo a seguir a ler os bytes do multipart e **antes** de chamar
-`app.services.imagens.recodificar`. Uma sessão de admin válida continua a
-saltar o limite por inteiro (decisão original da F2-06): não lhe conta
-tentativa nenhuma.
+`tentativas_de_envio` conta o **pedido** em si — antes de o corpo sequer
+ser lido, não só antes de o Pillow tocar no ficheiro. É
+`app.routers.fotos._exigir_limite_de_envios` quem grava a linha, como
+`Depends`, antes de `await request.form(...)` correr — achado em revisão:
+uma primeira versão gravava dentro de
+`app.services.fotos.registar_envio`, e dois caminhos nunca chegavam lá (o
+campo-isco contra bots preenchido, e um pedido sem o campo `ficheiro`),
+por isso pagavam o corpo inteiro (até 8 MiB) sem nunca contar para o
+balde. Uma sessão de admin válida continua a saltar o limite por
+inteiro: não lhe conta tentativa nenhuma — achado também em revisão, a
+primeira versão desta correção gravava a tentativa sempre, e as fotos do
+próprio dono gastavam o balde do IP do bar.
 
 Nunca se apaga nenhuma (pelo mesmo motivo de `fotos`: apagar devolvia
 quota a quem a gastou, em silêncio) — não há rota nem script que o faça; a

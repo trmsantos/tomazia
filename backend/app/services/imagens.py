@@ -24,7 +24,26 @@ redescobrir):
   exceção. `ImageOps.exif_transpose(imagem)` lê essa etiqueta e roda os
   píxeis antes de o `frombytes` apagar o EXIF; sem isto, o `frombytes`
   livra-se da etiqueta mas nunca da rotação que ela descrevia, e a galeria
-  do bar enchia-se de fotos de lado.
+  do bar enchia-se de fotos de lado;
+- **o `exif_transpose` acrescentado para o ponto anterior quase afundou um
+  worker do Passenger.** Medido: um JPEG de 458 KB a declarar 5460×5460
+  (29,81 MP, abaixo do limite de 30) levava o processo a **614 MB de RSS**
+  num só pedido — `open` 137 MB, `load` 139, `exif_transpose` **251**
+  (`+112 MB`, o preço de copiar, porque `in_place=False` devolve sempre um
+  `image.copy()`, **mesmo sem etiqueta de orientação nenhuma**), `convert`
+  253, `tobytes` 445, `frombytes` 555, `thumbnail` 610. Cinco cópias do
+  bitmap inteiro vivas ao mesmo tempo, ~21 bytes de RSS por píxel
+  declarado, por um ficheiro de saída de 7 KB. Um só pedido chega para o
+  limite de memória da conta matar o worker — o limite de tentativas
+  (ADR 0018) não ajuda, porque é **um** pedido, não uma repetição.
+  Corrigido invertendo a ordem: `imagem.draft("RGB", (LADO_MAIOR_MAXIMO,
+  LADO_MAIOR_MAXIMO))` **antes** do `load()` (só tem efeito em JPEG; deixa
+  o libjpeg decodificar já à escala reduzida, em vez de descomprimir o
+  tamanho inteiro para o encolher a seguir) e `imagem.thumbnail(...)`
+  logo **a seguir** ao `load()`, antes do `exif_transpose`/`convert`/
+  `frombytes` — essas três operações passam a correr sobre uma imagem já
+  pequena. Medido: **188 MB em vez de 604**, com os bytes de saída
+  idênticos aos de antes da correção.
 
 `Image.MAX_IMAGE_PIXELS` fica fixado ao `LIMITE_DE_PIXEIS` à importação
 deste módulo — como segunda camada, não a única: quem decide é mesmo a
@@ -91,6 +110,15 @@ def recodificar(origem: bytes) -> bytes:
         # como objeto — a comparação explícita abaixo só é precisa para a
         # zona entre o limite e o dobro, onde o Pillow apenas avisa.
         raise ImagemComDemasiadosPixeis(str(erro)) from erro
+    except OSError as erro:
+        # Medido: um WebP cortado a meio (50%, 80%, 95% do ficheiro) não
+        # levanta `UnidentifiedImageError` — levanta `OSError: could not
+        # create decoder object`, direto de `Image.open()`, antes mesmo de
+        # chegar ao `load()` que já tinha o seu próprio `except OSError`
+        # mais abaixo. Sem isto, a exceção subia por `app/services/fotos.py`
+        # e por `app/routers/fotos.py` sem ninguém a apanhar: 500 em
+        # inglês, fora do envelope, numa rota pública.
+        raise ImagemInvalida("a imagem está truncada ou corrompida") from erro
 
     if imagem.format not in FORMATOS_ACEITES:
         raise ImagemInvalida(f"formato não aceite: {imagem.format!r}")
@@ -102,6 +130,17 @@ def recodificar(origem: bytes) -> bytes:
             f"de {LIMITE_DE_PIXEIS}"
         )
 
+    # `draft()` **antes** do `load()`: só tem efeito em JPEG (é um no-op
+    # nos outros formatos), e é o que permite ao libjpeg descomprimir já à
+    # escala reduzida — em vez de descomprimir o tamanho declarado inteiro
+    # para o encolher a seguir. Medido: é esta linha, mais o `thumbnail()`
+    # logo a seguir ao `load()`, que tira o pico de 614 MB (um JPEG de
+    # 458 KB a declarar 29,81 MP, abaixo do limite de 30) para 188 MB — ver
+    # o docstring do módulo. O argumento `"RGB"` é o modo pedido; o
+    # resultado real pode diferir e é o `convert("RGB")`, mais abaixo, que
+    # o garante de qualquer forma.
+    imagem.draft("RGB", (LADO_MAIOR_MAXIMO, LADO_MAIOR_MAXIMO))
+
     try:
         # Descomprime. `ImageFile.LOAD_TRUNCATED_IMAGES` fica no valor por
         # omissão do Pillow (`False`): falha fechada perante dados
@@ -109,6 +148,15 @@ def recodificar(origem: bytes) -> bytes:
         imagem.load()
     except OSError as erro:
         raise ImagemInvalida("a imagem está truncada ou corrompida") from erro
+
+    # Reduz **antes** de qualquer cópia: `exif_transpose`, `convert` e
+    # `frombytes`, a seguir, criam cada um um bitmap novo do tamanho da
+    # imagem em que correm. Com o `draft()` acima, isto já não é o
+    # tamanho declarado original — mas reduzir de novo aqui apanha os
+    # formatos sem `draft` (PNG, WebP) e qualquer JPEG em que o `draft`
+    # tenha ficado acima de `LADO_MAIOR_MAXIMO` (ele escolhe só potências
+    # de 1/2, 1/4, 1/8...).
+    imagem.thumbnail((LADO_MAIOR_MAXIMO, LADO_MAIOR_MAXIMO))
 
     # Aplica a rotação da etiqueta EXIF `Orientation` aos píxeis **antes**
     # de o `frombytes`, mais abaixo, apagar essa etiqueta para sempre — o
@@ -118,7 +166,9 @@ def recodificar(origem: bytes) -> bytes:
     endireitada = ImageOps.exif_transpose(imagem)
     # `None` só é possível com `in_place=True` (não é o que usamos acima):
     # com o omisso `in_place=False`, a função devolve sempre uma imagem,
-    # cópia ou transposta.
+    # cópia ou transposta — mesmo sem etiqueta de orientação nenhuma, o
+    # que é o motivo de ser cara e de ter de correr sobre a imagem já
+    # pequena, não sobre o tamanho declarado original.
     assert endireitada is not None
 
     # `convert("RGB")` antes do `frombytes`: uma imagem `P` (paleta, comum
@@ -130,7 +180,6 @@ def recodificar(origem: bytes) -> bytes:
     sem_metadados = Image.frombytes(
         convertida.mode, convertida.size, convertida.tobytes()
     )
-    sem_metadados.thumbnail((LADO_MAIOR_MAXIMO, LADO_MAIOR_MAXIMO))
 
     buffer = io.BytesIO()
     sem_metadados.save(buffer, format="WEBP", quality=QUALIDADE_WEBP)

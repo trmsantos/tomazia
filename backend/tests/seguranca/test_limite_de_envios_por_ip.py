@@ -1,15 +1,18 @@
 """Limite de 5 envios por hora por IP (`docs/TAREFAS.md`, F2-06).
 
-Decisões do Tomás, 5 de novembro de 2026 — não reabertas aqui:
+Decisões do Tomás — não reabertas aqui:
 
-- o limite conta **linhas de `fotos`**, não um contador à parte:
-  `COUNT(*) WHERE ip_hash = ? AND criada_em > agora - 1h`. Sem tabela
-  nova, sem migração;
-- **uma linha de `fotos` nunca se apaga; rejeitar muda o estado, não
-  apaga a linha** — por isso rejeitar as cinco fotos de um IP não liberta
-  o balde dele (`test_rejeitar_as_cinco_nao_liberta_o_balde`, abaixo);
+- o limite conta **tentativas** (`tentativas_de_envio`, ADR 0018), não
+  linhas de `fotos`: a decisão original (5 de novembro de 2026) era contar
+  envios aceites, substituída horas depois quando medido que um ficheiro
+  de 58 bytes gastava dezenas de MB de RSS sem gastar quota nenhuma;
+- **rejeitar continua a apagar os bytes e a manter a linha de `fotos`**,
+  mas já não é isso que sustenta o limite (`test_rejeitar_as_cinco_nao_liberta_o_balde`,
+  abaixo, prova agora que a tentativa fica registada, não que a linha de
+  `fotos` fica);
 - o dono salta o limite: com sessão de admin válida, `POST /fotos` não
-  conta para o balde — mesmo quando o balde do IP dele já está cheio
+  conta para o balde nem lhe regista tentativa nenhuma — mesmo quando o
+  balde do IP dele já está cheio
   (`test_sessao_de_admin_nao_conta_mesmo_com_o_balde_do_ip_cheio`).
 
 O relógio congela-se por `agora_utc`, nunca `sleep` — ver

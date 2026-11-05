@@ -9,10 +9,15 @@ falha no `Image.load()` a seguir, já depois de o Pillow tentar alocar o
 bitmap inteiro (`+113 MB` de RSS em três pedidos). Essa recusa é um `400`
 sem linha nenhuma em `fotos`; contar só envios aceites deixava esse balde
 por encher para sempre, e o mesmo ficheiro de 58 bytes repete-se sem fim,
-anónimo. `registar_tentativa` grava a linha **antes** de o ficheiro ser
-entregue ao Pillow (`app.services.fotos.registar_envio` chama-a antes de
-`app.services.imagens.recodificar`), para a tentativa ficar registada
-mesmo quando a imagem rebenta a seguir.
+anónimo. `registar_tentativa` grava a linha **antes** de o corpo do pedido
+sequer ser lido — `app.routers.fotos._exigir_limite_de_envios` chama-a
+como `Depends`, antes de `await request.form(...)` correr. Não é só antes
+de o Pillow tocar no ficheiro: é antes de o próprio `request.form()`
+correr, porque dois caminhos nunca chegavam a
+`app.services.fotos.registar_envio` (o campo-isco contra bots preenchido,
+e um pedido sem o campo `ficheiro`) e, por isso, nunca contavam — achado
+numa revisão posterior, com os dois a pagar o corpo inteiro (até 8 MiB)
+de borla.
 
 **Uma linha de `tentativas_de_envio` nunca se apaga** — pela mesma razão
 de `fotos`: apagar devolvia quota a quem a gastou, em silêncio. Não há
@@ -82,11 +87,14 @@ def hash_do_ip(ip: str) -> str:
 def registar_tentativa(sessao: Session, ip_hash: str, agora: datetime) -> None:
     """Grava uma tentativa de envio, com `criada_em=agora`.
 
-    Chamada **antes** de o ficheiro ser entregue ao Pillow — é isto que
-    fecha o buraco de um ficheiro pequeno a declarar dimensões grandes
-    (medido: `+113 MB` de RSS por pedido recusado, sem o gasto ficar
-    registado em lado nenhum). O seu próprio `commit`: a tentativa fica
-    registada mesmo que o resto do pedido rebente a seguir.
+    Chamada por `app.routers.fotos._exigir_limite_de_envios`, **antes** de
+    o corpo do pedido ser lido — é isto que fecha o buraco de um ficheiro
+    pequeno a declarar dimensões grandes (medido: `+113 MB` de RSS por
+    pedido recusado, sem o gasto ficar registado em lado nenhum) e também
+    os dois caminhos que nunca liam o ficheiro (campo-isco, `ficheiro`
+    ausente). O seu próprio `commit`: a tentativa fica registada mesmo que
+    o resto do pedido rebente a seguir, e serializa contra outros pedidos
+    do mesmo IP — a contagem feita logo a seguir já vê este `INSERT`.
     """
     sessao.add(TentativaDeEnvio(ip_hash=ip_hash, criada_em=agora))
     sessao.commit()
