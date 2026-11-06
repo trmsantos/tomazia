@@ -183,8 +183,10 @@ test.describe("o Enter dentro de 'O teu nome' submete o <form> a sério (6.3)", 
       "o Enter tem de ter disparado o mesmo pedido que o clique dispararia",
     ).toHaveLength(1);
   });
+});
 
-  test("o campo-isco está mesmo escondido visualmente (display:none, onde o Tailwind está aplicado)", async ({
+test.describe("o campo-isco (secção 11): só um browser a sério prova o CSS", () => {
+  test("está mesmo escondido visualmente (display:none, onde o Tailwind está aplicado)", async ({
     page,
   }) => {
     await fingirAGaleria(page, UMA_FOTO);
@@ -284,6 +286,14 @@ test.describe("a redução no browser: um HEIC nunca chega ao servidor como HEIC
       buffer: heicMinimo(),
     });
 
+    // O estado inicial, logo a seguir a escolher o ficheiro, é o mesmo nos
+    // dois desfechos: "a preparar", com o botão `aria-disabled`. Prender
+    // isto aqui é o que torna o sinal "convertido" abaixo (o botão a ficar
+    // utilizável) uma **transição** a sério — sem esta asserção, o botão
+    // já não-`aria-disabled` à partida (por uma regressão qualquer) venceria
+    // a corrida de imediato, sem nunca ter provado conversão nenhuma.
+    await expect(botaoDeEnviarFoto(page)).toHaveAttribute("aria-disabled", "true");
+
     const PRAZO_MS = 5_000;
     const desfecho = await Promise.race([
       expect(botaoDeEnviarFoto(page))
@@ -332,9 +342,14 @@ test.describe("a redução no browser: um HEIC nunca chega ao servidor como HEIC
     }
 
     throw new Error(
-      "Nem o botão ficou pronto nem a Folha mostrou a frase de falha local dentro do prazo " +
-        "— isto não é nenhum dos dois desfechos correctos que esta tarefa prevê. Parar e " +
-        "investigar, não assumir nenhum dos dois.",
+      `Nem o botão ficou pronto nem a Folha mostrou a frase de falha local dentro de ${String(PRAZO_MS)} ms` +
+        " — isto não é nenhum dos dois desfechos correctos que esta tarefa prevê. " +
+        "Uma hipótese concreta, menos alarmante do que parece: o `createImageBitmap` ficou " +
+        "pendurado (nem resolveu nem rejeitou) em vez de recusar de imediato, e nesse caso " +
+        "o ecrã está a fazer exactamente o que foi desenhado — `reduzir()` só desiste aos " +
+        "30 000 ms (secção 7, F3-05), dez vezes mais do que este prazo. Se for isto, o ecrã " +
+        "não tem bug nenhum; o teste é que precisa de um prazo maior ou de uma terceira " +
+        "asserção para esse caso. Parar e confirmar qual dos dois antes de mexer em código.",
     );
   });
 });

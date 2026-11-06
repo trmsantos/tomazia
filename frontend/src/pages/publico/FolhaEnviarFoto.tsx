@@ -447,6 +447,11 @@ function ConteudoDaFolha(): ReactElement {
     // O isco: vai sempre, preenchido ou vazio — é o que torna os dois casos
     // indistinguíveis para quem o preencheu (secção 11). Lido do nó do DOM,
     // não de um estado do React — ver o comentário de `refIsco`.
+    // O `??` dá o mesmo resultado a "não consegui ler o nó" (o `ref` ainda
+    // não ligou) e a "o campo está vazio": hoje o primeiro caso é
+    // inalcançável (o campo já existe quando se chega aqui) e, se alguma
+    // vez deixar de o ser, o lado permissivo é o seguro — nunca falhar um
+    // envio legítimo por um detalhe do isco.
     corpo.append("website", refIsco.current?.value ?? "");
 
     try {

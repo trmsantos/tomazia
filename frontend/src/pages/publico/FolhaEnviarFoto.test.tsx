@@ -24,8 +24,12 @@
  *    por ela que se encontra o `<dialog>`.
  *
  * **Prova:** a frase-promessa está visível **antes** de qualquer campo ser
- * preenchido; sem ficheiro, "Enviar foto" é `aria-disabled` e tentar clicar
- * não dispara pedido nenhum; cada um dos oito erros de 8 aparece associado
+ * preenchido; sem ficheiro escolhido, "Enviar foto" fica por clicar (não é
+ * `aria-disabled` — é o único dos quatro estados sem pronto-para-enviar que
+ * a 6.4 manda deixar o botão por conta própria) e clicar mostra "Escolhe
+ * uma foto para enviar." em vez de disparar um pedido; com um ficheiro
+ * escolhido mas ainda a preparar (7.2) ou que falhou a preparar (7.3), aí
+ * sim o botão fica `aria-disabled`; cada um dos oito erros de 8 aparece associado
  * ao campo certo (ou à linha geral) e move o foco para lá; o `202` com
  * corpo `{"estado": "pendente"}` — com um isco preenchido e com um isco
  * vazio, nos dois casos — leva à mesma confirmação, com a mesma
@@ -235,20 +239,54 @@ describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheir
     expect(screen.getByText(TEXTOS_DA_GALERIA.aPreparar)).toBeInTheDocument();
   });
 
-  it("troca a fonte para o ficheiro reduzido assim que reduzir() acaba", async () => {
-    await comFicheiroPronto();
+  it("troca a fonte para o ficheiro reduzido assim que reduzir() acaba — fontes distintas, não só a forma «blob:»", async () => {
+    // Correção de revisão de código: a versão anterior só exigia que o
+    // `src` começasse por "blob:", que é verdade **antes e depois** da
+    // troca — por isso não provava a troca em si. Trocar
+    // `src={previaReduzidaUrl ?? previaUrl ?? ""}` por `src={previaUrl ??
+    // ""}` (desfazer metade da correcção 6.4) deixava este teste verde na
+    // mesma. Aqui `URL.createObjectURL` devolve um valor **distinto e
+    // reconhecível** consoante o objecto que lhe é passado, para a
+    // asserção ser sobre QUAL blob está lá, não só sobre a forma do texto.
+    const original = ficheiroFalso();
+    const reduzido = new Blob(["reduzida"], { type: "image/webp" });
 
-    const previa = document.querySelector("img");
-    // As duas fontes são URLs de objecto distintas (o original e o
-    // reduzido) — o que importa não é o valor exacto, é que a pré-
-    // visualização continua a existir e aponta para um `blob:` válido;
-    // a asserção forte está no teste de baixo (que mostra que falham
-    // independentemente uma da outra).
-    expect(
-      previa,
-      "a pré-visualização continua a existir depois de reduzir() acabar",
-    ).not.toBeNull();
-    expect(previa).toHaveAttribute("src", expect.stringMatching(/^blob:/) as unknown as string);
+    const criarUrl = vi.spyOn(URL, "createObjectURL").mockImplementation((objecto) => {
+      return objecto === reduzido ? "blob:reduzido" : "blob:original";
+    });
+
+    let resolverReducao: (valor: ResultadoDaReducao) => void = () => undefined;
+    reduzirFalso.mockImplementation(
+      () =>
+        new Promise((resolver) => {
+          resolverReducao = resolver;
+        }),
+    );
+
+    render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+    try {
+      escolherFicheiro(original);
+      await waitFor(() => {
+        expect(reduzirFalso).toHaveBeenCalledTimes(1);
+      });
+
+      expect(
+        document.querySelector("img"),
+        "antes de reduzir() acabar, a pré-visualização é a do ficheiro ORIGINAL",
+      ).toHaveAttribute("src", "blob:original");
+
+      await act(async () => {
+        resolverReducao({ estado: "reduzida", ficheiro: reduzido });
+        await Promise.resolve();
+      });
+
+      expect(
+        document.querySelector("img"),
+        "depois de reduzir() acabar, a fonte troca para o ficheiro REDUZIDO",
+      ).toHaveAttribute("src", "blob:reduzido");
+    } finally {
+      criarUrl.mockRestore();
+    }
   });
 
   it("onError: mostra uma caixa neutra com o nome do ficheiro, nunca o ícone de imagem partida", async () => {
@@ -267,6 +305,23 @@ describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheir
       "a imagem (partida) tem de desaparecer, não ficar visível com um ícone quebrado",
     ).toBeNull();
     expect(screen.getByText("foto.jpg")).toBeInTheDocument();
+  });
+
+  it("revoga as duas URLs de objecto (a original e a reduzida) ao desmontar", async () => {
+    // `previaUrl` e `previaReduzidaUrl` são dois `URL.createObjectURL`
+    // distintos (o ficheiro escolhido, e o que `reduzir()` devolveu) —
+    // sem isto, só a primeira ficava presa à gestão de fugas, e a segunda
+    // vivia para sempre a cada foto reduzida.
+    const revogarUrl = vi.spyOn(URL, "revokeObjectURL");
+    const { unmount } = await comFicheiroPronto();
+
+    unmount();
+
+    expect(
+      revogarUrl,
+      "a pré-visualização original e a reduzida têm de ser revogadas as duas ao desmontar",
+    ).toHaveBeenCalledTimes(2);
+    revogarUrl.mockRestore();
   });
 });
 
@@ -374,6 +429,50 @@ describe("escolher um ficheiro: a preparação", () => {
       "a frase genérica de 'nenhum ficheiro' não pode substituir a mais específica",
     ).toBeNull();
     expect(enviar).not.toHaveBeenCalled();
+  });
+
+  it("depois de a preparação falhar, escolher um SEGUNDO ficheiro recupera — fica pronto, e o FormData leva o nome do segundo", async () => {
+    // O caminho de recuperação que deixar de repor `ficheiroEscolhido` a
+    // `null` no estado de falha tornou possível (correção ui-ux, 6 de
+    // novembro de 2026) — e que podia ter partido em silêncio: nada
+    // obrigava o segundo `escolher()` a substituir correctamente o
+    // primeiro ficheiro (falhado) pelo novo.
+    reduzirFalso.mockResolvedValueOnce({ estado: "nao-descodificou" });
+    render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+
+    escolherFicheiro(ficheiroFalso("primeiro.heic"));
+    await waitFor(() => {
+      expect(screen.getByText(TEXTOS_DA_GALERIA.falhaAPreparar)).toBeInTheDocument();
+    });
+    expect(botaoDeEnviar()).toHaveAttribute("aria-disabled", "true");
+
+    reduzirFalso.mockResolvedValueOnce(RESULTADO_PRONTO);
+    escolherFicheiro(ficheiroFalso("segundo.jpg"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(TEXTOS_DA_GALERIA.falhaAPreparar),
+        "a frase da falha anterior tem de sair assim que o segundo ficheiro fica pronto",
+      ).toBeNull();
+    });
+    expect(
+      botaoDeEnviar(),
+      "com o segundo ficheiro pronto, o botão volta a ficar utilizável",
+    ).not.toHaveAttribute("aria-disabled", "true");
+
+    clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+    await waitFor(() => {
+      expect(enviar).toHaveBeenCalledTimes(1);
+    });
+
+    const corpo = enviar.mock.calls[0]?.[0];
+    expect(corpo).toBeInstanceOf(FormData);
+    const ficheiroEnviado = (corpo as FormData).get("ficheiro");
+    expect(
+      ficheiroEnviado instanceof File ? ficheiroEnviado.name : null,
+      "o nome no FormData tem de ser o do SEGUNDO ficheiro, não o do primeiro (falhado)",
+    ).toBe("segundo.jpg");
   });
 });
 
@@ -959,5 +1058,28 @@ describe("fechar a Folha a meio do envio cancela o pedido (6.6)", () => {
     rerender(<FolhaEnviarFoto aberta={false} aoFechar={vi.fn()} />);
 
     expect(pedidos[0]?.sinal?.aborted, "o fecho tem de abortar o pedido em curso").toBe(true);
+  });
+});
+
+describe("a enviar (6.5, 6.6)", () => {
+  it("'Enviar foto' fica aria-disabled enquanto o pedido está em curso", async () => {
+    // A 6.5 manda `aria-disabled` nos quatro estados em que não se pode
+    // enviar, e "a enviar" é um deles — o `aTrabalhar` do `Botao` já trava
+    // o clique sozinho (por isso nenhum teste tinha apanhado a falta
+    // disto), mas o `aria-disabled` em si também tem de lá estar, e só o
+    // `aEnviar` no `botaoDesativado` o garante. Sem ele, este teste falha.
+    await comFicheiroPronto();
+    clienteDeEnvioFalso();
+    // Captura o nó antes do clique: uma vez "a enviar", o texto do botão
+    // passa a "A enviar…" (`aTrabalhar`), e uma segunda chamada a
+    // `botaoDeEnviar()` — que procura pelo nome acessível "Enviar foto" —
+    // deixa de o encontrar.
+    const botao = botaoDeEnviar();
+    fireEvent.click(botao);
+
+    await waitFor(() => {
+      expect(botao).toHaveAttribute("aria-busy", "true");
+    });
+    expect(botao).toHaveAttribute("aria-disabled", "true");
   });
 });

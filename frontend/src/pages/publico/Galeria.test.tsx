@@ -28,7 +28,9 @@
  * mais fácil de escrever ao contrário); mais de seis fotos mostra
  * exactamente seis mais "Ver mais fotos"; carregar nele revela o resto sem
  * um segundo pedido de rede; um `AbortError` não muda o estado e um
- * `ErroDaApi` muda.
+ * `ErroDaApi` muda; se uma `<img>` da grelha falhar a chegar (`onError`),
+ * uma caixa neutra decorativa substitui-a e o botão, que até aí herdava o
+ * nome do `alt` da imagem, ganha o seu próprio `aria-label`.
  *
  * **Deixa passar:** tudo o que é layout — número de colunas, tamanho dos
  * quadrados. jsdom não mede nada disto; isso é `e2e/galeria.spec.ts`.
@@ -42,6 +44,7 @@ import type { OpcoesDePedido } from "../../lib/api/cliente";
 import { obterGaleria } from "../../lib/api/publico";
 import type { Galeria as RespostaDaGaleria } from "../../lib/api/publico";
 import {
+  FOTO_COM_LEGENDA,
   ID_DA_SECCAO,
   ID_DO_TITULO,
   SEIS_FOTOS,
@@ -50,7 +53,7 @@ import {
   TEXTOS_DA_GALERIA,
   UMA_FOTO,
 } from "../../testes/galeria";
-import { Galeria } from "./Galeria";
+import { Galeria, altDaFoto } from "./Galeria";
 
 vi.mock("../../lib/api/publico", () => ({ obterGaleria: vi.fn() }));
 
@@ -337,7 +340,43 @@ describe("abrir o Visualizador numa foto da grelha", () => {
         .getByRole("img")
         .closest("a"),
     ).toBeNull();
-    expect(within(item as HTMLElement).getByRole("button")).toBeInTheDocument();
+    const botao = within(item as HTMLElement).getByRole("button");
+    expect(botao).toBeInTheDocument();
+    // Enquanto a imagem está a aparecer normalmente, o botão não tem
+    // `aria-label` nenhum — herda o `alt` da `<img>` como nome acessível
+    // (3, 5.4). Um `aria-label` posto aqui incondicionalmente passaria
+    // despercebido: para a árvore de acessibilidade, "aria-label igual ao
+    // alt" e "nome herdado do alt" dão o mesmo nome computado.
+    expect(
+      botao,
+      "o aria-label do botão só existe quando a imagem falha (onError) — nunca aqui",
+    ).not.toHaveAttribute("aria-label");
+  });
+
+  it("se a imagem falhar (onError), a caixa neutra substitui-a e o botão ganha o alt como aria-label", async () => {
+    // Três mutações que o resto da bateria deixava passar (revisão de
+    // código): apagar o `onError` inteiro (o ícone nativo de imagem
+    // partida volta), tirar o `aria-label` condicional (o botão fica sem
+    // nome acessível quando a imagem falha, já que o `alt` que ele herdava
+    // desapareceu com a `<img>`), ou pô-lo incondicional (duplica o nome
+    // com o `alt`, quando a imagem está a aparecer normalmente).
+    await comResposta(UMA_FOTO);
+
+    const item = within(seccao()).getAllByRole("listitem")[0];
+    expect(item).toBeDefined();
+    const imagem = within(item as HTMLElement).getByRole("img");
+
+    fireEvent.error(imagem);
+
+    expect(
+      within(item as HTMLElement).queryByRole("img"),
+      "a <img> partida tem de sair — não fica atrás da caixa neutra",
+    ).toBeNull();
+    expect(
+      within(item as HTMLElement).getByRole("button", { name: altDaFoto(FOTO_COM_LEGENDA) }),
+      "sem a <img> (e sem o seu alt para herdar), o botão só tem nome acessível porque " +
+        "ganhou o seu próprio aria-label — sem ele, ficava sem nome nenhum",
+    ).toBeInTheDocument();
   });
 });
 
