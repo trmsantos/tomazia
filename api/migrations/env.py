@@ -6,7 +6,7 @@ from app.config import obter_definicoes
 from app.db import criar_engine
 
 # `Base` vem de `app.models`, não de `app.db`: é o import dos modelos que
-# garante que as sete tabelas estão em `Base.metadata`. Importar de
+# garante que as oito tabelas estão em `Base.metadata`. Importar de
 # `app.db` dava um `MetaData` vazio sempre que alguém se esquecesse de
 # importar os agregados, e o `autogenerate` propunha largar tudo.
 from app.models import Base

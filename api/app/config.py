@@ -86,6 +86,13 @@ class Definicoes(BaseSettings):
     media_dir: Path = Path("./var/media")
     base_dados_url: str = "sqlite:///./var/dev.db"
     segredo_sessao: str = SEGREDO_SESSAO_OMISSAO
+    # ADR 0017: vazio por omissão = nunca confiar no `X-Forwarded-For` = o
+    # lado seguro. Só passa a ter um valor com uma linha no `.env` do
+    # servidor, depois de medido se há proxy à frente da app (F1-05). Uma
+    # string só, não uma lista: `pydantic-settings` leria uma lista a
+    # partir de uma variável de ambiente como JSON, e `.env` não é JSON.
+    # `app/rede.py` é quem a separa por vírgulas.
+    proxies_de_confianca: str = ""
 
     @property
     def pendentes_dir(self) -> Path:
