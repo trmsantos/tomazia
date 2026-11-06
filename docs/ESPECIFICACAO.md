@@ -43,6 +43,7 @@ Fonte de verdade para pessoas e agentes. O plano completo, com diagramas, vive n
 | clientes | id, nome (80), email (único), telemovel (opcional), consentimento_em, versao_termos, token_cancelar (único), criado_em |
 | admins | id, utilizador (único), hash_password (argon2id), tentativas_falhadas, bloqueado_ate, sessao_versao, criado_em |
 | definicoes | chave (pk), valor: wifi_rede, wifi_password, horario (JSON por dia), morada, telefone, instagram, maps_url |
+| tentativas_de_envio | id, ip_hash, criada_em — uma linha por tentativa de `POST /fotos`, registada **antes** de a imagem ser tocada. É o contador do limite de 5 por hora por IP (ADR 0018); contar linhas de `fotos` deixava um ficheiro de 58 bytes gastar 90 MB sem gastar quota nenhuma. |
 
 Migração da BD antiga (`scripts/importar_bd_antiga.py`, só leitura, idempotente): junta os 12 valores de `tipo` em 11 categorias; importa os 140 produtos com preço em cêntimos e o texto sem `htmlspecialchars`; eventos sem data entram como rascunho; não importa a foto de teste, os clientes nem os admins.
 

@@ -23,14 +23,26 @@ Por isso esta bateria tem quatro camadas, e não uma só:
    segredo, e com o `admin_id` apagado da BD → 401 em todos; sessão boa →
    200.
 3. **Igualdade explícita da lista gerada**, no padrão do
-   `CONTRATO_PUBLICO` de `tests/apoio_publico.py`: hoje o conjunto
-   esperado é vazio, **e está escrito aqui porquê** — para "zero porque
-   ainda não há nenhuma" nunca mais dar o mesmo resultado que "zero porque
-   a travessia partiu". Quando a F2-05 acrescentar a primeira rota, esta
-   igualdade fica vermelha, e é isso que obriga alguém a vir decidir se
-   ela também fica protegida.
+   `CONTRATO_PUBLICO` de `tests/apoio_publico.py`: até a F2-06, o conjunto
+   esperado era vazio, **e estava escrito porquê** — para "zero porque
+   ainda não há nenhuma" nunca dar o mesmo resultado que "zero porque a
+   travessia partiu".
+3b. **Cada rota × cada método, sem cookie → 401** — o parametrizado que o
+   critério pede à letra ("lista gerada a partir das rotas"), ligado
+   agora que a F2-06 traz as primeiras quatro rotas de gestão
+   (`METODOS_DE_GESTAO_POR_CAMINHO`, logo abaixo). Gerado a partir dessa
+   tabela, não da app real: enquanto a F2-06 não aterrar, a app não
+   declara nenhuma destas rotas, e gerar os casos a partir dela dava zero
+   casos outra vez.
 4. **Estrutural** — o router de gestão declara `exigir_admin` nas suas
-   `dependencies`. Assertável hoje, com zero rotas.
+   `dependencies`. Assertável mesmo antes de qualquer rota existir.
+
+**A F2-06 é quem acrescenta a primeira rota de gestão** (moderação de
+fotos: `GET /gestao/fotos`, `GET /gestao/fotos/{id}/imagem`,
+`POST /gestao/fotos/{id}/aprovar`, `POST /gestao/fotos/{id}/rejeitar`), e
+por isso é quem faz a Camada 3 ficar vermelha e obriga a atualizar
+`ROTAS_DE_GESTAO_ESPERADAS` — **atualizar o conjunto é o trabalho certo;
+apagar o teste não.**
 """
 
 from __future__ import annotations
@@ -58,13 +70,30 @@ if TYPE_CHECKING:
 INSTANTE_BASE = datetime(2026, 6, 20, 10, 0, tzinfo=UTC)
 VALIDADE_DA_SESSAO = timedelta(hours=12)
 
-#: F2-04 não cria nenhuma rota `/gestao/*` — são todas da F2-05 e da F2-06.
-#: O conjunto vazio aqui é uma decisão explícita, não um esquecimento: é o
-#: que distingue "zero porque ainda não há nenhuma" de "zero porque a
-#: travessia partiu" (a Camada 1, acima). Quando a F2-05 acrescentar a
-#: primeira rota de gestão, este `assert` fica vermelho — e é exatamente
-#: isso que obriga a decidir, naquele PR, se ela fica protegida.
-ROTAS_DE_GESTAO_ESPERADAS: frozenset[str] = frozenset()
+#: A F2-06 é quem estreia rotas `/gestao/*` a sério (a F2-05 ainda não
+#: tinha aterrado quando isto foi escrito — ver `docs/TAREFAS.md`): a
+#: moderação de fotos. Os métodos vêm a par, no mesmo dicionário, para o
+#: parametrizado "cada rota × cada método" (`TestCamada3bCadaRotaXMetodo`,
+#: abaixo) os poder montar sem executar a app real primeiro — que, até
+#: esta tarefa aterrar, ainda não declara nenhuma delas.
+#:
+#: Um conjunto vazio aqui foi, até agora, uma decisão explícita, não um
+#: esquecimento: era o que distinguia "zero porque ainda não há nenhuma"
+#: de "zero porque a travessia partiu" (a Camada 1, acima). A partir desta
+#: tarefa deixa de estar vazio — e é isso, não o apagar do teste, que é o
+#: trabalho certo: a primeira rota de gestão obriga alguém a vir decidir
+#: se ela fica protegida, e fica, pela construção da Camada 4.
+METODOS_DE_GESTAO_POR_CAMINHO: dict[str, frozenset[str]] = {
+    "/gestao/fotos": frozenset({"GET"}),
+    "/gestao/fotos/{id}/imagem": frozenset({"GET"}),
+    "/gestao/fotos/{id}/aprovar": frozenset({"POST"}),
+    "/gestao/fotos/{id}/rejeitar": frozenset({"POST"}),
+}
+
+#: Derivado do dicionário acima, nunca escrito em paralelo: os dois
+#: divergirem é exatamente o modo de falha que `tests/apoio_publico.py::
+#: CONTRATO_PUBLICO` existe para evitar do lado público.
+ROTAS_DE_GESTAO_ESPERADAS: frozenset[str] = frozenset(METODOS_DE_GESTAO_POR_CAMINHO)
 
 
 def _rotas_de_gestao(aplicacao: FastAPI) -> frozenset[str]:
@@ -225,6 +254,52 @@ class TestCamada3ListaExplicita:
         from app.routers import gestao  # noqa: F401
 
         assert _rotas_de_gestao(criar_app()) == ROTAS_DE_GESTAO_ESPERADAS
+
+
+#: `{id}` trocado por `1`: a dependência do router (`exigir_admin`)
+#: resolve-se antes dos parâmetros de caminho, por isso o 401 ganha ao 422
+#: mesmo com um id que, depois de implementada a rota, pode nem existir.
+PARAMETROS_CADA_ROTA_X_METODO: tuple[tuple[str, str], ...] = tuple(
+    (caminho.replace("{id}", "1"), metodo)
+    for caminho, metodos in sorted(METODOS_DE_GESTAO_POR_CAMINHO.items())
+    for metodo in sorted(metodos)
+)
+
+
+class TestCamada3bCadaRotaXMetodo:
+    """O parametrizado que o critério pede: "lista gerada a partir das rotas".
+
+    Gerado a partir de `METODOS_DE_GESTAO_POR_CAMINHO` — a par de
+    `ROTAS_DE_GESTAO_ESPERADAS`, que a Camada 3 já cruza com a app real —
+    e não a partir da app em si: enquanto esta tarefa não aterrar, a app
+    real não declara nenhuma destas rotas, e gerar os casos a partir dela
+    dava zero casos e este parametrizado ficava verde sem verificar nada
+    (o mesmo problema, resolvido da mesma forma, que motivou a Camada 3).
+    """
+
+    @pytest.mark.parametrize(
+        "caminho,metodo",
+        PARAMETROS_CADA_ROTA_X_METODO,
+        ids=[
+            f"{metodo} {caminho}" for caminho, metodo in PARAMETROS_CADA_ROTA_X_METODO
+        ],
+    )
+    def test_sem_cookie_e_401(
+        self, cliente: TestClient, caminho: str, metodo: str
+    ) -> None:
+        """A armadilha, e não é hipotética.
+
+        Numa rota `POST` (aprovar, rejeitar), um pedido sem `X-Tomazia`
+        apanha primeiro o `GuardaXTomazia` e responde 403, não 401 — por
+        isso as mutações levam `CABECALHO_MUTACAO`, senão este teste fica
+        vermelho pela razão errada.
+        """
+        cabecalhos = CABECALHO_MUTACAO if metodo != "GET" else {}
+        resposta = getattr(cliente, metodo.lower())(caminho, headers=cabecalhos)
+        assert resposta.status_code == 401, (
+            f"{metodo} {caminho} sem cookie devolveu {resposta.status_code}, "
+            f"não 401 (corpo: {resposta.text})"
+        )
 
 
 class TestCamada4Estrutural:

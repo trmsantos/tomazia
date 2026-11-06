@@ -252,6 +252,34 @@ def ler_sessao(valor: str) -> SessaoAssinada | None:
     return SessaoAssinada(admin_id=admin_id, versao=sessao_versao)
 
 
+def admin_da_sessao(sessao: Session, valor_da_sessao: str | None) -> Admin | None:
+    """O admin dono de `valor_da_sessao`, ou `None` — nunca levanta.
+
+    Extraído de `exigir_admin` (achado em revisão da F2-06): havia uma
+    cópia linha a linha deste corpo em `app.routers.fotos._admin_da_sessao`,
+    usada só para decidir se uma sessão de admin válida salta o limite de
+    envios de fotos. Duas cópias da mesma verificação divergem no dia em
+    que uma delas ganhar mais uma condição — por exemplo, um campo
+    `desativado` numa conta — e só uma das duas for atualizada; o atalho ao
+    limite continuaria a confiar numa sessão que a gestão já recusa. Quem
+    precisar de **exigir** uma sessão usa `exigir_admin`, que é esta função
+    mais o `401`; quem só precisar de **saber se há uma**, sem tornar isso
+    obrigatório, usa esta.
+    """
+    if not valor_da_sessao:
+        return None
+    lida = ler_sessao(valor_da_sessao)
+    if lida is None:
+        return None
+    candidato = sessao.get(Admin, lida.admin_id)
+    # A verificação da versão vive aqui, não em `ler_sessao`: é aqui que o
+    # `Admin` já foi carregado, e é a linha da conta — não o cookie — que
+    # diz qual é a versão válida agora.
+    if candidato is not None and candidato.sessao_versao == lida.versao:
+        return candidato
+    return None
+
+
 def exigir_admin(
     sessao: SessaoDaBD,
     valor_da_sessao: Annotated[str | None, Cookie(alias=NOME_DO_COOKIE)] = None,
@@ -276,17 +304,7 @@ def exigir_admin(
     `{"detail": {...}}` — o que nenhum teste de sessão em falta verifica,
     só o estado `401`.
     """
-    admin: Admin | None = None
-    if valor_da_sessao:
-        lida = ler_sessao(valor_da_sessao)
-        if lida is not None:
-            candidato = sessao.get(Admin, lida.admin_id)
-            # A verificação da versão vive aqui, não em `ler_sessao`: é
-            # aqui que o `Admin` já foi carregado, e é a linha da conta —
-            # não o cookie — que diz qual é a versão válida agora.
-            if candidato is not None and candidato.sessao_versao == lida.versao:
-                admin = candidato
-
+    admin = admin_da_sessao(sessao, valor_da_sessao)
     if admin is None:
         raise HTTPException(
             status_code=401,

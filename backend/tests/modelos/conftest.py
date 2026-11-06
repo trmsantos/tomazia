@@ -115,6 +115,7 @@ def motor(request: pytest.FixtureRequest, origem_do_esquema: str) -> Iterator[En
         ementa,
         eventos,
         fotos,
+        limites,
     )
 
     if origem_do_esquema == "migracao":
@@ -145,7 +146,7 @@ def motor(request: pytest.FixtureRequest, origem_do_esquema: str) -> Iterator[En
     # que *algum* esquema foi construído. Sem isto, um caminho que falhasse
     # em silêncio deixava os testes a falhar um a um com "no such table",
     # sem dizer que o problema era da fixture.
-    _exigir_as_sete_tabelas(motor_da_sessao, origem_do_esquema)
+    _exigir_as_tabelas_esperadas(motor_da_sessao, origem_do_esquema)
 
     yield motor_da_sessao
     motor_da_sessao.dispose()
@@ -169,7 +170,7 @@ def _caminho_da_base_de_dados() -> Path:
     return Path(url.database)
 
 
-def _exigir_as_sete_tabelas(motor_da_sessao: Engine, origem: str) -> None:
+def _exigir_as_tabelas_esperadas(motor_da_sessao: Engine, origem: str) -> None:
     from sqlalchemy import inspect
 
     tabelas = set(inspect(motor_da_sessao).get_table_names()) - {"alembic_version"}
@@ -181,8 +182,12 @@ def _exigir_as_sete_tabelas(motor_da_sessao: Engine, origem: str) -> None:
         "clientes",
         "admins",
         "definicoes",
+        # F2-06: limite de 5 envios de fotos por hora por IP, contado por
+        # tentativa (ver `app/models/limites.py`).
+        "tentativas_de_envio",
     }
     assert tabelas == esperadas, (
         f"o esquema construído por `{origem}` tem {sorted(tabelas)} em vez "
-        f"das sete tabelas. A falha é da fixture, não do teste"
+        f"das {len(esperadas)} tabelas esperadas. A falha é da fixture, "
+        "não do teste"
     )

@@ -42,7 +42,9 @@ from pathlib import Path
 from tests import apoio_esquema
 from tests.apoio_esquema import RAIZ_BACKEND, correr_alembic, relatorio
 
-#: As sete tabelas da secção "Modelo de dados" de `docs/ESPECIFICACAO.md`.
+#: As sete tabelas da secção "Modelo de dados" de `docs/ESPECIFICACAO.md`,
+#: mais `tentativas_de_envio` (F2-06: sustenta o limite de 5 fotos por
+#: hora por IP, contando tentativas — ver `app/models/limites.py`).
 TABELAS_ESPERADAS = frozenset(
     {
         "categorias",
@@ -52,6 +54,7 @@ TABELAS_ESPERADAS = frozenset(
         "clientes",
         "admins",
         "definicoes",
+        "tentativas_de_envio",
     }
 )
 
@@ -81,6 +84,7 @@ RESTRICOES_ESPERADAS = frozenset(
         "pk_eventos",
         "pk_fotos",
         "pk_produtos",
+        "pk_tentativas_de_envio",
         # unicidades
         "uq_admins_utilizador",
         "uq_categorias_slug",
@@ -119,6 +123,7 @@ OMISSOES_ESPERADAS = {
     "fotos.criada_em": "CURRENT_TIMESTAMP",
     "produtos.disponivel": "1",
     "produtos.ordem": "0",
+    "tentativas_de_envio.criada_em": "CURRENT_TIMESTAMP",
 }
 
 
@@ -131,7 +136,7 @@ def _caminho_de_bd_inexistente(tmp_path: Path, nome: str = "tomazia.db") -> Path
 
 
 def test_upgrade_head_cria_a_bd_do_zero(tmp_path: Path) -> None:
-    """T5, o critério literal da tarefa: ficheiro inexistente → sete tabelas."""
+    """T5, o critério literal da tarefa: ficheiro inexistente → as tabelas esperadas."""
     base_dados = _caminho_de_bd_inexistente(tmp_path)
 
     resultado = correr_alembic("upgrade", "head", base_dados=base_dados)
@@ -277,7 +282,7 @@ def test_modelos_e_migracao_nao_divergem(tmp_path: Path) -> None:
     `test_o_esquema_da_migracao_e_o_dos_modelos_sao_o_mesmo`, os dois
     conjuntos literais abaixo, e a parametrização de `tests/modelos/`.
 
-    A verificação das sete tabelas antes do `alembic check` não é
+    A verificação das tabelas esperadas antes do `alembic check` não é
     redundante com o T5: é o que impede este teste de passar por vazio.
     Sem nenhuma migração e sem nenhum modelo, `Base.metadata` e a base de
     dados também "não divergem", e o `alembic check` sai com 0 — que foi
@@ -292,8 +297,8 @@ def test_modelos_e_migracao_nao_divergem(tmp_path: Path) -> None:
     tabelas = apoio_esquema.tabelas_de_negocio(base_dados)
     assert tabelas == set(TABELAS_ESPERADAS), (
         "não há nada para comparar: a base de dados em head tem "
-        f"{sorted(tabelas)} em vez das sete tabelas. Um `alembic check` "
-        "sobre um esquema vazio passa sempre"
+        f"{sorted(tabelas)} em vez das {len(TABELAS_ESPERADAS)} tabelas "
+        "esperadas. Um `alembic check` sobre um esquema vazio passa sempre"
     )
 
     verificacao = correr_alembic("check", base_dados=base_dados)
@@ -325,6 +330,7 @@ def test_o_esquema_da_migracao_e_o_dos_modelos_sao_o_mesmo(tmp_path: Path) -> No
         ementa,
         eventos,
         fotos,
+        limites,
     )
 
     pela_migracao = _caminho_de_bd_inexistente(tmp_path, "pela-migracao.db")

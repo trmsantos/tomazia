@@ -924,7 +924,13 @@ def contar(destino: Path, tabela: str) -> int:
 
 
 def contagens(destino: Path) -> dict[str, int]:
-    """As linhas de cada uma das sete tabelas do destino."""
+    """As linhas de cada uma das tabelas de negócio que a importação preenche.
+
+    Não é "todas as tabelas do esquema" — de propósito: `tentativas_de_envio`
+    (F2-06) não é tocada pelo `importar_bd_antiga.py`, e entrar aqui
+    partiria todas as comparações por dicionário literal que este módulo
+    sustenta.
+    """
     return {
         tabela: contar(destino, tabela)
         for tabela in (

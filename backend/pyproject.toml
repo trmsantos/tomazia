@@ -28,6 +28,17 @@ dependencies = [
     # à mão — num primitivo de segurança, código revisto por muita gente em
     # vez de trinta linhas nossas.
     "itsdangerous",
+    # F2-06 (fotos): `docs/ESPECIFICACAO.md` fixa Pillow para abrir, validar
+    # (JPEG/PNG/WebP), limitar píxeis e recodificar sem EXIF. Adicionado já
+    # pela bateria de testes desta tarefa (`tests/apoio_fotos.py` fabrica as
+    # imagens falsas — JPEG com GPS, PNG-bomba, etc. — com ela) antes de o
+    # `app/services/imagens.py` existir.
+    "pillow>=13.0.0",
+    # F2-06 (fotos): o FastAPI/Starlette só sabe interpretar um corpo
+    # `multipart/form-data` (`UploadFile`/`File(...)`) com este pacote
+    # instalado — sem ele, `POST /fotos` rebenta a tentar ler o ficheiro
+    # enviado. É uma dependência de runtime, não só de teste.
+    "python-multipart>=0.0.33",
 ]
 
 [dependency-groups]
