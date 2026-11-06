@@ -24,7 +24,8 @@ e não a ordem dos parâmetros, que faz o `429` não pagar o envio.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
@@ -126,6 +127,18 @@ def _admin_da_sessao(request: Request, sessao: Session) -> Admin | None:
     return auth_servico.admin_da_sessao(sessao, valor)
 
 
+def _recusar_por_limite(sessao: Session, ip_hash: str, agora: datetime) -> NoReturn:
+    """Levanta o `429` do limite de envios, com `Retry-After` e `segundos_em_falta`."""
+    segundos = segundos_ate_haver_vaga(sessao, ip_hash, agora)
+    raise ErroDaApi(
+        429,
+        "limite_de_envios_excedido",
+        MENSAGEM_LIMITE_DE_ENVIOS,
+        extra={"segundos_em_falta": segundos},
+        cabecalhos={"Retry-After": str(segundos)},
+    )
+
+
 def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
     """O `ip_hash` do pedido, depois de registar a tentativa e aplicar o limite (salvo para admins).
 
@@ -139,16 +152,33 @@ def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
     inteiro (até 8 MiB) sem nunca gastar balde nenhum, porque a tentativa
     só era registada depois de o corpo já estar interpretado.
 
-    **A ordem fecha também a corrida.** Primeiro grava-se a tentativa
-    (`registar_tentativa`, com o seu próprio `commit`), só depois se conta
-    (`envios_na_ultima_hora`) e se compara a `LIMITE_POR_HORA` com `>`, não
+    **A ordem fecha também a corrida.** O `INSERT` autoritativo é sempre
+    seguido de uma recontagem comparada com `LIMITE_POR_HORA` por `>`, não
     `>=`: o `INSERT` serializa no SQLite (um escritor de cada vez, mesmo em
     WAL), por isso a contagem feita a seguir ao próprio `INSERT` já reflete
     todas as tentativas de outros pedidos que tenham commitado primeiro.
-    Contar antes de gravar (a versão anterior) deixava N pedidos verdadeiramente
-    simultâneos lerem todos o mesmo valor antigo antes de qualquer um
-    escrever — medido, 12 pedidos simultâneos do mesmo IP a dar
-    `[400]×12`, zero `429`.
+    Contar antes de gravar, sem mais nada (uma versão anterior desta
+    correção), deixava N pedidos verdadeiramente simultâneos lerem todos o
+    mesmo valor antigo antes de qualquer um escrever — medido, 12 pedidos
+    simultâneos do mesmo IP a dar `[400]×12`, zero `429`.
+
+    **Mas gravar sempre, mesmo quando o balde já está provadamente cheio,
+    trocou um defeito por outro** (achado de uma revisão posterior,
+    medido): 20 pedidos do mesmo IP já bloqueado davam `[202×5, 429×15]` —
+    e **20 linhas** em `tentativas_de_envio`, um `INSERT`+`commit`
+    (`fsync` do WAL) **permanente**, por pedido, numa rota pública sem
+    autenticação, sem rota nem script que alguma vez as apague. Um corpo
+    de 10 bytes compra uma escrita durável. Por isso há uma contagem
+    **barata** primeiro: se já há `LIMITE_POR_HORA` tentativas na janela
+    **sem contar esta**, `429` sem escrever nada. Só os pedidos que ainda
+    cabiam na janela no momento da leitura chegam ao `INSERT`+recontagem
+    — que continua a ser o caminho autoritativo, para a corrida dos 12
+    simultâneos continuar fechada (a leitura barata não garante nada
+    sozinha sob concorrência a sério: vários pedidos podem lê-la ainda
+    livre ao mesmo tempo, e é o `INSERT` a seguir que decide de verdade).
+    As escritas ficam limitadas a, no máximo, `LIMITE_POR_HORA` mais a
+    concorrência real por IP e por hora — não mais uma por pedido
+    recusado.
     """
     _verificar_content_length(request)
 
@@ -173,17 +203,19 @@ def _exigir_limite_de_envios(request: Request, sessao: SessaoDaBD) -> str:
     # (ver o docstring desse módulo): é este módulo, `app.routers.fotos`,
     # que `tests/apoio_fotos.py::fixar_relogio_fotos` sabe congelar.
     agora = agora_utc()
+
+    # Leitura barata, antes de qualquer escrita: se o balde já está
+    # provadamente cheio (sem contar esta tentativa), recusa sem gravar
+    # nada. Não fecha a corrida sozinha — vários pedidos concorrentes
+    # podem passar por aqui ao mesmo tempo, todos a ver o balde com
+    # espaço — é só o que evita um `INSERT` permanente por cada pedido
+    # recusado numa sequência (não concorrente) contra um balde já cheio.
+    if envios_na_ultima_hora(sessao, ip_hash, agora) >= LIMITE_POR_HORA:
+        _recusar_por_limite(sessao, ip_hash, agora)
+
     registar_tentativa(sessao, ip_hash, agora)
-    quantidade = envios_na_ultima_hora(sessao, ip_hash, agora)
-    if quantidade > LIMITE_POR_HORA:
-        segundos = segundos_ate_haver_vaga(sessao, ip_hash, agora)
-        raise ErroDaApi(
-            429,
-            "limite_de_envios_excedido",
-            MENSAGEM_LIMITE_DE_ENVIOS,
-            extra={"segundos_em_falta": segundos},
-            cabecalhos={"Retry-After": str(segundos)},
-        )
+    if envios_na_ultima_hora(sessao, ip_hash, agora) > LIMITE_POR_HORA:
+        _recusar_por_limite(sessao, ip_hash, agora)
     return ip_hash
 
 

@@ -26,10 +26,34 @@ a imagem é recusada **antes** de qualquer descompressão. Aqui a imagem é
 **legítima** e tem de ser aceite — o teto de memória tem de valer também
 para o caminho de sucesso, não só para o de recusa.
 
-Corrigido invertendo a ordem em `app/services/imagens.py::recodificar`:
-`draft()` antes do `load()`, `thumbnail()` logo a seguir — ver o docstring
-desse módulo. Este teste usa o mesmo padrão do S-11: `tracemalloc` à volta
-do pedido, com o mesmo teto de 50 MiB.
+**O que este teste prova, e o que não prova — achado de uma revisão
+posterior, confirmado por medição, não assumido.** `tracemalloc` só vê
+alocações feitas pelo alocador do Python; os bitmaps do Pillow são
+`malloc` em C, **invisíveis** a ele — medido: `Image.new("RGB",
+(3000, 3000)).load()`, sozinho, traça um pico de **0,0 MiB**. O `open`, o
+`load()` e o `exif_transpose` da tabela acima nunca apareceram no
+`tracemalloc`; o que ele vê é o `tobytes()`/`frombytes()`, que **já
+correm sobre a imagem reduzida pelo `thumbnail()`** (movido para logo a
+seguir ao `load()` — ver o docstring de `app/services/imagens.py`). Por
+isso este teste prende o `thumbnail()` (que `test_imagem_grande_e_reduzida.py`
+também prende, por comportamento, de forma mais direta) e **não prendia**
+o `draft()`: apagar só o `draft()`, sozinho, não fazia este teste falhar
+— o mesmo tratamento honesto que este ficheiro de testes já tinha dado ao
+`is_relative_to` em `test_caminho_seguro_tem_tres_guardas.py`.
+
+**Isso mudou com o orçamento de bytes do item A (`ORCAMENTO_DE_BYTES_SEM_DRAFT`,
+decisão do Tomás, 6 de novembro de 2026).** Sem o `draft()`, o JPEG desta
+foto deixa de encolher antes do `load()`, o orçamento vê um custo acima do
+teto e a foto passa a ser **recusada** — confirmado, apagar o `draft()`
+agora faz este teste falhar (`202` esperado, `400` obtido), e faz falhar
+também `tests/seguranca/test_orcamento_de_bytes_sem_draft.py::test_jpeg_do_mesmo_tamanho_e_aceite`.
+O `draft()` passou a ser prendível **por comportamento**, como o resto —
+já não precisa de o ser por medição de memória, que é precisamente o que
+`tracemalloc` não consegue fazer aqui.
+
+Este teste usa o mesmo padrão do S-11: `tracemalloc` à volta do pedido,
+com o mesmo teto de 50 MiB — e continua válido como teste de regressão do
+`thumbnail()`, mesmo não vendo o resto do pipeline.
 """
 
 from __future__ import annotations

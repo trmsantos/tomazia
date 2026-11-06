@@ -24,6 +24,18 @@ uma fixture sem bytes nenhuns) tirou a única cobertura que este ramo
 tinha. `test_sem_ficheiro_nenhum_o_filenotfound_e_tratado_como_nao_havia_nada`,
 acrescentado aqui, semeia a linha **sem** o ficheiro — de propósito, só
 neste ficheiro de segurança, nunca na fixture partilhada.
+
+**Achado numa terceira revisão:** o `moveu_o_ficheiro = False` dentro do
+`except FileNotFoundError` continuava sem rede — trocá-lo por `True` não
+fazia nenhum teste falhar. A razão: esse booleano só é lido no ramo de
+"desfazer o movimento" (`_desfazer_o_movimento`), que só corre quando o
+`UPDATE` falha depois; e `test_sem_ficheiro_nenhum_...` (sem corrida
+nenhuma) nunca chega lá — o `UPDATE` tem sucesso e a função devolve
+antes. `test_sem_ficheiro_e_corrida_perdida_nao_tenta_mover_de_volta`,
+acrescentado aqui, combina as duas condições: sem ficheiro **e** o
+`UPDATE` perde a corrida — com um espião sobre `os.replace`, para provar
+que o `moveu_o_ficheiro` incorreto não faz o desfazer tentar mover um
+ficheiro que nunca existiu.
 """
 
 from __future__ import annotations
@@ -132,3 +144,65 @@ def test_sem_ficheiro_nenhum_o_filenotfound_e_tratado_como_nao_havia_nada(
     assert not (definicoes.media_dir / nome_ficheiro).exists(), (
         "sem ficheiro nenhum para mover, nada pode aparecer em MEDIA_DIR"
     )
+
+
+def test_sem_ficheiro_e_corrida_perdida_nao_tenta_mover_de_volta(
+    monkeypatch: pytest.MonkeyPatch, sessao: Session
+) -> None:
+    """Fecha o `moveu_o_ficheiro = False`: sem ficheiro **e** a corrida perdida.
+
+    Sem combinar as duas condições, o booleano nunca é lido: com só "sem
+    ficheiro" (o teste de cima), o `UPDATE` tem sucesso e a função nunca
+    chega ao ramo que o lê; com só "corrida perdida"
+    (`test_moderacao_e_atomica_sob_corrida.py`), há sempre um ficheiro a
+    sério. Só a combinação exercita `_desfazer_o_movimento` com
+    `moveu_o_ficheiro` a `False` — e só um espião sobre `os.replace`
+    distingue "não tentou mover de volta" (correto) de "tentou e a
+    exceção ficou silenciada por `contextlib.suppress`" (o que uma
+    mutação para `True` causaria).
+    """
+    from app.config import obter_definicoes
+    from app.erros import ErroDaApi
+    from app.models.fotos import EstadoFoto, Foto
+    from app.services import fotos as servico
+
+    nome_ficheiro = "00000000-0000-4000-8000-000000009010.webp"
+    sessao.add(
+        Foto(
+            id=9010,
+            ficheiro=nome_ficheiro,
+            estado=EstadoFoto.PENDENTE,
+            descricao=None,
+            enviada_por=None,
+            ip_hash="hash-falso-de-ip-sem-ficheiro-2",
+        )
+    )
+    sessao.commit()
+
+    definicoes = obter_definicoes()
+    assert not (definicoes.pendentes_dir / nome_ficheiro).exists()
+
+    chamadas_replace: list[tuple[object, object]] = []
+    original_replace = servico.os.replace
+
+    def espia_replace(origem: object, destino: object) -> None:
+        chamadas_replace.append((origem, destino))
+        original_replace(origem, destino)
+
+    monkeypatch.setattr(servico.os, "replace", espia_replace)
+    monkeypatch.setattr(servico, "_rowcount_do_update", lambda sessao_, instrucao: 0)
+
+    with pytest.raises(ErroDaApi) as excinfo:
+        servico.aprovar(sessao, 9010)
+    assert excinfo.value.estado == 409
+
+    assert len(chamadas_replace) == 1, (
+        "esperava uma só chamada a `os.replace` — a tentativa inicial, que "
+        "falha com `FileNotFoundError` e é apanhada. Uma segunda chamada "
+        "significaria que `_desfazer_o_movimento` tentou mover de volta um "
+        "ficheiro que `moveu_o_ficheiro` devia saber que nunca existiu"
+    )
+
+    linha = sessao.get(Foto, 9010)
+    assert linha is not None
+    assert linha.estado == EstadoFoto.PENDENTE

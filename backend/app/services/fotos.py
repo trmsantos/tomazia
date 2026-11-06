@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -201,25 +202,50 @@ def _foto_ou_404(sessao: Session, id_foto: int) -> Foto:
     return foto
 
 
+#: A forma exata que `fotos.ficheiro` sempre tem — `uuid4().hex` (32
+#: carateres hexadecimais em minúsculas) + `.webp`, escrito em
+#: `_escrever_em_pendentes`. Decisão do Tomás, 6 de novembro de 2026: ver
+#: o docstring de `_caminho_seguro` para o porquê de isto existir.
+PADRAO_NOME_DE_FICHEIRO = re.compile(r"^[0-9a-f]{32}\.webp$")
+
+
 def _caminho_seguro(pasta: Path, nome: str) -> Path | None:
     """O caminho de `nome` dentro de `pasta`, só se for mesmo e só lá dentro.
 
-    Defesa em profundidade, no padrão das três guardas do
-    `servirMediaEmDesenvolvimento` de `frontend/vite.config.ts`. Hoje
-    `nome` vem sempre de `uuid4().hex` e o `CHECK` da F2-01 recusa `/`,
-    `\\` e `..` em `fotos.ficheiro` — não há ataque nenhum a escrever
-    aqui. Mas a F2-08 escreve nesta tabela por SQL cru, sem passar pela
-    API, e esta função passa a ser a última linha, não a primeira:
-    - `is_symlink()` recusa qualquer ligação, mesmo uma que aponte para
-      dentro da própria pasta — nunca servir uma ligação, só o ficheiro;
-    - `resolve()` segue o resto do caminho e `is_relative_to` confirma que
-      o resultado continua dentro de `pasta` — contra um `nome` que fosse
-      `..` disfarçado;
-    - o nome **resolvido** comparado, exato, com `nome`: o macOS ignora
-      maiúsculas no sistema de ficheiros e o servidor de produção não, e
-      sem isto `CARTAZ.webp` serviria o que está guardado como
-      `cartaz.webp`.
+    Defesa em profundidade para a F2-08, que escreve na tabela `fotos` por
+    SQL cru, sem passar pela API — esta função passa a ser a última linha,
+    não a primeira. Hoje `nome` vem sempre de `uuid4().hex` e o `CHECK` da
+    F2-01 recusa `/`, `\\` e `..` em `fotos.ficheiro`; não há ataque nenhum
+    a escrever aqui através da API pública.
+
+    Quatro guardas, por esta ordem — e a ordem importa para o que cada uma
+    prova:
+
+    1. **A lista branca de forma** (`PADRAO_NOME_DE_FICHEIRO`): recusa
+       qualquer `nome` que não seja exatamente `<32 hex minúsculos>.webp`,
+       antes de tocar no sistema de ficheiros. Decisão do Tomás, 6 de
+       novembro de 2026, depois de medido que a guarda de maiúsculas
+       (nº 4, abaixo) **não funciona no macOS**: `Path.resolve()` não
+       canoniza a caixa aqui — `candidato.name` continua a ser o que foi
+       pedido, não o que está no disco, por isso `CARTAZ.webp` passava
+       pelas quatro guardas antigas e era servido como se fosse
+       `cartaz.webp`. A lista branca não depende de nenhum sistema de
+       ficheiros: um nome com maiúsculas, barras ou `..` nunca bate
+       com o padrão, sempre, em qualquer SO.
+    2. `is_symlink()` recusa qualquer ligação, mesmo uma que aponte para
+       dentro da própria pasta — nunca servir uma ligação, só o ficheiro.
+       Continua a ser a única guarda que apanha isto: a lista branca não
+       olha para o que `nome` *é* no disco, só para a forma da *string*.
+    3. e 4. `is_relative_to` (o resolvido continua dentro de `pasta`) e a
+       comparação final de nome — com a lista branca já a recusar barras,
+       `..` e maiúsculas antes de chegar aqui, estas duas ficam **sem
+       nenhum caso conhecido que as precise**: medido, para qualquer
+       `nome` que passe a guarda 1, as duas sempre concordam com o que o
+       `is_file()` já diria sozinho. Ficam por defesa em profundidade,
+       não porque algum teste as consiga isolar.
     """
+    if not PADRAO_NOME_DE_FICHEIRO.match(nome):
+        return None
     candidato = pasta / nome
     if candidato.is_symlink():
         return None

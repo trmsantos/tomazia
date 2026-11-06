@@ -43,7 +43,26 @@ redescobrir):
   logo **a seguir** ao `load()`, antes do `exif_transpose`/`convert`/
   `frombytes` — essas três operações passam a correr sobre uma imagem já
   pequena. Medido: **188 MB em vez de 604**, com os bytes de saída
-  idênticos aos de antes da correção.
+  idênticos aos de antes da correção. **Mas o `draft()` só existe para
+  JPEG** — nos outros plugins é uma chamada sem efeito nenhum, documentada
+  como tal na própria biblioteca;
+- **o `draft()` sozinho não chega — o `load()` continua a descomprimir o
+  tamanho inteiro para PNG e para WebP.** Decisão do Tomás, 6 de novembro
+  de 2026, depois de medir os três formatos pela função de produção, com a
+  mesma imagem de 5460×5460 (29,81 MP, abaixo do limite de 30): JPEG (com
+  `draft`) **+25 MB** reais; PNG (sem `draft`) **+72 MB**; WebP (sem
+  `draft`, e o descodificador do Pillow materializa a frame **duas
+  vezes**) **+269 MB** — um só pedido chega para matar o worker no cPanel.
+  Mantém-se o limite de píxeis em 30 MP (é o que cobre quase todas as
+  fotos de telemóvel, e o único formato em que fica barato); acrescenta-se
+  um **orçamento em bytes**, só para quando o `draft()` não encolheu nada
+  — `ORCAMENTO_DE_BYTES_SEM_DRAFT`, logo a seguir ao `draft()` e antes do
+  `load()`. Ver o comentário junto à constante para o número escolhido.
+  **Isto é o que torna a defesa prendível por comportamento** (o pedido é
+  recusado) em vez de por medição de memória, que é precisamente o que
+  `tracemalloc` não consegue fazer para os bitmaps do Pillow (são `malloc`
+  em C, invisíveis ao alocador do Python — ver o docstring de
+  `tests/seguranca/test_pico_de_memoria_de_foto_legitima.py`).
 
 `Image.MAX_IMAGE_PIXELS` fica fixado ao `LIMITE_DE_PIXEIS` à importação
 deste módulo — como segunda camada, não a única: quem decide é mesmo a
@@ -78,13 +97,35 @@ LADO_MAIOR_MAXIMO = 2000
 
 QUALIDADE_WEBP = 82
 
+#: Decisão do Tomás, 6 de novembro de 2026. Só entra em jogo quando o
+#: `draft()` não encolheu nada (PNG, WebP sempre; um JPEG pequeno demais
+#: para a escala mais agressiva do `draft()` ainda caber acima de
+#: `LADO_MAIOR_MAXIMO`) — nesses casos o `load()` a seguir vai
+#: descomprimir a imagem **inteira**, ao tamanho declarado, e o custo é
+#: `largura × altura × len(imagem.mode)` bytes (3 para RGB, 4 para RGBA,
+#: 1 para L/P). Medido, para a mesma imagem de 5460×5460 (29,81 MP): PNG
+#: sem este orçamento custava **+72 MB** reais, WebP **+269 MB** — o
+#: descodificador WebP do Pillow materializa a frame duas vezes. Trinta
+#: milhões de bytes (~28,6 MiB) cobre um RGB de ~10 MP ou um RGBA de
+#: ~7,5 MP: bem dentro de "algumas dezenas de MB" mesmo dobrando para o
+#: caso do WebP (~57 MB no pior caso recusado, uma fração dos 269 MB
+#: medidos sem orçamento nenhum). Não é o mesmo número que
+#: `LIMITE_DE_PIXEIS` × 3 (90 MB): esse cobriria o limite de píxeis
+#: inteiro em RGB sem recusar nada, que é exatamente o problema que isto
+#: existe para fechar.
+ORCAMENTO_DE_BYTES_SEM_DRAFT = 30_000_000
+
 
 class ImagemInvalida(Exception):
     """O Pillow não reconheceu isto como imagem, ou o formato não está na lista branca."""
 
 
 class ImagemComDemasiadosPixeis(Exception):
-    """Acima do limite de píxeis (S-11), apanhado antes de qualquer descompressão."""
+    """Acima do limite de píxeis (S-11), ou do orçamento de bytes sem `draft()`.
+
+    Os dois apanhados antes de qualquer descompressão — o segundo é só
+    uma estimativa (`largura × altura × len(mode)`), nunca uma medição.
+    """
 
 
 def recodificar(origem: bytes) -> bytes:
@@ -131,15 +172,34 @@ def recodificar(origem: bytes) -> bytes:
         )
 
     # `draft()` **antes** do `load()`: só tem efeito em JPEG (é um no-op
-    # nos outros formatos), e é o que permite ao libjpeg descomprimir já à
-    # escala reduzida — em vez de descomprimir o tamanho declarado inteiro
-    # para o encolher a seguir. Medido: é esta linha, mais o `thumbnail()`
-    # logo a seguir ao `load()`, que tira o pico de 614 MB (um JPEG de
-    # 458 KB a declarar 29,81 MP, abaixo do limite de 30) para 188 MB — ver
-    # o docstring do módulo. O argumento `"RGB"` é o modo pedido; o
+    # nos outros formatos — PNG e WebP não o implementam, ver o docstring
+    # do módulo), e é o que permite ao libjpeg descomprimir já à escala
+    # reduzida — em vez de descomprimir o tamanho declarado inteiro para o
+    # encolher a seguir. Medido: é esta linha, mais o `thumbnail()` logo a
+    # seguir ao `load()`, que tira o pico de 614 MB (um JPEG de 458 KB a
+    # declarar 29,81 MP, abaixo do limite de 30) para 188 MB — ver o
+    # docstring do módulo. O argumento `"RGB"` é o modo pedido; o
     # resultado real pode diferir e é o `convert("RGB")`, mais abaixo, que
     # o garante de qualquer forma.
+    tamanho_antes_do_draft = imagem.size
     imagem.draft("RGB", (LADO_MAIOR_MAXIMO, LADO_MAIOR_MAXIMO))
+
+    if imagem.size == tamanho_antes_do_draft:
+        # O `draft()` não encolheu nada: ou o formato não o suporta (PNG,
+        # WebP — sempre), ou a imagem já estava abaixo da escala mínima
+        # que o `draft()` do JPEG aplica (potências de 1/2). Nos dois
+        # casos, o `load()` a seguir vai descomprimir o tamanho **inteiro**
+        # — é aqui, antes dele, que se estima o custo e se recusa se
+        # ultrapassar o orçamento (ver `ORCAMENTO_DE_BYTES_SEM_DRAFT`).
+        largura_sem_draft, altura_sem_draft = imagem.size
+        custo_em_bytes = largura_sem_draft * altura_sem_draft * len(imagem.mode)
+        if custo_em_bytes > ORCAMENTO_DE_BYTES_SEM_DRAFT:
+            raise ImagemComDemasiadosPixeis(
+                f"{largura_sem_draft}x{altura_sem_draft} em modo "
+                f"{imagem.mode!r} custaria {custo_em_bytes} bytes a "
+                f"descomprimir sem `draft()`, acima do orçamento de "
+                f"{ORCAMENTO_DE_BYTES_SEM_DRAFT} bytes"
+            )
 
     try:
         # Descomprime. `ImageFile.LOAD_TRUNCATED_IMAGES` fica no valor por

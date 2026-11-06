@@ -3,18 +3,26 @@
 Decisão do Tomás, substituindo a primeira versão desta tarefa: medido, um
 PNG de ~65 bytes que declara 5400×5400 (29,16 MP, mesmo abaixo do limite
 de píxeis de 30 MP) passa a comparação explícita sobre `im.size` — ainda
-não há nada descomprimido, o cabeçalho é que mente — e só falha no
-`Image.load()` a seguir, já depois de o Pillow tentar alocar o bitmap
-inteiro para o descomprimir. Essa recusa é um `400 imagem_invalida` **sem
-nenhuma linha em `fotos`**: um balde que só contasse envios aceites nunca
-via este ficheiro, e o mesmo PNG de 65 bytes repetia-se sem fim, cada
-repetição a custar dezenas de MB de RSS, sem o limite de 5 por hora nunca
-intervir.
+não há nada descomprimido, o cabeçalho é que mente. Nessa altura, a
+recusa só acontecia no `Image.load()` a seguir, já depois de o Pillow
+tentar alocar o bitmap inteiro para o descomprimir — um `400
+imagem_invalida` **sem nenhuma linha em `fotos`**: um balde que só
+contasse envios aceites nunca via este ficheiro, e o mesmo PNG de 65
+bytes repetia-se sem fim, cada repetição a custar dezenas de MB de RSS,
+sem o limite de 5 por hora nunca intervir.
 
 `tentativas_de_envio` fecha isto: cada `POST /fotos` que chega a ler o
 ficheiro conta, aceite ou não. Este teste prende exatamente o caso que
 motivou a mudança — cinco destes PNGs mentirosos esgotam o balde, e o
 sexto pedido nunca chega a `imagens.recodificar`.
+
+**O código de erro mudou numa correção posterior** (o orçamento de bytes
+do item A, `ORCAMENTO_DE_BYTES_SEM_DRAFT`): um PNG nunca encolhe no
+`draft()`, por isso este ficheiro passa agora a ser recusado **antes**
+do `load()`, como `400 imagem_demasiado_grande` — mais cedo e mais barato
+do que antes, nunca chegando a tentar alocar bitmap nenhum. O que este
+teste prende continua de pé: `recodificar` é chamado uma vez por
+tentativa aceite pelo limite, nunca mais.
 """
 
 from __future__ import annotations
@@ -103,7 +111,11 @@ def test_cinco_png_mentirosos_esgotam_o_balde_e_recodificar_nunca_corre_no_sexto
             f"a tentativa {numero} devolveu {resposta.status_code}, não 400: "
             f"{resposta.text}"
         )
-        assert resposta.json()["erro"] == "imagem_invalida"
+        # `imagem_demasiado_grande`, não `imagem_invalida`: o orçamento de
+        # bytes do item A (`ORCAMENTO_DE_BYTES_SEM_DRAFT`) recusa este PNG
+        # antes do `load()`, mais cedo do que o `OSError` de antes — ver o
+        # docstring do módulo.
+        assert resposta.json()["erro"] == "imagem_demasiado_grande"
 
     assert len(chamadas) == 5, (
         "esperava `imagens.recodificar` chamado 5 vezes (uma por tentativa "

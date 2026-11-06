@@ -67,8 +67,25 @@ medidas em revisão:
   levava `429` a dizer que já tinha chegado ao limite. Com sessão de admin
   válida, agora não se grava nada.
 
-A regra que fica: **o contador é o primeiro efeito de escrita do pedido**,
-antes de qualquer caminho que possa devolver cedo.
+A regra que fica, escrita com cuidado porque a primeira versão desta frase
+estava errada: **o contador é o primeiro efeito de escrita do pedido, e
+corre antes de tudo o que custa recursos** — antes de o corpo ser lido,
+antes de a imagem ser tocada.
+
+Não corre antes de tudo. O `403` sem `X-Tomazia`, o `411` sem
+`Content-Length` e o `413` acima do teto devolvem antes e **não escrevem
+nada**, e é o lado certo: são recusas feitas só com cabeçalhos, sem gastar
+recurso nenhum que valha a pena contar. Um pedido que não custa nada não
+gasta quota a ninguém.
+
+E o `429` também deixou de escrever. A primeira versão desta correção
+gravava a tentativa antes de contar, sempre — medido, vinte pedidos de um
+IP já bloqueado deixavam **vinte** linhas permanentes, numa rota pública
+sem autenticação, numa conta com quota de disco e sem nada que as pode. Um
+corpo de dez bytes comprava uma escrita durável. Agora há uma contagem
+barata antes do `INSERT`: com o balde provadamente cheio, responde `429`
+sem escrever, e o `INSERT` + recontagem fica só para o caminho que precisa
+de fechar a corrida.
 
 ## Consequências
 
