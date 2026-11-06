@@ -228,6 +228,13 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F2-06, F3-01.
 - **Faz:** grelha, visualização em ecrã inteiro, folha de envio com redução para 2000 px no browser e campo escondido contra bots.
 - **Feito quando:** e2e envia uma foto e vê "A tua foto aparece depois de aprovada"; Q-03.
+- **Herança da F2-06, e a primeira é a que rebenta se for ignorada:** o `POST /fotos` tem de ir **pelo cliente gerado**, nunca por um `<form>` nativo a submeter. A guarda do `X-Tomazia` é middleware sobre o método e um `<form>` nativo não consegue pôr um cabeçalho próprio — daria **403**, e pareceria avaria. A razão de a guarda existir é mecânica: `multipart/form-data` é um *simple content type* no CORS, logo um `<form>` de qualquer site do mundo podia disparar contra a nossa API com o browser do visitante; exigir um cabeçalho próprio força *preflight*, que falha porque a app não tem CORS.
+- **O campo-isco chama-se `website`** e o backend já o aceita. Preenchido, responde `202` com o corpo **byte a byte igual** ao do caminho feliz — por isso o ecrã não pode tratar os dois de forma diferente, nem sequer por acidente (o corpo de sucesso não leva `id`, de propósito, para a indistinguibilidade sair de graça).
+- **A redução para 2000 px no browser é também o que converte o HEIC dos iPhones.** Sem ela, um HEIC enviado em bruto é `400` — o Pillow não o abre. Metade dos telemóveis do bar são iPhones, e o HEIC é o formato por omissão deles: é o caso realista, não o raro.
+- **O backend recusa por quatro razões e a frase já está escrita em cada uma** (`imagem_invalida`, `imagem_demasiado_grande`, `ficheiro_grande_demais`, `limite_de_envios_excedido`). O ecrã mostra a `mensagem` tal como vem; não reescreve nem inventa. As frases passaram pelo dominio-bar e falam com quem está de pé no bar.
+- **O `429` leva `segundos_em_falta` no corpo e `Retry-After` no cabeçalho.** A frase diz "daqui a pouco" de propósito, porque é fixa; **é o ecrã que tem de compor o tempo real** se quiser mostrá-lo. Decidir aqui se mostra um contador, se desativa o botão, ou as duas coisas.
+- **Um aviso do dominio-bar que não é sobre código:** numa noite de samba, o grupo de amigos partilha o IP do WiFi do bar, logo **o limite pode ser atingido por pessoas diferentes daquela que está a tentar enviar**. A frase diz "já chegaste ao limite" porque é o que o site vê — um IP, um pedido. Se o ecrã quiser suavizar essa leitura, é decisão de desenho desta tarefa; não se inventa nada sobre a rede do bar.
+- **A foto só aparece depois de aprovada**, e não há forma de o visitante saber quando. O "Feito quando" fixa a frase; o ecrã tem de deixar isso claro **antes** de ele enviar, não só depois.
 
 ### F3-06 Visita-nos, novidades e rodapé
 
