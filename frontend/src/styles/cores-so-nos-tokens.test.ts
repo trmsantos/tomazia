@@ -46,6 +46,7 @@ import { describe, expect, it } from "vitest";
 
 import configuracaoTailwind from "../../tailwind.config";
 import { COMPONENTES_DA_F3_01 } from "../testes/componentes";
+import { FICHEIROS_DA_F3_05 } from "../testes/ecras";
 import {
   RAIZ_FRONTEND,
   RAIZ_REPOSITORIO,
@@ -83,6 +84,13 @@ function razaoDaIsencao(relativo: string): string | null {
     return "ficheiro de teste: as cores escritas à mão são os casos de prova";
   }
   if (relativo.startsWith("src/testes/")) return "auxiliar de teste, pela mesma razão";
+  // F3-05, correção do Tomás, 6 de novembro de 2026: `e2e/apoio/galeria.ts`
+  // gera uma imagem a sério num `<canvas>` (`contexto.fillStyle = "#..."`,
+  // para o gesto de deslizar ter uma foto com forma real) — é apoio de
+  // teste, nunca entra em `dist/`, pela mesma razão que `src/testes/` já
+  // está isento. Isto só apareceu agora porque a varredura exigia os
+  // ficheiros-sentinela da F3-05, que passaram a existir.
+  if (relativo.startsWith("e2e/apoio/")) return "apoio de teste (e2e), pela mesma razão";
   return null;
 }
 
@@ -213,7 +221,15 @@ function varrerFrontend(): string[] {
   }).filter((ficheiro) => !caminhoRelativo(ficheiro).startsWith("src/lib/api/"));
 }
 
-const SENTINELAS = [FICHEIRO_DOS_TOKENS, "src/App.tsx", "tailwind.config.ts"];
+const SENTINELAS = [
+  FICHEIRO_DOS_TOKENS,
+  "src/App.tsx",
+  "tailwind.config.ts",
+  // F3-05: sem isto, a chegada da galeria (grelha, Visualizador, Folha de
+  // envio) passava ao lado desta varredura em silêncio — "não encontrei
+  // cores soltas" a dar o mesmo resultado que "não procurei lá" (regra 10).
+  ...FICHEIROS_DA_F3_05,
+];
 
 describe("autoteste do detetor de cores", () => {
   it("marca os casos conhecidos — uma expressão partida faz este teste falhar", () => {
@@ -333,7 +349,12 @@ describe("nenhuma cor solta fora dos tokens", () => {
     const isentosDeProducao = ficheiros
       .filter((relativo) => razaoDaIsencao(relativo) !== null)
       .filter((relativo) => !/\.(test|spec)\.tsx?$/.test(relativo))
-      .filter((relativo) => !relativo.startsWith("src/testes/"));
+      .filter((relativo) => !relativo.startsWith("src/testes/"))
+      // `e2e/apoio/**` é apoio de teste como `src/testes/`, nunca produção
+      // (F3-05, correção do Tomás, 6 de novembro de 2026): sem este filtro,
+      // a isenção nova de `razaoDaIsencao` fazia este teste falhar por um
+      // ficheiro que nunca chega a `dist/`.
+      .filter((relativo) => !relativo.startsWith("e2e/apoio/"));
 
     expect(isentosDeProducao).toEqual([FICHEIRO_DOS_TOKENS]);
   });

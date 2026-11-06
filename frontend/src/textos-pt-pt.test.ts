@@ -39,7 +39,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
-import { FICHEIROS_DA_F3_02, FICHEIROS_DA_F3_03, FICHEIROS_DA_F3_04 } from "./testes/ecras";
+import {
+  FICHEIROS_DA_F3_02,
+  FICHEIROS_DA_F3_03,
+  FICHEIROS_DA_F3_04,
+  FICHEIROS_DA_F3_05,
+} from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -106,6 +111,14 @@ function ficheirosDaInterface(): string[] {
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "formato"), {
       extensoes: [".ts", ".tsx"],
     }),
+    // `src/lib/imagens/` entra na F3-05: a redução no browser (`reduzir.ts`)
+    // e a deteção de formato (`formato.ts`) não deviam ter texto visível
+    // nenhum — devolvem discriminantes para o ecrã traduzir — mas uma
+    // mensagem de erro escrita ali por engano não pode passar por "não
+    // encontrei nada" só porque ninguém mandou olhar para a pasta.
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "imagens"), {
+      extensoes: [".ts", ".tsx"],
+    }),
   ].filter((ficheiro) => !/\.test\.tsx?$/.test(ficheiro));
 }
 
@@ -128,6 +141,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F3_02,
   ...FICHEIROS_DA_F3_03,
   ...FICHEIROS_DA_F3_04,
+  ...FICHEIROS_DA_F3_05,
 ];
 
 describe("texto visível em português de Portugal", () => {

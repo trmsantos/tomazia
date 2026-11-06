@@ -6,10 +6,21 @@
  * a vigiar na revisão não é o limite: é a estimativa. O ponto de partida
  * está medido — o `App.tsx` a ser um `<h1>` dava 68,89 kB comprimidos, e o
  * React gastou dois terços antes de este ecrã existir. A F3-02 estima 73 a
- * 74 kB. **Acima de 78 kB entrou alguma coisa que não devia.**
+ * 74 kB.
+ *
+ * **Decisão do Tomás, 6 de novembro de 2026 (F3-05):** o tecto sobe de
+ * 78 000 para **82 000 bytes**. Medido nesta máquina, na `main` antes desta
+ * tarefa (quatro secções públicas: cabeçalho, ementa, eventos, WiFi): **76
+ * 016 bytes** comprimidos — a mesma ordem de grandeza que os 76,03 kB que o
+ * Tomás tinha medido. A F3-05 estima 79 a 81 kB (grelha, Visualizador,
+ * Folha de envio, redução de imagem no browser); um tecto de 78 000 contra
+ * essa estimativa chumbava a tarefa por fazer exactamente o que a
+ * especificação pede. O critério Q-02 a sério continua a ser 100 kB e
+ * continua folgado — este tecto é só o sinal de revisão, e recalibra-se com
+ * o custo real de cada tarefa, não com a estimativa dela.
  *
  * Com 100 kB como único sinal, o problema aparece na F3-06 e já não se sabe
- * qual das cinco tarefas o trouxe.
+ * qual das tarefas o trouxe.
  *
  * ## Porque é que este build é próprio, e não o do `build-de-producao.test.ts`
  *
@@ -62,8 +73,14 @@ import { RAIZ_FRONTEND, lerTexto } from "./testes/percorrer-arvore";
 const PASTA_DO_BUILD = join(tmpdir(), "tomazia-q02");
 const TEMPO_DO_BUILD = 240_000;
 
-/** O tecto de vigilância. O critério continua a ser o do `size-limit`. */
-const TECTO_DO_PACOTE_PUBLICO = 78_000;
+/**
+ * O tecto de vigilância. O critério continua a ser o do `size-limit`.
+ *
+ * 82 000 bytes (decisão do Tomás, 6 de novembro de 2026, F3-05): 76 016
+ * medidos antes desta tarefa mais a estimativa de 79-81 kB dela. Ver o
+ * cabeçalho do ficheiro para a conta inteira.
+ */
+const TECTO_DO_PACOTE_PUBLICO = 82_000;
 
 /**
  * Uma frase que só existe no ecrã da ementa.
@@ -169,8 +186,9 @@ describe("Q-02: o orçamento", () => {
     expect(
       total,
       `o pacote público está em ${(total / 1000).toFixed(2)} kB comprimidos. O limite do ` +
-        "Q-02 são 100 kB, mas a estimativa da F3-02 são 73 a 74 — acima de 78 entrou " +
-        "alguma coisa que não devia (F3-02, secção 8).",
+        "Q-02 são 100 kB; este tecto de vigilância é 82 kB (76 kB medidos antes da F3-05 " +
+        "mais a estimativa de 79-81 kB dela, decisão do Tomás de 6 de novembro de 2026) " +
+        "— acima disso entrou alguma coisa que não devia.",
     ).toBeLessThan(TECTO_DO_PACOTE_PUBLICO);
   });
 

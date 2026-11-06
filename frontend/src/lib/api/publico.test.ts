@@ -41,12 +41,18 @@ import * as publico from "./publico";
  *
  * Um export que não esteja aqui faz o teste rebentar, e uma chave aqui que
  * já não seja exportada também: as duas direções são verificadas.
+ *
+ * `enviarFoto` chegou com a F3-05 (correção do Tomás, 6 de novembro de
+ * 2026) — é o primeiro `POST` do cliente (ADR 0012, herança da F2-06) e o
+ * primeiro export que não tem `opcoes?` como único argumento: o `corpo`
+ * (`FormData`) é obrigatório, por isso leva um na tabela.
  */
 const ARGUMENTOS_POR_EXPORT: Record<string, unknown[]> = {
   obterEmenta: [],
   obterEventos: [],
   obterGaleria: [],
   obterInfo: [],
+  enviarFoto: [new FormData()],
 };
 
 type Export = [nome: string, valor: unknown];
@@ -121,7 +127,15 @@ describe("toda a superfície de publico.ts passa pelo cliente", () => {
       exportados.filter((nome) => !naTabela.includes(nome)),
       "há exports que o teste não sabe exercitar — e exercitá-los é o que ele faz",
     ).toEqual([]);
-    expect(exportados.sort()).toEqual(["obterEmenta", "obterEventos", "obterGaleria", "obterInfo"]);
+    // "enviarFoto" entra aqui em ordem alfabética (F3-05, correção do
+    // Tomás, 6 de novembro de 2026): é o quinto export, e o primeiro POST.
+    expect(exportados.sort()).toEqual([
+      "enviarFoto",
+      "obterEmenta",
+      "obterEventos",
+      "obterGaleria",
+      "obterInfo",
+    ]);
   });
 
   it("cada export leva o cabeçalho, o credentials e uma URL relativa", async () => {
@@ -194,7 +208,11 @@ describe("o próprio guarda da enumeração", () => {
   // teste de cima fica a passar sobre exports que nunca exercitou — e
   // ninguém dava por isso.
   it("um export fora da tabela não é saltado: rebenta", () => {
-    expect(() => argumentosPara("enviarFoto")).toThrow(/Não sei classificar/);
+    // "enviarFoto" entrou na tabela com a F3-05 (correção do Tomás, 6 de
+    // novembro de 2026); o nome de autoteste mudou para um que continua a
+    // não existir em lado nenhum, para o guarda continuar a provar o que
+    // sempre provou.
+    expect(() => argumentosPara("apagarFoto")).toThrow(/Não sei classificar/);
   });
 
   it("um export que não seja função rebenta", async () => {

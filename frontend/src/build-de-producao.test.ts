@@ -41,6 +41,7 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
+import { FICHEIROS_DA_F3_05 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -199,7 +200,7 @@ describe("a página de demonstração não chega a produção", () => {
 
     exigirSentinelas(
       ficheiros,
-      [...COMPONENTES_DA_F3_01, "src/App.tsx", "src/main.tsx"],
+      [...COMPONENTES_DA_F3_01, "src/App.tsx", "src/main.tsx", ...FICHEIROS_DA_F3_05],
       "importações da demonstração",
     );
 
