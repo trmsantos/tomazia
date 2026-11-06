@@ -101,6 +101,107 @@ test.describe("o caminho que o Feito quando pede", () => {
   });
 });
 
+test.describe("o Enter dentro de 'O teu nome' submete o <form> a sério (6.3)", () => {
+  // Só um browser a sério prova isto: o jsdom não implementa a submissão
+  // implícita do HTML (o `Enter` num campo de texto a disparar `submit`
+  // sozinho) — um `fireEvent.keyDown` em Vitest não a exercita. É também
+  // aqui, e só aqui, que se prova que "Enviar foto" tem de verdade um
+  // botão de submissão: sem ele, a implicit submission mechanism da
+  // especificação do HTML não tem para onde ir, e o `Enter` não faz nada.
+  // Correção ui-ux, 6 de novembro de 2026 (docs/ecras/F3-05.md, 6.4/6.5):
+  // sem ficheiro escolhido, "Enviar foto" já não fica `aria-disabled` — é
+  // o único dos quatro estados sem explicação nenhuma já visível no ecrã.
+  // Os dois testes a seguir provam, num Chromium a sério, que os dois
+  // caminhos (clique directo, e o `Enter` que dispara a submissão
+  // implícita do HTML) chegam agora a "Escolhe uma foto para enviar.".
+  test("sem ficheiro escolhido: um clique directo mostra 'Escolhe uma foto para enviar.'", async ({
+    page,
+  }) => {
+    await fingirAGaleria(page, UMA_FOTO);
+    const pedidos = await fingirOEnvioDeFotos(page);
+    await page.goto("/");
+
+    await botaoEnviarUmaFoto(page).click();
+    const folha = dialogoAberto(page);
+
+    await expect(
+      botaoDeEnviarFoto(page),
+      "nenhum ficheiro escolhido ainda: o botão tem de ficar utilizável",
+    ).not.toHaveAttribute("aria-disabled", "true");
+
+    await botaoDeEnviarFoto(page).click();
+
+    await expect(folha.getByText(TEXTOS_DA_GALERIA.semEscolha)).toBeVisible();
+    await page.waitForTimeout(200);
+    expect(pedidos, "sem ficheiro pronto, nenhum pedido pode partir").toHaveLength(0);
+  });
+
+  test("sem ficheiro escolhido: o Enter dentro de 'O teu nome' também mostra a frase", async ({
+    page,
+  }) => {
+    await fingirAGaleria(page, UMA_FOTO);
+    const pedidos = await fingirOEnvioDeFotos(page);
+    await page.goto("/");
+
+    await botaoEnviarUmaFoto(page).click();
+    const folha = dialogoAberto(page);
+    await folha.getByLabel(TEXTOS_DA_GALERIA.campoNome, { exact: false }).fill("Alguém");
+    await folha.getByLabel(TEXTOS_DA_GALERIA.campoNome, { exact: false }).press("Enter");
+
+    await expect(folha.getByText(TEXTOS_DA_GALERIA.semEscolha)).toBeVisible();
+    await page.waitForTimeout(200);
+    expect(pedidos, "sem ficheiro pronto, nenhum pedido pode partir, nem por Enter").toHaveLength(
+      0,
+    );
+  });
+
+  test("com uma foto pronta: envia sem carregar em «Enviar foto»", async ({ page }) => {
+    await fingirAGaleria(page, UMA_FOTO);
+    const pedidos = await fingirOEnvioDeFotos(page);
+    await page.goto("/");
+
+    await botaoEnviarUmaFoto(page).click();
+    const folha = dialogoAberto(page);
+
+    const imagem = await gerarImagemNaPagina(page, { largura: 800, altura: 600 });
+    await campoDeFoto(page).setInputFiles({
+      name: "foto.jpg",
+      mimeType: "image/jpeg",
+      buffer: imagem,
+    });
+    await expect(botaoDeEnviarFoto(page)).not.toHaveAttribute("aria-disabled", "true", {
+      timeout: 15_000,
+    });
+
+    const campoNome = folha.getByLabel(TEXTOS_DA_GALERIA.campoNome, { exact: false });
+    await campoNome.fill("Cliente de teste");
+    await campoNome.press("Enter");
+
+    await expect(folha.getByText(TEXTOS_DA_GALERIA.sucessoTitulo)).toBeVisible();
+    expect(
+      pedidos,
+      "o Enter tem de ter disparado o mesmo pedido que o clique dispararia",
+    ).toHaveLength(1);
+  });
+
+  test("o campo-isco está mesmo escondido visualmente (display:none, onde o Tailwind está aplicado)", async ({
+    page,
+  }) => {
+    await fingirAGaleria(page, UMA_FOTO);
+    await page.goto("/");
+
+    await botaoEnviarUmaFoto(page).click();
+    const folha = dialogoAberto(page);
+    const campoIsco = folha.locator('input[name="website"]');
+
+    await expect(
+      campoIsco,
+      "o Vitest/jsdom prende a classe `hidden`; só um browser a sério prova que ela " +
+        "pinta mesmo `display:none`",
+    ).toBeHidden();
+  });
+});
+
 test.describe("o pedido ao servidor: só se prova num browser a sério", () => {
   test("method POST, X-Tomazia: 1, e Content-Type com a fronteira do multipart", async ({
     page,
@@ -137,8 +238,38 @@ test.describe("o pedido ao servidor: só se prova num browser a sério", () => {
   });
 });
 
-test.describe("a redução no browser: o HEIC chega convertido (7.1)", () => {
-  test("escolher um ficheiro .heic: a parte do multipart nunca tem Content-Type image/heic", async ({
+test.describe("a redução no browser: um HEIC nunca chega ao servidor como HEIC (7.1)", () => {
+  /**
+   * A regra que interessa garantir é **"um HEIC nunca chega ao servidor
+   * como HEIC"** — e há dois desfechos correctos para a cumprir, não um:
+   *
+   *  - **no WebKit/Safari**, `createImageBitmap` descodifica o HEIC a
+   *    sério, a redução converte-o, e o pedido parte com a parte do
+   *    ficheiro em JPEG (7.1: "é o mesmo passo que faz o HEIC de um
+   *    iPhone chegar ao backend como algo que o Pillow consegue abrir");
+   *  - **no Chromium** (e, hoje, no Firefox), `createImageBitmap` não
+   *    decodifica HEIC de todo — e é aí que entra a decisão do Tomás de 6
+   *    de novembro de 2026 (ADR 0018): a foto é recusada **localmente**,
+   *    pelos bytes que `reduzir()` já examinou, **sem pedido nenhum**,
+   *    precisamente para não gastar uma das cinco tentativas do balde
+   *    contra um ficheiro que nunca teve hipótese de ser aceite.
+   *
+   * Os dois são comportamento desenhado, não um teste a passar por sorte
+   * num motor e a falhar no outro. Um teste que só aceitasse o primeiro
+   * desfecho ficaria vermelho, permanentemente, em qualquer motor que
+   * cumprisse a segunda metade da regra — que é precisamente o que esta
+   * tarefa decidiu fazer, e o que o CI (F3-07) vai correr em Chromium.
+   *
+   * Por isso este teste não escolhe um dos dois caminhos a priori: espera
+   * por **qualquer um dos dois sinais que vier primeiro** — o botão a
+   * ficar pronto (o caminho da conversão), ou a frase de falha local a
+   * aparecer (o caminho da recusa, nunca com um pedido a sair) — com um
+   * prazo curto, porque os dois desfechos são rápidos de propósito: a
+   * decodificação de um HEIC mínimo no WebKit não demora, e a recusa local
+   * no Chromium é uma rejeição síncrona de `createImageBitmap`, não uma
+   * espera por rede nenhuma.
+   */
+  test("escolher um ficheiro .heic: ou converte e envia como JPEG, ou recusa localmente sem pedido", async ({
     page,
   }) => {
     await fingirAGaleria(page, UMA_FOTO);
@@ -146,39 +277,65 @@ test.describe("a redução no browser: o HEIC chega convertido (7.1)", () => {
     await page.goto("/");
 
     await botaoEnviarUmaFoto(page).click();
+    const folha = dialogoAberto(page);
     await campoDeFoto(page).setInputFiles({
       name: "foto-do-iphone.heic",
       mimeType: "image/heic",
       buffer: heicMinimo(),
     });
 
-    // O HEIC é mais lento a decodificar (ou pode falhar, fora do WebKit —
-    // ver o cabeçalho do ficheiro). Dá-se-lhe um prazo generoso antes de
-    // decidir que não chegou a preparar.
-    await expect(
-      botaoDeEnviarFoto(page),
-      "se isto falhar com aria-disabled=true até ao fim do prazo, o motor deste browser " +
-        "(ver o nome do projecto Playwright a correr) não decodificou o HEIC — é a condição " +
-        "que o cabeçalho do ficheiro pede para confirmar quando a biblioteca de conversão " +
-        "for escolhida: fora do WebKit, isto é esperado até lá, não um teste com bug",
-    ).not.toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+    const PRAZO_MS = 5_000;
+    const desfecho = await Promise.race([
+      expect(botaoDeEnviarFoto(page))
+        .not.toHaveAttribute("aria-disabled", "true", { timeout: PRAZO_MS })
+        .then(() => "convertido" as const)
+        .catch(() => null),
+      folha
+        .getByText(TEXTOS_DA_GALERIA.falhaAPreparar)
+        .waitFor({ state: "visible", timeout: PRAZO_MS })
+        .then(() => "recusado" as const)
+        .catch(() => null),
+    ]);
 
-    await botaoDeEnviarFoto(page).click();
-    await expect.poll(() => pedidos.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    if (desfecho === "convertido") {
+      await botaoDeEnviarFoto(page).click();
+      await expect.poll(() => pedidos.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
-    const pedido = pedidos[0];
-    expect(pedido, "guarda: o envio tem de ter partido").toBeDefined();
-    if (pedido === undefined) return;
+      const pedido = pedidos[0];
+      expect(pedido, "guarda: o envio tem de ter partido").toBeDefined();
+      if (pedido === undefined) return;
 
-    const parte = extrairParteDoMultipart(pedido.corpo, pedido.contentType, "ficheiro");
-    expect(parte, "guarda: não encontrei a parte «ficheiro» no multipart").not.toBeNull();
-    if (parte === null) return;
+      const parte = extrairParteDoMultipart(pedido.corpo, pedido.contentType, "ficheiro");
+      expect(parte, "guarda: não encontrei a parte «ficheiro» no multipart").not.toBeNull();
+      if (parte === null) return;
 
-    expect(
-      parte.cabecalho.toLowerCase(),
-      "um HEIC em bruto não é um dos três formatos que o backend aceita — se isto ainda " +
-        "disser image/heic, a conversão não aconteceu e o Pillow recusaria com 400",
-    ).not.toContain("image/heic");
+      expect(
+        parte.cabecalho.toLowerCase(),
+        "um HEIC em bruto não é um dos três formatos que o backend aceita — se isto ainda " +
+          "disser image/heic, a conversão não aconteceu e o Pillow recusaria com 400",
+      ).not.toContain("image/heic");
+      expect(
+        [parte.dados[0], parte.dados[1]],
+        "a saída de reduzir() é sempre JPEG (FF D8 no início) — nunca o HEIC original",
+      ).toEqual([0xff, 0xd8]);
+      return;
+    }
+
+    if (desfecho === "recusado") {
+      await expect(folha.getByText(TEXTOS_DA_GALERIA.falhaAPreparar)).toBeVisible();
+      expect(
+        pedidos,
+        "a recusa local existe precisamente para não gastar uma tentativa (ADR 0018) — " +
+          "nenhum pedido pode ter partido",
+      ).toHaveLength(0);
+      return;
+    }
+
+    throw new Error(
+      "Nem o botão ficou pronto nem a Folha mostrou a frase de falha local dentro do prazo " +
+        "— isto não é nenhum dos dois desfechos correctos que esta tarefa prevê. Parar e " +
+        "investigar, não assumir nenhum dos dois.",
+    );
   });
 });
 

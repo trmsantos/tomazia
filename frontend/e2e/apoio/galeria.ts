@@ -89,6 +89,17 @@ export async function fingirAGaleria(pagina: Page, corpo: Galeria = SEM_FOTOS): 
   });
 }
 
+/**
+ * Finge `GET /api/galeria` a falhar (sem resposta nenhuma) — para o estado
+ * de erro da secção (4.5), tal como `fingirOsEventos`/`fingirAEmenta` já
+ * fazem para as deles. Chamar antes do `goto`.
+ */
+export async function fingirFalhaDaGaleria(pagina: Page): Promise<void> {
+  await pagina.route(ROTA_DA_GALERIA, async (rota) => {
+    await cumprirGaleria(rota, { tipo: "falha" });
+  });
+}
+
 /** O que o `POST /fotos` fingido viu de um pedido. */
 export type PedidoDeEnvioObservado = {
   metodo: string;
@@ -591,6 +602,10 @@ export function campoDeFoto(pagina: Page) {
 
 export function botaoDeEnviarFoto(pagina: Page) {
   return pagina.getByRole("button", { name: TEXTOS_DA_GALERIA.enviarFoto });
+}
+
+export function botaoDeTentarOutraVez(pagina: Page) {
+  return seccaoDaGaleria(pagina).getByRole("button", { name: TEXTOS_DA_GALERIA.tentarOutraVez });
 }
 
 /** O `<dialog>` aberto — a Folha de envio, ou o Visualizador, consoante o que estiver aberto. */

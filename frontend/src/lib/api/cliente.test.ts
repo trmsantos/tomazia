@@ -526,7 +526,7 @@ describe("o 429 com envelope: código, mensagem do backend, e segundos_em_falta"
 
   it("ErroDaApi.cabecalhos traz o Retry-After, em minúsculas", async () => {
     // O corpo e o cabeçalho podem divergir (um proxy a arredondar, por
-    // exemplo) — a secção 9.1 manda o ecrã compor com **o maior dos dois**,
+    // exemplo) — o ecrã compõe com **o maior dos dois** (decisão da F3-05),
     // e para isso os dois têm de estar acessíveis, não só o do corpo.
     comFetch(() =>
       respostaDe(

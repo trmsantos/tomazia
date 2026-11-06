@@ -168,32 +168,105 @@ describe("a frase-promessa (6.2)", () => {
 });
 
 describe("sem ficheiro escolhido", () => {
-  it("'Enviar foto' é aria-disabled e clicar não dispara pedido nenhum", () => {
+  /**
+   * Correção ui-ux, 6 de novembro de 2026 (docs/ecras/F3-05.md, 6.4/6.5,
+   * 12.3) — e uma nota sobre como se chegou aqui.
+   *
+   * A versão anterior deste bloco tinha um comentário, datado do mesmo
+   * dia e atribuído à revisão de código, que já tinha medido — num
+   * Chromium a sério, não em jsdom — que nem um clique nem um `Enter`
+   * chegavam a esta frase: "Enviar foto" ficava `aria-disabled` só por não
+   * haver ficheiro, o `Botao` trava esse clique (e o `click` sintético que
+   * o `Enter` dispara no botão de submissão por omissão cai na mesma
+   * guarda), e por isso nunca se chamava `tentarEnviar()` por um caminho
+   * real. A resposta certa a essa medição era parar e perguntar — a
+   * medição não estava errada, a decisão de testar à volta dela é que não
+   * devia ter sido tomada sozinha. O teste antigo trocou o `<form>` por um
+   * `fireEvent.submit` sintético e ficou verde a provar que a validação
+   * funciona **se for chamada**, quando a questão inteira era que nunca
+   * era chamada — o defeito ficou lá, escondido por um teste que medeu o
+   * caminho errado de propósito.
+   *
+   * A correcção a sério está em 6.4: só este estado (nenhum ficheiro
+   * escolhido, sem explicação nenhuma já visível) deixa de desactivar o
+   * botão. Os outros três (a preparar, falhado, a enviar/limite) continuam
+   * — têm cada um a sua frase, e desactivá-los evita que `tentarEnviar()`
+   * a substitua por esta genérica.
+   */
+  it("'Enviar foto' NÃO é aria-disabled — é o único dos quatro estados sem explicação visível", () => {
     render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
 
-    const botao = botaoDeEnviar();
-    expect(botao).toHaveAttribute("aria-disabled", "true");
-
-    fireEvent.click(botao);
-
-    expect(enviar).not.toHaveBeenCalled();
+    expect(
+      botaoDeEnviar(),
+      "nenhum ficheiro foi escolhido ainda, e nada no ecrã diz o que falta — o botão tem " +
+        "de ficar utilizável para que 'Escolhe uma foto para enviar.' seja alcançável",
+    ).not.toHaveAttribute("aria-disabled", "true");
   });
 
-  it("'Escolhe uma foto para enviar.' aparece ao tentar submeter sem ficheiro", () => {
-    // Não é um clique no botão: "Enviar foto" está `aria-disabled` (não
-    // `disabled`), e o `Botao` trava o próprio `onClick` nesse estado (é
-    // essa guarda que o teste de cima prova). O caminho real até este erro
-    // é o `Enter` dentro de outro campo do formulário — um `aria-disabled`
-    // não impede a submissão nativa de um `<form>`, só o toque direto no
-    // botão — por isso simula-se aqui o `submit` do próprio `<form>`.
+  it("um clique real mostra 'Escolhe uma foto para enviar.', move o foco, e não dispara pedido nenhum", () => {
     render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
-    const formulario = document.querySelector("form");
-    expect(formulario, "guarda: tem de haver um <form> a envolver os campos (6.3)").not.toBeNull();
 
-    fireEvent.submit(formulario as HTMLFormElement);
+    fireEvent.click(botaoDeEnviar());
 
     expect(screen.getByText(TEXTOS_DA_GALERIA.semEscolha)).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText(/^Foto/));
     expect(enviar, "sem ficheiro, nenhum pedido pode ter partido").not.toHaveBeenCalled();
+  });
+});
+
+describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheiro reduzido", () => {
+  it("existe assim que o ficheiro é escolhido — antes de reduzir() resolver", () => {
+    reduzirFalso.mockReturnValue(new Promise(() => undefined)); // nunca resolve
+    render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+
+    escolherFicheiro(ficheiroFalso());
+
+    // "de imediato (URL.createObjectURL, sem esperar pela redução)" — a
+    // especificação é explícita: a pré-visualização não pode esperar por
+    // "A preparar a foto…" para aparecer, as duas coexistem.
+    //
+    // `document.querySelector`, não `getByRole("img")`: o `alt=""`
+    // (decorativo, de propósito — o ficheiro já está nomeado pela
+    // etiqueta do campo) dá à imagem o papel ARIA "presentation", não
+    // "img", por isso `getByRole` nunca a encontraria.
+    const previa = document.querySelector("img");
+    expect(previa, "a pré-visualização tem de existir antes da redução acabar").not.toBeNull();
+    expect(previa).toHaveAttribute("src", expect.stringMatching(/^blob:/) as unknown as string);
+    expect(screen.getByText(TEXTOS_DA_GALERIA.aPreparar)).toBeInTheDocument();
+  });
+
+  it("troca a fonte para o ficheiro reduzido assim que reduzir() acaba", async () => {
+    await comFicheiroPronto();
+
+    const previa = document.querySelector("img");
+    // As duas fontes são URLs de objecto distintas (o original e o
+    // reduzido) — o que importa não é o valor exacto, é que a pré-
+    // visualização continua a existir e aponta para um `blob:` válido;
+    // a asserção forte está no teste de baixo (que mostra que falham
+    // independentemente uma da outra).
+    expect(
+      previa,
+      "a pré-visualização continua a existir depois de reduzir() acabar",
+    ).not.toBeNull();
+    expect(previa).toHaveAttribute("src", expect.stringMatching(/^blob:/) as unknown as string);
+  });
+
+  it("onError: mostra uma caixa neutra com o nome do ficheiro, nunca o ícone de imagem partida", async () => {
+    await comFicheiroPronto();
+    const previa = document.querySelector("img");
+    expect(
+      previa,
+      "guarda: tem de haver uma pré-visualização antes de a fazer falhar",
+    ).not.toBeNull();
+    if (previa === null) return;
+
+    fireEvent.error(previa);
+
+    expect(
+      document.querySelector("img"),
+      "a imagem (partida) tem de desaparecer, não ficar visível com um ícone quebrado",
+    ).toBeNull();
+    expect(screen.getByText("foto.jpg")).toBeInTheDocument();
   });
 });
 
@@ -270,6 +343,38 @@ describe("escolher um ficheiro: a preparação", () => {
       ).not.toHaveBeenCalled();
     },
   );
+
+  it("mesmo que um submit chegue por baixo do botão, a frase de falha não é substituída pela genérica", async () => {
+    // A regressão óbvia da correcção de 6.4: o botão continua `aria-
+    // disabled` depois de a preparação falhar, por isso um clique real já
+    // não chega a `tentarEnviar()` (é o que o `.each` de cima prova). O que
+    // este teste prende é o `tentarEnviar()` em si — mesmo chamado por um
+    // caminho que dispense o botão (o `Enter` que, num browser a sério,
+    // dispara um `submit` nativo), ele não pode trocar "Não consegui
+    // preparar esta foto…" pela frase genérica de "nenhum ficheiro": o
+    // `ficheiroEscolhido` continua a não ser `null` nesse estado, e é isso
+    // que o distingue de "nenhum ficheiro foi escolhido ainda".
+    reduzirFalso.mockResolvedValue({ estado: "nao-descodificou" });
+    render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+    escolherFicheiro(ficheiroFalso());
+    await waitFor(() => {
+      expect(screen.getByText(TEXTOS_DA_GALERIA.falhaAPreparar)).toBeInTheDocument();
+    });
+
+    const formulario = document.querySelector("form");
+    expect(formulario, "guarda: tem de haver um <form> a envolver os campos (6.3)").not.toBeNull();
+    fireEvent.submit(formulario as HTMLFormElement);
+
+    expect(
+      screen.getByText(TEXTOS_DA_GALERIA.falhaAPreparar),
+      "a frase específica da falha de preparação continua lá",
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(TEXTOS_DA_GALERIA.semEscolha),
+      "a frase genérica de 'nenhum ficheiro' não pode substituir a mais específica",
+    ).toBeNull();
+    expect(enviar).not.toHaveBeenCalled();
+  });
 });
 
 describe("os oito erros do backend (8): o campo certo, e o foco", () => {
@@ -441,6 +546,29 @@ describe("o 429: o tempo composto, e o maior dos dois números (secção 9)", ()
     expect(screen.getByText("Podes tentar outra vez daqui a 3 minutos.")).toBeInTheDocument();
   });
 
+  it("90 s, sem Retry-After: a linha do meio da tabela 9.1, '1 minuto'", async () => {
+    // Os outros casos desta bateria são 0, 65 e 125 — nenhum cai na faixa
+    // 60–119 s da tabela 9.1, que diz "1 minuto" (não "2 minutos", que é o
+    // que `Math.ceil(90/60)` daria se a fórmula fosse só esse arredondamento).
+    await comFicheiroPronto();
+    const pedidos = clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+
+    await act(async () => {
+      pedidos[0]?.rejeitar(
+        new ErroDaApi(TEXTOS_DA_GALERIA.erroLimiteDeEnvios, {
+          estado: 429,
+          codigo: "limite_de_envios_excedido",
+          extra: { segundos_em_falta: 90 },
+          cabecalhos: {},
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Podes tentar outra vez daqui a 1 minuto.")).toBeInTheDocument();
+  });
+
   it("com os dois presentes e a divergirem, usa o MAIOR dos dois", async () => {
     await comFicheiroPronto();
     const pedidos = clienteDeEnvioFalso();
@@ -547,6 +675,74 @@ describe("o 429: o tempo composto, e o maior dos dois números (secção 9)", ()
       "sem um número a descer no ecrã (9.2) — só o botão a voltar, sozinho, quando o prazo passa",
     ).not.toHaveAttribute("aria-disabled", "true");
   });
+
+  it("durante o arrefecimento, submeter o <form> directamente não chama enviarFoto outra vez", async () => {
+    // O `Botao` com `aria-disabled` já trava o clique sozinho — o que este
+    // teste prende é `tentarEnviar()` em si, pelo caminho que o Enter
+    // dentro de "O teu nome" também percorre (correção do Tomás, 6 de
+    // novembro de 2026, revisão de segurança: agora que "Enviar foto" é
+    // `tipo="submit"`, o `<form>` submete-se a sério, e sem esta guarda um
+    // 429 activo não impedia um segundo envio por essa via).
+    await comFicheiroPronto();
+    const pedidos = clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+
+    await act(async () => {
+      pedidos[0]?.rejeitar(
+        new ErroDaApi(TEXTOS_DA_GALERIA.erroLimiteDeEnvios, {
+          estado: 429,
+          codigo: "limite_de_envios_excedido",
+          extra: { segundos_em_falta: 60 },
+          cabecalhos: {},
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    enviar.mockClear();
+
+    const formulario = document.querySelector("form");
+    expect(formulario, "guarda: tem de haver um <form>").not.toBeNull();
+    fireEvent.submit(formulario as HTMLFormElement);
+
+    expect(
+      enviar,
+      "um 429 activo tem de bloquear qualquer envio, não só o clique no botão desactivado",
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe("o FormData leva a legenda e o nome tal como foram escritos", () => {
+  it("descricao e enviada_por vão com os valores dos campos Legenda e O teu nome", async () => {
+    await comFicheiroPronto();
+    fireEvent.change(screen.getByLabelText(/^Legenda/), {
+      target: { value: "Uma noite cheia no bar." },
+    });
+    fireEvent.change(screen.getByLabelText(/^O teu nome/), {
+      target: { value: "Cliente de teste" },
+    });
+
+    clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+
+    await waitFor(() => {
+      expect(enviar).toHaveBeenCalledTimes(1);
+    });
+    expect(campoEnviado("descricao")).toBe("Uma noite cheia no bar.");
+    expect(campoEnviado("enviada_por")).toBe("Cliente de teste");
+  });
+
+  it("vazios quando ninguém os preencheu — os dois campos são opcionais (6.3)", async () => {
+    await comFicheiroPronto();
+    clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+
+    await waitFor(() => {
+      expect(enviar).toHaveBeenCalledTimes(1);
+    });
+    expect(campoEnviado("descricao")).toBe("");
+    expect(campoEnviado("enviada_por")).toBe("");
+  });
 });
 
 describe("o isco (campo website, secção 11)", () => {
@@ -607,6 +803,40 @@ describe("o isco (campo website, secção 11)", () => {
         "ecrã não pode desfazer",
     ).toBe(arvoreSemIsco);
   });
+
+  it("escrito directamente no DOM, sem disparar evento nenhum, continua a ir no FormData", async () => {
+    // O modelo de ameaça da secção 11 é "um robô simples, que preenche
+    // todos os campos de texto que encontra sem executar CSS nem ler
+    // ARIA" — e a forma mais comum de o fazer é `elemento.value = "…"`
+    // directo no DOM, sem passar pelo `input`/`change` que o React ouve.
+    // Um campo **controlado** (`value` + `onChange` do React) nunca vê essa
+    // escrita: o estado ficava sempre `""`, o `FormData` ia sempre vazio, e
+    // o isco nunca apanhava o robô para que foi desenhado (correção do
+    // Tomás, 6 de novembro de 2026, revisão de segurança). Por isso o
+    // campo é lido do nó do DOM no momento do envio, não de um estado.
+    await comFicheiroPronto();
+    const campoIsco = document.querySelector('input[name="website"]') as HTMLInputElement | null;
+    expect(campoIsco, "guarda: o campo isco tem de existir no DOM").not.toBeNull();
+    if (campoIsco === null) return;
+
+    // Só a propriedade do DOM — nenhum `fireEvent`, nenhum evento `input`
+    // ou `change` a disparar, exactamente como um robô que não executa CSS
+    // nem lê ARIA o faria.
+    campoIsco.value = "http://spam.test";
+
+    const pedidos = clienteDeEnvioFalso();
+    fireEvent.click(botaoDeEnviar());
+
+    await waitFor(() => {
+      expect(enviar).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      campoEnviado("website"),
+      "o valor escrito directamente no DOM tem de chegar ao FormData — um campo " +
+        "controlado perdia-o, e o isco deixava de apanhar o robô que o visa",
+    ).toBe("http://spam.test");
+    expect(pedidos).toHaveLength(1);
+  });
 });
 
 describe("o campo website está escondido dos dois lados (secção 11)", () => {
@@ -618,17 +848,40 @@ describe("o campo website está escondido dos dois lados (secção 11)", () => {
     expect(campoIsco).toHaveAttribute("tabindex", "-1");
     expect(campoIsco).toHaveAttribute("aria-hidden", "true");
   });
+
+  it('className="hidden" (display:none) e autoComplete="off"', () => {
+    // As três guardas não dependem umas das outras (secção 11): se o
+    // `className="hidden"` um dia for removido por engano (uma
+    // refactorização do CSS), o `aria-hidden`/`tabIndex` do teste de cima
+    // continuam a impedi-lo de ser alcançado — mas só este teste prende
+    // que o `display:none` continua lá. Sem ele, tirar a classe deixava a
+    // bateria inteira verde e o campo passava a ser uma caixa de texto à
+    // vista de quem enxerga.
+    render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+
+    const campoIsco = document.querySelector('input[name="website"]');
+    expect(campoIsco, "o campo isco tem de existir no DOM").not.toBeNull();
+    expect(campoIsco).toHaveClass("hidden");
+    expect(
+      campoIsco,
+      "sem autoComplete=off, um gestor de password preenchia o isco com o endereço do " +
+        "próprio site, por um motivo que nada tem a ver com ser ou não um robô",
+    ).toHaveAttribute("autocomplete", "off");
+  });
 });
 
 describe("o <form> nunca se submete nativamente (1, 6.3)", () => {
   it("não tem action nem method", () => {
     render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
 
+    // Guarda da regra 10: um `<form>` que não existisse fazia os dois
+    // `expect` de baixo não correr nenhum, e o teste passava sem ter visto
+    // nada — exactamente como já se faz três blocos acima.
     const formulario = document.querySelector("form");
-    if (formulario !== null) {
-      expect(formulario).not.toHaveAttribute("action");
-      expect(formulario).not.toHaveAttribute("method");
-    }
+    expect(formulario, "guarda: tem de haver um <form> a envolver os campos (6.3)").not.toBeNull();
+
+    expect(formulario).not.toHaveAttribute("action");
+    expect(formulario).not.toHaveAttribute("method");
   });
 
   it("um submit nativo não dispara um pedido HTTP: preventDefault chamado", async () => {
@@ -636,7 +889,8 @@ describe("o <form> nunca se submete nativamente (1, 6.3)", () => {
     clienteDeEnvioFalso();
 
     const formulario = document.querySelector("form");
-    if (formulario === null) return; // Não há <form>: nada a prevenir (6.3 permite as duas formas)
+    expect(formulario, "guarda: tem de haver um <form> a envolver os campos (6.3)").not.toBeNull();
+    if (formulario === null) return;
 
     const evento = new Event("submit", { bubbles: true, cancelable: true });
     formulario.dispatchEvent(evento);
@@ -675,7 +929,13 @@ describe("depois de enviar com sucesso (6.7)", () => {
     fireEvent.click(screen.getByRole("button", { name: TEXTOS_DA_GALERIA.sucessoBotao }));
 
     expect(screen.getByLabelText(/^Foto/)).toBeInTheDocument();
-    expect(botaoDeEnviar()).toHaveAttribute("aria-disabled", "true");
+    // Correção ui-ux, 6 de novembro de 2026: "nenhum ficheiro escolhido
+    // ainda" é o único dos quatro estados que já não desactiva o botão
+    // (6.4/6.5) — "Enviar outra foto" repõe exactamente esse estado.
+    expect(
+      botaoDeEnviar(),
+      "repõe para 'nenhum ficheiro escolhido ainda', que é o estado que já não fica aria-disabled",
+    ).not.toHaveAttribute("aria-disabled", "true");
   });
 });
 

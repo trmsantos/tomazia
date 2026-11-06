@@ -229,12 +229,14 @@ function mensagemPorEstado(estado: number): string {
 }
 
 /**
- * Faz um GET a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
+ * Faz um pedido a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
  *
- * Não aceita método nem corpo, de propósito: não há nenhuma mutação neste
- * repositório que os exercite, e um parâmetro sem teste é um parâmetro que
- * ninguém sabe se funciona. Quem acrescentar o primeiro `POST` acrescenta
- * os dois com o teste que os prova.
+ * Por omissão é um GET, sem corpo — ainda é o único método que a maioria
+ * das chamadas deste cliente precisa. `opcoes.metodo` e `opcoes.corpo`
+ * chegaram com a F3-05 (o primeiro `POST`, `POST /fotos`, herança da
+ * F2-06): é o que o ADR 0012 previu — "quem acrescentar o primeiro `POST`
+ * acrescenta o método e o corpo com o teste que os prova" — e esse teste é
+ * `cliente.test.ts`. Ver `OpcoesDePedido` para o que cada um faz.
  *
  * O `T` não é verificado em tempo de execução — nem com `zod` nem com nada:
  * quem o fixa é o `src/lib/api/publico.ts`, que o tira dos tipos gerados a

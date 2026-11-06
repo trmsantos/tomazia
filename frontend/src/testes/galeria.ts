@@ -85,13 +85,17 @@ export function posicao(n: number, m: number): string {
   return `Foto ${String(n)} de ${String(m)}.`;
 }
 
-/** As três formas do tempo composto do 429 (secção 9.1). */
-export function tempoDeEspera(segundosEmFalta: number): string {
-  if (segundosEmFalta < 60) return "Podes tentar outra vez daqui a menos de um minuto.";
-  const minutos = Math.ceil(segundosEmFalta / 60);
-  if (minutos <= 1) return "Podes tentar outra vez daqui a 1 minuto.";
-  return `Podes tentar outra vez daqui a ${String(minutos)} minutos.`;
-}
+/**
+ * As três formas do tempo composto do 429 (secção 9.1).
+ *
+ * Reexportada do próprio ecrã (`FolhaEnviarFoto.tsx`), não reimplementada
+ * aqui: as duas versões já tinham divergido na fronteira dos 60–119 s (a
+ * desta fixture arredondava para "2 minutos" aos 119 s; a do ecrã diz "1
+ * minuto" até aos 119, como a tabela da secção 9.1 manda) — correção do
+ * Tomás, 6 de novembro de 2026, revisão de código. Duas implementações da
+ * mesma fórmula são duas oportunidades de uma delas ficar para trás.
+ */
+export { tempoComposto as tempoDeEspera } from "../pages/publico/FolhaEnviarFoto";
 
 export const ID_DA_SECCAO = "galeria";
 export const ID_DO_TITULO = "titulo-galeria";

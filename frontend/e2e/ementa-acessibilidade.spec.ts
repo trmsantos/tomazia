@@ -314,18 +314,31 @@ async function focarCadaControlo(pagina: Page): Promise<ParagemDeFoco[]> {
        * de mudar (o sinal de que a animação suave acabou), com um tecto de
        * 2 s para nunca ficar pendurado se alguma coisa impedir o
        * deslocamento de todo.
+       *
+       * **Uma só frame igual à anterior não basta** (correção do Tomás, 6
+       * de novembro de 2026, revisão de código): a primeira frame depois
+       * do `focus()` pode ser **anterior ao arranque** da animação suave —
+       * o browser ainda não pintou o primeiro passo dela, por isso
+       * `scrollTop` lê-se igual ao que já estava, e um guarda de "uma frame
+       * igual" concluía (errado) que já tinha acabado antes de sequer ter
+       * começado. Por isso exige-se **duas leituras iguais seguidas**: a
+       * primeira frame parada pode ser só o atraso antes do arranque; só a
+       * segunda confirma que não houve movimento nenhum entre as duas.
        */
       async function esperarPeloDeslocamento(): Promise<void> {
         const raiz = document.scrollingElement ?? document.documentElement;
-        let anterior = raiz.scrollTop;
         const inicio = performance.now();
+        let anterior = raiz.scrollTop;
+        let framesIguaisSeguidas = 0;
+        const FRAMES_PARA_CONFIRMAR = 2;
         for (;;) {
           await new Promise((continuar) => {
             requestAnimationFrame(continuar);
           });
           const atual = raiz.scrollTop;
-          if (atual === anterior) return;
+          framesIguaisSeguidas = atual === anterior ? framesIguaisSeguidas + 1 : 0;
           anterior = atual;
+          if (framesIguaisSeguidas >= FRAMES_PARA_CONFIRMAR) return;
           if (performance.now() - inicio > 2000) return;
         }
       }

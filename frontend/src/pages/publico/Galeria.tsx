@@ -94,6 +94,52 @@ function Esqueleto(): ReactElement {
   );
 }
 
+/**
+ * Um item da grelha, com o mesmo cuidado do cartaz de evento (`Eventos.tsx`,
+ * `CartaoDoEvento`): se a imagem falhar a chegar (um 404, por exemplo),
+ * mostra-se uma caixa neutra do mesmo tamanho em vez do ícone nativo de
+ * imagem partida do browser — sugestão da ui-ux, confirmada com um 404 a
+ * sério: sem isto, o Chromium desenha o próprio ícone, mais o `alt` como
+ * texto corrido por baixo dele.
+ */
+function ItemDaGrelha({ foto, onAbrir }: { foto: FotoPublica; onAbrir: () => void }): ReactElement {
+  const [falhou, setFalhou] = useState(false);
+
+  return (
+    <li>
+      {/* O botão herda o `alt` da `<img>` como nome acessível, sem
+          `aria-label` próprio (3, 5.4) — exceto quando a imagem falha: aí
+          não há `alt` nenhum para herdar (a caixa neutra é decorativa), e
+          só nesse estado o botão ganha o seu próprio `aria-label`. */}
+      <button
+        type="button"
+        aria-label={falhou ? altDaFoto(foto) : undefined}
+        className="block w-full"
+        onClick={onAbrir}
+      >
+        {falhou ? (
+          <div
+            aria-hidden="true"
+            className="aspect-foto w-full rounded-pequeno border border-fio-interno bg-fio-interno"
+          />
+        ) : (
+          <img
+            src={`/media/${foto.ficheiro}`}
+            alt={altDaFoto(foto)}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            onError={() => {
+              setFalhou(true);
+            }}
+            className="aspect-foto w-full rounded-pequeno border border-fio-interno object-cover"
+          />
+        )}
+      </button>
+    </li>
+  );
+}
+
 export function Galeria(): ReactElement {
   const [estado, setEstado] = useState<EstadoDaGaleria>({ estado: "a-carregar" });
   const [tentativa, setTentativa] = useState(0);
@@ -200,24 +246,13 @@ export function Galeria(): ReactElement {
 
           <ul className="mx-auto grid max-w-coluna grid-cols-2 gap-1 px-4 lg:grid-cols-3">
             {visiveis.map((foto, indice) => (
-              <li key={foto.id}>
-                <button
-                  type="button"
-                  className="block w-full"
-                  onClick={() => {
-                    setIndiceAberto(indice);
-                  }}
-                >
-                  <img
-                    src={`/media/${foto.ficheiro}`}
-                    alt={altDaFoto(foto)}
-                    loading="lazy"
-                    decoding="async"
-                    draggable={false}
-                    className="aspect-foto w-full rounded-pequeno border border-fio-interno object-cover"
-                  />
-                </button>
-              </li>
+              <ItemDaGrelha
+                key={foto.id}
+                foto={foto}
+                onAbrir={() => {
+                  setIndiceAberto(indice);
+                }}
+              />
             ))}
           </ul>
 

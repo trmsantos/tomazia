@@ -94,6 +94,32 @@ function blobQualquer(): Blob {
   return new Blob([Uint8Array.from([1, 2, 3, 4])], { type: "image/jpeg" });
 }
 
+/**
+ * Um `Blob` com a assinatura mínima de um HEIC a sério — a mesma técnica de
+ * `formato.test.ts` (uma caixa `ftyp` do ISOBMFF com a marca `heic`). Serve
+ * para provar que `reduzir()` decide pelos **bytes**, não pelo `Blob.type`
+ * nem pelo tamanho: um HEIC de 800×600 (bem dentro do limite de 2000 px)
+ * ainda assim tem de passar pelo `<canvas>`, porque HEIC não está em
+ * `FORMATOS_ACEITES`.
+ */
+function blobHeicFalso(): Blob {
+  const marca = ascii("heic");
+  const corpo = [...ascii("ftyp"), ...marca, 0x00, 0x00, 0x00, 0x00, ...ascii("mif1"), ...marca];
+  const tamanho = corpo.length + 4;
+  const caixa = [
+    (tamanho >>> 24) & 0xff,
+    (tamanho >>> 16) & 0xff,
+    (tamanho >>> 8) & 0xff,
+    tamanho & 0xff,
+    ...corpo,
+  ];
+  return new Blob([Uint8Array.from(caixa)], { type: "image/heic" });
+}
+
+function ascii(texto: string): number[] {
+  return [...texto].map((caracter) => caracter.charCodeAt(0));
+}
+
 type ContextoFalso = {
   drawImage: ReturnType<typeof vi.fn>;
 };
@@ -236,6 +262,23 @@ describe("nao-codificou: decodificou, mas o canvas não soube gravar", () => {
 
     await expect(reduzir(blobQualquer())).resolves.toEqual({ estado: "nao-codificou" });
   });
+
+  it("toBlob a lançar de forma síncrona também dá nao-codificou — 'nunca lança' continua a valer", async () => {
+    // A mesma garantia da descrição de `reduzir()` ("nunca lança") vale
+    // para uma falha síncrona dentro do próprio `toBlob`, não só para uma
+    // rejeição de promessa — um motor sem memória para codificar pode
+    // lançar na hora, em vez de devolver `null` ou rejeitar (correção do
+    // Tomás, 6 de novembro de 2026, revisão de código).
+    fingirCreateImageBitmap(() => Promise.resolve(bitmapFalso(4000, 3000)));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+      () => ({ drawImage: vi.fn() }) as unknown as RenderingContext,
+    );
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(() => {
+      throw new DOMException("sem memória para codificar", "InvalidStateError");
+    });
+
+    await expect(reduzir(blobQualquer())).resolves.toEqual({ estado: "nao-codificou" });
+  });
 });
 
 describe("a redução em si: mantém a proporção, nunca recorta, nunca força quadrado", () => {
@@ -311,6 +354,31 @@ describe("sem-mudança: já cabia e já era aceite", () => {
       getContext,
       "uma imagem que já cabia e já era aceite não precisa de passar pelo canvas",
     ).not.toHaveBeenCalled();
+  });
+
+  it("um HEIC de 800×600 NÃO dá sem-mudança — passa pelo canvas na mesma (decisão do Tomás, ADR 0018)", async () => {
+    // Apagar o `&& (await formatoJaAceitavel(...))` do `if` de
+    // `reencodarSePreciso` deixa esta bateria inteira verde na mesma: os
+    // outros cenários são todos ≥ 2000 px (vão ao canvas de qualquer
+    // maneira, por tamanho) ou já são JPEG. Só este caso — pequeno **e**
+    // num formato que o backend não aceita — prende a guarda a sério. Sem
+    // ela, um HEIC de 1200 px saía do telemóvel em bruto, o backend dava
+    // `400`, e uma das cinco tentativas do balde ia-se embora sem nenhuma
+    // foto enviada — exactamente o que o ADR 0018 proíbe (correção do
+    // Tomás, 6 de novembro de 2026, revisão de código).
+    const original = blobHeicFalso();
+    fingirCreateImageBitmap(() => Promise.resolve(bitmapFalso(800, 600)));
+    const { getContext } = fingirTela({
+      resultadoDoToBlob: new Blob(["x"], { type: "image/jpeg" }),
+    });
+
+    const resultado = await reduzir(original);
+
+    expect(
+      resultado.estado,
+      "um HEIC pequeno ainda precisa de ser convertido — 'sem-mudança' deixava-o em bruto",
+    ).toBe("reduzida");
+    expect(getContext, "a conversão só acontece passando pelo canvas").toHaveBeenCalled();
   });
 });
 

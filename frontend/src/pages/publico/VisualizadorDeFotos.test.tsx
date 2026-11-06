@@ -102,6 +102,25 @@ describe("fechado e aberto", () => {
     );
   });
 
+  it("a foto tem draggable=false — sem isso, o arrastar nativo sequestra o gesto de deslizar", () => {
+    // Não é cosmético (ver o cabeçalho do ficheiro): sem `draggable={false}`,
+    // o arrastar nativo do browser intercepta a sequência de
+    // `pointerdown`/`pointerup` com um `pointercancel`, e o gesto de
+    // deslizar entre fotos (5.3) nunca dispara. Só um browser a sério prova
+    // que o gesto funciona (`e2e/galeria.spec.ts`); este teste prende a
+    // condição de que ele precisa, que o jsdom não tem como exercitar.
+    render(
+      <VisualizadorDeFotos
+        fotos={TRES_FOTOS}
+        indiceAberto={0}
+        aoFechar={vi.fn()}
+        aoNavegar={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("img")).toHaveAttribute("draggable", "false");
+  });
+
   it("muda de foto quando indiceAberto muda, sem fechar e reabrir", () => {
     const { rerender } = render(
       <VisualizadorDeFotos
