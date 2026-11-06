@@ -6,6 +6,7 @@ import { Cabecalho } from "./pages/publico/Cabecalho";
 import type { EstadoDoInfo } from "./pages/publico/Cabecalho";
 import { Ementa } from "./pages/publico/Ementa";
 import { Eventos } from "./pages/publico/Eventos";
+import { Galeria } from "./pages/publico/Galeria";
 
 /**
  * A página pública (F3-02, secção 2; F3-03, secção 2).
@@ -97,6 +98,13 @@ function App(): ReactElement {
          * não há espaço e não há secção (F3-04, 8).
          */}
         <Eventos />
+        {/*
+         * A galeria entra a seguir aos eventos (F3-05, 2.1) e herda a mesma
+         * folga: o `<main>` já desconta o cabeçalho, e nenhuma secção nova o
+         * volta a descontar. Ao contrário dos eventos, a galeria **nunca**
+         * desaparece — o seu próprio `<h2>` existe nos seis estados dela.
+         */}
+        <Galeria />
       </main>
     </>
   );
