@@ -187,13 +187,13 @@ export default {
     },
     borderWidth: { 0: "0px", DEFAULT: "var(--contorno-fino)" },
 
-    // A caixa do cartaz de um evento (F3-04, 6.2). Substituída e não
-    // estendida, como as outras escalas: `aspect-square` e `aspect-video`
-    // deixam de existir e `aspect-cartaz` passa a ser o único nome que há.
-    // Não havia um único `aspect-*` em `src/` antes desta entrada, por isso
-    // substituir não tira nada a ninguém; a grelha da galeria (F3-05)
-    // acrescenta aqui o nome dela quando precisar.
-    aspectRatio: { cartaz: "var(--cartaz-proporcao)" },
+    // A caixa do cartaz de um evento (F3-04, 6.2) e o quadrado de cada foto
+    // da galeria (F3-05, 4.2). Substituída e não estendida, como as outras
+    // escalas: `aspect-square` e `aspect-video` deixam de existir e estes
+    // dois nomes passam a ser os únicos que há. O cartaz é 3:2 porque os
+    // cartazes do bar são horizontais (confirmado); a galeria é quadrada
+    // porque as fotos dos clientes não têm orientação prometida nenhuma.
+    aspectRatio: { cartaz: "var(--cartaz-proporcao)", foto: "var(--foto-proporcao)" },
 
     // Existem para o caso de alguém precisar de afinar o anel num sítio; a
     // regra `:focus-visible` da camada base é que o desenha em todo o lado,
