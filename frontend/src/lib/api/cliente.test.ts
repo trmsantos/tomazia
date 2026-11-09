@@ -1,6 +1,15 @@
+// @vitest-environment node
 /**
  * F2-09 — o cliente: o sítio dos cabeçalhos e a distinção dos três
  * estados de falha.
+ *
+ * Ambiente `node` e não o `jsdom` por omissão do projecto: a varredura em
+ * disco deste ficheiro (F3-05, mais abaixo) importa `percorrer-arvore.ts`,
+ * que calcula `RAIZ_FRONTEND` a partir de `import.meta.url` — e isso só
+ * resolve a um caminho de ficheiro a sério em `node`. Medido: debaixo do
+ * `jsdom`, `new URL("../..", import.meta.url)` rebenta com "The URL must
+ * be of scheme file". `fetch`, `AbortController`, `FormData`, `Blob` e
+ * `DOMException` existem todos em `node` sem precisar de DOM nenhum.
  *
  * Os dois grupos de testes respondem a duas perguntas diferentes:
  *
@@ -20,10 +29,56 @@
  * provam que a CSP `connect-src 'self'` deixa passar a URL. Essa é a razão
  * de a base ser relativa por construção (`CAMINHO_BASE`) e de haver um
  * teste a prendê-la: o modo de falha do ADR 0008 só aparece no servidor.
+ *
+ * ---
+ *
+ * ## F3-05 — o primeiro `POST`, exactamente como o ADR 0012 o deixou por
+ * escrever: *"quem acrescentar o primeiro `POST` acrescenta o método e o
+ * corpo com o teste que os prova"*. É este bloco.
+ *
+ * O contrato que os testes a seguir fixam, para quem for escrever
+ * `cliente.ts` (não é desta tarefa escrevê-lo):
+ *
+ *  - `OpcoesDePedido` ganha `metodo?: "GET" | "POST"` (por omissão `"GET"`)
+ *    e `corpo?: FormData | Record<string, unknown>`.
+ *  - **`corpo instanceof FormData`**: vai tal e qual em `body`, **sem**
+ *    `Content-Type` nenhum posto à mão — é o browser que o escreve, com a
+ *    fronteira. Herança da F2-06, medida: um `Content-Type:
+ *    multipart/form-data` sem fronteira dá `400`. A asserção que prende
+ *    isto é a chave `content-type` **não existir** nos cabeçalhos, nunca
+ *    "estar vazia".
+ *  - **`corpo` é um objecto que não é `FormData`**: serializa com
+ *    `JSON.stringify` e vai com `Content-Type: application/json`.
+ *  - `X-Tomazia: 1` e `credentials: "include"` continuam incondicionais
+ *    (ADR 0012) — a tabela abaixo prova-o nos três casos: `GET`, `POST`
+ *    com JSON e `POST` com `FormData`.
+ *  - As três falhas da tabela do cabeçalho (sem resposta, não-2xx,
+ *    cancelado) continuam a classificar-se da mesma forma com um `POST`.
+ *  - `ErroDaApi` ganha um campo **`extra`**: tudo o que o envelope do
+ *    backend trouxer além de `erro`/`mensagem` (o espelho do `extra` de
+ *    `app/erros.py`, do lado do backend) — `{}` quando não há nada a mais.
+ *    É assim que o `segundos_em_falta` do `429` (S-07, ADR 0018) chega ao
+ *    ecrã sem o cliente ter de saber o nome do campo de antemão.
+ *  - `ErroDaApi` ganha também **`cabecalhos`**: os cabeçalhos da resposta,
+ *    em minúsculas (o espelho do `cabecalhos` de `app/erros.py`) — `{}`
+ *    quando não há nenhum a mais. É por aqui que o `Retry-After` do `429`
+ *    chega ao ecrã; o cliente não sabe (nem precisa de saber) que esse
+ *    cabeçalho existe, só o copia.
  */
+import { join } from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { FICHEIROS_DA_F3_05 } from "../../testes/ecras";
 import { criarFetchFalso, respostaDe, respostaJson } from "../../testes/pedidos";
+import {
+  RAIZ_FRONTEND,
+  caminhoRelativo,
+  exigirSentinelas,
+  lerTexto,
+  linhasQueCorrespondem,
+  listarFicheiros,
+} from "../../testes/percorrer-arvore";
 import { CAMINHO_BASE, ErroDaApi, pedir } from "./cliente";
 
 /** A página que o Apache serve quando o Passenger está em baixo. */
@@ -287,5 +342,291 @@ describe("um corpo que não é JSON chega legível", () => {
 
     expect((erro as ErroDaApi).codigo).toBeNull();
     expect((erro as ErroDaApi).message).toMatch(/servidor/i);
+  });
+});
+
+/**
+ * F3-05 — o `POST`, com `FormData` e com JSON.
+ *
+ * `pedir()` ainda só faz `GET` (`src/lib/api/cliente.ts`, ligação F2-09):
+ * este bloco inteiro falha, hoje, por `opcoes?.metodo` e `opcoes?.corpo`
+ * não existirem — não por erro de sintaxe deste ficheiro.
+ */
+describe("o POST com FormData (herança da F2-06: POST /fotos)", () => {
+  it("method POST, credentials include, body é a própria FormData", async () => {
+    const pedidos = comFetch(() => respostaJson({ estado: "pendente" }, 202));
+    const corpo = new FormData();
+    corpo.append("ficheiro", new Blob(["conteudo-falso"]), "foto.jpg");
+    corpo.append("website", "");
+
+    await pedir("/fotos", { metodo: "POST", corpo });
+
+    expect(pedidos).toHaveLength(1);
+    const [pedido] = pedidos;
+    expect(pedido?.opcoes?.method).toBe("POST");
+    expect(pedido?.opcoes?.credentials).toBe("include");
+    expect(
+      pedido?.opcoes?.body,
+      "o mesmo FormData que foi passado, tal e qual — não uma cópia nem uma string",
+    ).toBe(corpo);
+    expect(pedido?.opcoes?.body instanceof FormData).toBe(true);
+  });
+
+  it("a chave content-type NÃO existe nos cabeçalhos — não «está vazia», não existe", async () => {
+    // A armadilha medida na F2-06: um Content-Type de multipart escrito à
+    // mão, sem a fronteira que só o browser sabe gerar, dá 400. Por isso a
+    // asserção certa é a ausência da chave, não um valor vazio nem
+    // "multipart" sozinho.
+    const pedidos = comFetch(() => respostaJson({ estado: "pendente" }, 202));
+
+    await pedir("/fotos", { metodo: "POST", corpo: new FormData() });
+
+    const cabecalhos = pedidos[0]?.cabecalhos ?? {};
+    expect(
+      "content-type" in cabecalhos,
+      `os cabeçalhos enviados foram ${JSON.stringify(cabecalhos)}; a chave content-type ` +
+        "não pode existir — é o browser que a escreve, com a fronteira (herança da F2-06)",
+    ).toBe(false);
+  });
+
+  it('o 202 com {"estado":"pendente"} resolve — não é tratado como erro', async () => {
+    comFetch(() => respostaJson({ estado: "pendente" }, 202));
+
+    const resolvido = await pedir("/fotos", { metodo: "POST", corpo: new FormData() });
+
+    expect(resolvido).toEqual({ estado: "pendente" });
+  });
+});
+
+describe("o POST com JSON (o segundo caminho que o ADR 0012 deixou por escrever)", () => {
+  it("content-type é application/json, e o corpo vai serializado", async () => {
+    const pedidos = comFetch(() => respostaJson({ ok: true }));
+
+    await pedir("/qualquer", { metodo: "POST", corpo: { a: 1, b: "texto" } });
+
+    const [pedido] = pedidos;
+    expect(pedido?.opcoes?.method).toBe("POST");
+    expect(pedido?.cabecalhos["content-type"]).toBe("application/json");
+    expect(pedido?.opcoes?.body).toBe(JSON.stringify({ a: 1, b: "texto" }));
+  });
+});
+
+describe("X-Tomazia vai nos três casos: GET, POST-json e POST-form", () => {
+  // Tabela, não três testes soltos: é o que impede um ramo futuro (por
+  // exemplo, um `pedir()` que só ponha o cabeçalho quando `metodo` for
+  // omitido) de o perder sem que ninguém dê conta.
+  const CASOS: [string, () => Promise<unknown>][] = [
+    ["GET", () => pedir("/ementa")],
+    ["POST com JSON", () => pedir("/qualquer", { metodo: "POST", corpo: { a: 1 } })],
+    ["POST com FormData", () => pedir("/fotos", { metodo: "POST", corpo: new FormData() })],
+  ];
+
+  it.each(CASOS)('%s: x-tomazia é "1"', async (_nome, chamar) => {
+    const pedidos = comFetch(() => respostaJson({ estado: "pendente" }, 202));
+
+    await chamar();
+
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0]?.cabecalhos["x-tomazia"]).toBe("1");
+  });
+
+  it.each(CASOS)("%s: credentials é include", async (_nome, chamar) => {
+    const pedidos = comFetch(() => respostaJson({ estado: "pendente" }, 202));
+
+    await chamar();
+
+    expect(pedidos[0]?.opcoes?.credentials).toBe("include");
+  });
+});
+
+describe("as três falhas continuam distinguíveis no POST (regra 10, outra vez)", () => {
+  it("rede em baixo: ErroDaApi com estado null", async () => {
+    comFetch(() => {
+      throw new TypeError("Failed to fetch");
+    });
+
+    const erro = await pedir("/fotos", { metodo: "POST", corpo: new FormData() }).catch(
+      (capturado: unknown) => capturado,
+    );
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    expect((erro as ErroDaApi).estado, "não houve resposta: não há código HTTP").toBeNull();
+  });
+
+  it("prazo esgotado: ErroDaApi com estado null, não um cancelamento", async () => {
+    const sinal = AbortSignal.timeout(1);
+    await new Promise((resolver) => setTimeout(resolver, 20));
+
+    comFetch(() => {
+      throw sinal.reason;
+    });
+
+    const erro = await pedir("/fotos", {
+      metodo: "POST",
+      corpo: new FormData(),
+      sinal,
+    }).catch((capturado: unknown) => capturado);
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    expect((erro as ErroDaApi).estado).toBeNull();
+  });
+
+  it("abort(): o erro sai cru, e não é um ErroDaApi", async () => {
+    // O caso real: fechar a Folha a meio do envio cancela o pedido (F3-05,
+    // secção 6.6) — ninguém pode ver isso como um erro de envio.
+    const controlador = new AbortController();
+    const cancelamento = new DOMException("The operation was aborted.", "AbortError");
+    comFetch(() => {
+      controlador.abort();
+      throw cancelamento;
+    });
+
+    const erro = await pedir("/fotos", {
+      metodo: "POST",
+      corpo: new FormData(),
+      sinal: controlador.signal,
+    }).catch((capturado: unknown) => capturado);
+
+    expect(erro).toBe(cancelamento);
+    expect(erro instanceof ErroDaApi).toBe(false);
+  });
+});
+
+describe("o 429 com envelope: código, mensagem do backend, e segundos_em_falta", () => {
+  it("ErroDaApi.extra traz segundos_em_falta, sem o cliente ter de o conhecer de antemão", async () => {
+    comFetch(() =>
+      respostaDe(
+        429,
+        JSON.stringify({
+          erro: "limite_de_envios_excedido",
+          mensagem: "Já chegaste ao limite de 5 fotos nesta hora. Tenta outra vez daqui a pouco.",
+          segundos_em_falta: 125,
+        }),
+        { "Retry-After": "125" },
+      ),
+    );
+
+    const erro = await pedir("/fotos", { metodo: "POST", corpo: new FormData() }).catch(
+      (capturado: unknown) => capturado,
+    );
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    const api = erro as ErroDaApi;
+    expect(api.estado).toBe(429);
+    expect(api.codigo).toBe("limite_de_envios_excedido");
+    expect(api.message).toBe(
+      "Já chegaste ao limite de 5 fotos nesta hora. Tenta outra vez daqui a pouco.",
+    );
+    expect(
+      (api as unknown as { extra: unknown }).extra,
+      "o 429 do S-07/ADR 0018 só é útil ao ecrã se segundos_em_falta chegar: é a única " +
+        "forma de compor «Podes tentar outra vez daqui a N minutos.» (F3-05, secção 9)",
+    ).toEqual({ segundos_em_falta: 125 });
+  });
+
+  it("ErroDaApi.cabecalhos traz o Retry-After, em minúsculas", async () => {
+    // O corpo e o cabeçalho podem divergir (um proxy a arredondar, por
+    // exemplo) — o ecrã compõe com **o maior dos dois** (F3-05, secção
+    // 9.1), e para isso os dois têm de estar acessíveis, não só o do corpo.
+    comFetch(() =>
+      respostaDe(
+        429,
+        JSON.stringify({
+          erro: "limite_de_envios_excedido",
+          mensagem: "Já chegaste ao limite de 5 fotos nesta hora. Tenta outra vez daqui a pouco.",
+          segundos_em_falta: 125,
+        }),
+        { "Retry-After": "180" },
+      ),
+    );
+
+    const erro = await pedir("/fotos", { metodo: "POST", corpo: new FormData() }).catch(
+      (capturado: unknown) => capturado,
+    );
+
+    expect(
+      (erro as unknown as { cabecalhos: Record<string, string> }).cabecalhos["retry-after"],
+      "a chave tem de estar em minúsculas, como o cabecalhosDe() do lado do pedido já faz",
+    ).toBe("180");
+  });
+
+  it("um erro sem campos extra e sem cabeçalhos extra tem os dois vazios, não `undefined`", async () => {
+    comFetch(() =>
+      respostaDe(
+        403,
+        JSON.stringify({ erro: "cabecalho_em_falta", mensagem: "Falta o X-Tomazia." }),
+      ),
+    );
+
+    const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+    expect((erro as unknown as { extra: unknown }).extra).toEqual({});
+    expect((erro as unknown as { cabecalhos: Record<string, string> }).cabecalhos).toEqual({});
+  });
+});
+
+describe("varredura em disco: o multipart não se escreve à mão em lado nenhum", () => {
+  /**
+   * Mesmo padrão do `fetch-so-no-cliente.test.ts`: um `eslint-disable` não
+   * desliga uma varredura de texto, e uma lista vazia não pode passar por
+   * "está limpo" — por isso as sentinelas incluem ficheiros que já existem
+   * hoje (para a varredura provar que anda) e os da F3-05 (para falhar
+   * «não consegui percorrer a árvore» enquanto eles não existirem, em vez
+   * de passar por "não encontrei nada" antes de a tarefa estar feita).
+   */
+  function ficheirosAlvo(): string[] {
+    return (
+      [
+        ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib"), { extensoes: [".ts", ".tsx"] }),
+        ...listarFicheiros(join(RAIZ_FRONTEND, "src", "pages"), { extensoes: [".ts", ".tsx"] }),
+      ]
+        .filter((ficheiro) => !/\.test\.tsx?$/.test(ficheiro))
+        // `src/lib/api/gerado/` é gerado a partir do OpenAPI do backend (regra
+        // 9 do CLAUDE.md) e nunca se edita à mão — e desde a F2-06 descreve o
+        // `requestBody` de `POST /fotos`, por isso contém literalmente
+        // "multipart/form-data" no `openapi-typescript` a documentar o
+        // `Content-Type` do contrato. Isto não é um multipart escrito à mão: é
+        // um tipo gerado a descrevê-lo. Só apareceu agora (F3-05, correção do
+        // Tomás, 6 de novembro de 2026) porque esta varredura exigia os
+        // ficheiros-sentinela da F3-05, que passaram a existir.
+        .filter((ficheiro) => !caminhoRelativo(ficheiro).startsWith("src/lib/api/gerado/"))
+    );
+  }
+
+  const SENTINELAS_DA_VARREDURA = [
+    "src/lib/api/cliente.ts",
+    "src/pages/publico/Ementa.tsx",
+    ...FICHEIROS_DA_F3_05.filter(
+      (ficheiro) => ficheiro.startsWith("src/lib/") || ficheiro.startsWith("src/pages/"),
+    ),
+  ];
+
+  it("a string «multipart/form-data» não aparece em src/lib/** nem em src/pages/**", () => {
+    const ficheiros = ficheirosAlvo();
+    exigirSentinelas(ficheiros, SENTINELAS_DA_VARREDURA, "multipart escrito à mão");
+
+    const violacoes: string[] = [];
+    for (const ficheiro of ficheiros) {
+      const relativo = caminhoRelativo(ficheiro);
+      const texto = lerTexto(ficheiro, relativo);
+      for (const linha of linhasQueCorrespondem(texto, (conteudo) =>
+        conteudo.includes("multipart/form-data"),
+      )) {
+        violacoes.push(`${relativo}:${linha}`);
+      }
+    }
+
+    expect(
+      violacoes,
+      "O Content-Type do multipart tem de nascer do browser, com a fronteira — um " +
+        "`Content-Type: multipart/form-data` escrito à mão dá 400 (medido na F2-06). " +
+        "Passa o FormData em `corpo` e deixa o `pedir()` (e o fetch por baixo) decidir.",
+    ).toEqual([]);
+  });
+
+  it("a varredura falha «não consegui procurar» sobre uma pasta vazia, não «está limpo»", () => {
+    expect(() => exigirSentinelas([], SENTINELAS_DA_VARREDURA, "multipart escrito à mão")).toThrow(
+      /não consegui percorrer a árvore/i,
+    );
   });
 });

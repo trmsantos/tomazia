@@ -157,6 +157,25 @@
   --cartaz-proporcao: 3 / 2;
 
   /*
+   * A proporção de cada quadrado da grelha da galeria (F3-05, 4.2).
+   *
+   * **Fixa, pela mesma razão do cartaz acima.** `GET /galeria` manda
+   * `{id, ficheiro, descricao}` — sem largura nem altura — e sem uma
+   * proporção reservada a grelha só ocupa o seu lugar depois de as
+   * dezenas de imagens chegarem, com uma ligação de dados móveis a
+   * empurrar a página a cada uma.
+   *
+   * **Quadrada, e não a proporção do cartaz.** As fotos do contrato
+   * "podem ser retrato ou paisagem" — ao contrário dos cartazes, que o
+   * Tomás confirmou serem sempre horizontais. Um 3:2 favoreceria a
+   * paisagem; o quadrado corta os dois lados por igual e não escolhe a
+   * favor de nenhuma orientação que o contrato não promete. O corte é só
+   * da miniatura: o ficheiro guardado é o reduzido inteiro, e quem toca
+   * numa foto vê-a sem corte no Visualizador (F3-05, 5.5).
+   */
+  --foto-proporcao: 1;
+
+  /*
    * O que fica fixo no topo da área pública, e o que isso obriga a descontar.
    * Três valores, e os dois últimos derivam do primeiro: assim há um número
    * para mudar, não três para manter de acordo (F3-02, secção 3).

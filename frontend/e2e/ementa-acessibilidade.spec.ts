@@ -296,17 +296,60 @@ async function focarCadaControlo(pagina: Page): Promise<ParagemDeFoco[]> {
         return caixa.width > 0 && caixa.height > 0;
       });
 
+      /*
+       * Espera o deslocamento que o `focus()` desencadeia **acabar**, não
+       * só começar (correção do Tomás, 6 de novembro de 2026, F3-05).
+       *
+       * Duas frames chegavam enquanto a página só tinha a ementa e os
+       * eventos: o salto até ao controlo mais distante nunca era grande
+       * ao ponto de o `scroll-behavior: smooth` do `html` (secção 11) não
+       * ter acabado em 32 ms. A galeria entrou a seguir aos eventos e
+       * nunca desaparece (F3-05, secção 2.1) — com "Enviar uma foto" bem
+       * mais abaixo do que qualquer coisa antes dela, duas frames apanhavam
+       * o deslocamento a meio caminho, não o destino, e o controlo media-se
+       * como se estivesse fora da janela mesmo depois de o browser o ter
+       * trazido para dentro dela.
+       *
+       * Por isso: esperar frame a frame até a posição de deslocamento parar
+       * de mudar (o sinal de que a animação suave acabou), com um tecto de
+       * 2 s para nunca ficar pendurado se alguma coisa impedir o
+       * deslocamento de todo.
+       *
+       * **Uma só frame igual à anterior não basta** (correção do Tomás, 6
+       * de novembro de 2026, revisão de código): a primeira frame depois
+       * do `focus()` pode ser **anterior ao arranque** da animação suave —
+       * o browser ainda não pintou o primeiro passo dela, por isso
+       * `scrollTop` lê-se igual ao que já estava, e um guarda de "uma frame
+       * igual" concluía (errado) que já tinha acabado antes de sequer ter
+       * começado. Por isso exige-se **duas leituras iguais seguidas**: a
+       * primeira frame parada pode ser só o atraso antes do arranque; só a
+       * segunda confirma que não houve movimento nenhum entre as duas.
+       */
+      async function esperarPeloDeslocamento(): Promise<void> {
+        const raiz = document.scrollingElement ?? document.documentElement;
+        const inicio = performance.now();
+        let anterior = raiz.scrollTop;
+        let framesIguaisSeguidas = 0;
+        const FRAMES_PARA_CONFIRMAR = 2;
+        for (;;) {
+          await new Promise((continuar) => {
+            requestAnimationFrame(continuar);
+          });
+          const atual = raiz.scrollTop;
+          framesIguaisSeguidas = atual === anterior ? framesIguaisSeguidas + 1 : 0;
+          anterior = atual;
+          if (framesIguaisSeguidas >= FRAMES_PARA_CONFIRMAR) return;
+          if (performance.now() - inicio > 2000) return;
+        }
+      }
+
       for (const elemento of alcancaveis) {
         if (!(elemento instanceof HTMLElement)) continue;
         elemento.focus();
         // Deixar o browser fazer o deslocamento que faz quando o `Tab` leva
         // o foco para um controlo escondido. É esse deslocamento que o
         // `scroll-padding-top` corrige.
-        await new Promise((continuar) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(continuar);
-          });
-        });
+        await esperarPeloDeslocamento();
 
         const caixa = elemento.getBoundingClientRect();
         /*

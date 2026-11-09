@@ -48,3 +48,21 @@ export const FICHEIROS_DA_F3_04 = [
   "src/pages/publico/Eventos.tsx",
   "src/lib/formato/data-do-evento.ts",
 ];
+
+/**
+ * A galeria, o Visualizador, a Folha de envio e a redução de imagem no
+ * browser (F3-05).
+ *
+ * Dois caminhos novos, não um: `src/pages/publico/` já existia (a sentinela
+ * sozinha não acrescentava cobertura nenhuma às varreduras de pasta
+ * inteira), mas `src/lib/imagens/` é uma pasta nova — sem a entrada aqui,
+ * uma varredura que algum dia passasse a cobrir essa pasta começava a
+ * cobri-la a meio, sem ninguém dar por isso (regra 10).
+ */
+export const FICHEIROS_DA_F3_05 = [
+  "src/pages/publico/Galeria.tsx",
+  "src/pages/publico/VisualizadorDeFotos.tsx",
+  "src/pages/publico/FolhaEnviarFoto.tsx",
+  "src/lib/imagens/reduzir.ts",
+  "src/lib/imagens/formato.ts",
+];

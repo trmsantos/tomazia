@@ -54,9 +54,25 @@
  */
 export const CAMINHO_BASE = "/api";
 
-/** O que quem chama pode mandar. Hoje só o cancelamento. */
+/**
+ * O que quem chama pode mandar.
+ *
+ * `metodo` e `corpo` chegaram com a F3-05 — o primeiro `POST` do cliente
+ * (`POST /fotos`, herança da F2-06), exactamente como o ADR 0012 previu:
+ * "quem acrescentar o primeiro `POST` acrescenta o método e o corpo com o
+ * teste que os prova". Por omissão o método continua a ser `GET`.
+ */
 export type OpcoesDePedido = {
   sinal?: AbortSignal;
+  metodo?: "GET" | "POST";
+  /**
+   * `FormData` vai tal e qual para `body`, **sem** `Content-Type` posto à
+   * mão: é o browser que o escreve, com a fronteira. Um `Content-Type` de
+   * multipart escrito à mão, sem a fronteira que só o browser sabe gerar,
+   * dá `400` (medido na F2-06). Um objeto comum serializa com
+   * `JSON.stringify` e leva `Content-Type: application/json`.
+   */
+  corpo?: FormData | Record<string, unknown>;
 };
 
 /** Cabeçalhos de todos os pedidos. Ver o cabeçalho do módulo. */
@@ -69,6 +85,10 @@ type DetalhesDoErro = {
   estado: number | null;
   codigo: string | null;
   causa?: unknown;
+  /** O espelho do `extra` de `app/erros.py`. `{}` quando não há nada a mais. */
+  extra?: Record<string, unknown>;
+  /** O espelho do `cabecalhos` de `app/erros.py`, em minúsculas. `{}` por omissão. */
+  cabecalhos?: Record<string, string>;
 };
 
 /**
@@ -79,16 +99,27 @@ type DetalhesDoErro = {
  * `codigo` é o campo `erro` do envelope do backend
  * (`{"erro": "…", "mensagem": "…"}`), quando ele existir — e `null` quando
  * o que veio não foi esse envelope, como numa página de erro do Apache.
+ *
+ * `extra` e `cabecalhos` chegaram com a F3-05: são o espelho dos campos do
+ * mesmo nome em `app/erros.py` — por exemplo, o `segundos_em_falta` e o
+ * `Retry-After` do `429` do limite de envios (S-07, ADR 0018). **Nunca
+ * `undefined`**: um ecrã que lesse `erro.extra.segundos_em_falta` sem saber
+ * se `extra` existe escrevia uma guarda a mais para um caso que não pode
+ * acontecer.
  */
 export class ErroDaApi extends Error {
   readonly estado: number | null;
   readonly codigo: string | null;
+  readonly extra: Record<string, unknown>;
+  readonly cabecalhos: Record<string, string>;
 
   constructor(mensagem: string, detalhes: DetalhesDoErro) {
     super(mensagem, { cause: detalhes.causa });
     this.name = "ErroDaApi";
     this.estado = detalhes.estado;
     this.codigo = detalhes.codigo;
+    this.extra = detalhes.extra ?? {};
+    this.cabecalhos = detalhes.cabecalhos ?? {};
   }
 }
 
@@ -142,6 +173,30 @@ function interpretarJson(texto: string): Interpretacao {
   }
 }
 
+/** Os cabeçalhos de uma resposta, em minúsculas. `{}` quando não há nenhum. */
+function cabecalhosDaResposta(headers: Headers): Record<string, string> {
+  const registo: Record<string, string> = {};
+  headers.forEach((valor, nome) => {
+    registo[nome.toLowerCase()] = valor;
+  });
+  return registo;
+}
+
+/**
+ * Os campos do envelope além de `erro`/`mensagem` — o espelho do `extra` de
+ * `app/erros.py`. Só se chama quando já se confirmou que o corpo *é* o
+ * envelope (regra 10: um corpo qualquer sem envelope não tem "extra", tem
+ * um formato que não se reconhece).
+ */
+function extraDoEnvelope(corpo: unknown): Record<string, unknown> {
+  if (typeof corpo !== "object" || corpo === null) return {};
+  const resto: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(corpo as Record<string, unknown>)) {
+    if (chave !== "erro" && chave !== "mensagem") resto[chave] = valor;
+  }
+  return resto;
+}
+
 type EnvelopeDeErro = { codigo: string | null; mensagem: string | null };
 
 /** Lê `{"erro": "…", "mensagem": "…"}`, ou `null` se o corpo não for isso. */
@@ -174,12 +229,14 @@ function mensagemPorEstado(estado: number): string {
 }
 
 /**
- * Faz um GET a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
+ * Faz um pedido a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
  *
- * Não aceita método nem corpo, de propósito: não há nenhuma mutação neste
- * repositório que os exercite, e um parâmetro sem teste é um parâmetro que
- * ninguém sabe se funciona. Quem acrescentar o primeiro `POST` acrescenta
- * os dois com o teste que os prova.
+ * Por omissão é um GET, sem corpo — ainda é o único método que a maioria
+ * das chamadas deste cliente precisa. `opcoes.metodo` e `opcoes.corpo`
+ * chegaram com a F3-05 (o primeiro `POST`, `POST /fotos`, herança da
+ * F2-06): é o que o ADR 0012 previu — "quem acrescentar o primeiro `POST`
+ * acrescenta o método e o corpo com o teste que os prova" — e esse teste é
+ * `cliente.test.ts`. Ver `OpcoesDePedido` para o que cada um faz.
  *
  * O `T` não é verificado em tempo de execução — nem com `zod` nem com nada:
  * quem o fixa é o `src/lib/api/publico.ts`, que o tira dos tipos gerados a
@@ -187,15 +244,35 @@ function mensagemPorEstado(estado: number): string {
  */
 export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promise<T> {
   const sinal = opcoes?.sinal;
+  const corpoPedido = opcoes?.corpo;
+
+  /*
+   * `X-Tomazia` e `Accept` vão sempre, **postos antes do ramo** — o ramo do
+   * corpo só faz `set` do que falta. É o que torna a armadilha do multipart
+   * impossível em vez de improvável: o ramo do `FormData` não escreve
+   * `Content-Type` nenhum — a chave não existe, nunca `undefined` — porque
+   * nunca lhe toca. Um `headers: { ...CABECALHOS, "Content-Type": tipo }`
+   * com `tipo` por vezes `undefined` poria a *string* `"undefined"` no
+   * cabeçalho em runtime; aqui isso não tem como acontecer.
+   */
+  const cabecalhosDoPedido: Record<string, string> = { ...CABECALHOS };
+  let corpoHttp: FormData | string | undefined;
+
+  if (corpoPedido instanceof FormData) {
+    corpoHttp = corpoPedido;
+  } else if (corpoPedido !== undefined) {
+    cabecalhosDoPedido["Content-Type"] = "application/json";
+    corpoHttp = JSON.stringify(corpoPedido);
+  }
 
   let resposta: Response;
   try {
     resposta = await fetch(`${CAMINHO_BASE}${caminho}`, {
-      // O único método que este cliente faz hoje, escrito para se ver.
-      method: "GET",
-      headers: CABECALHOS,
+      method: opcoes?.metodo ?? "GET",
+      headers: cabecalhosDoPedido,
       credentials: "include",
       signal: sinal,
+      body: corpoHttp,
     });
   } catch (erro) {
     if (foiCancelado(erro, sinal)) throw erro;
@@ -220,25 +297,32 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
       estado: resposta.status,
       codigo: null,
       causa: erro,
+      cabecalhos: cabecalhosDaResposta(resposta.headers),
     });
   }
 
-  const corpo = interpretarJson(texto);
+  const corpoDaResposta = interpretarJson(texto);
 
   if (!resposta.ok) {
-    const envelope = corpo.interpretou ? lerEnvelopeDeErro(corpo.valor) : null;
+    const envelope = corpoDaResposta.interpretou ? lerEnvelopeDeErro(corpoDaResposta.valor) : null;
+    const extra =
+      corpoDaResposta.interpretou && envelope !== null
+        ? extraDoEnvelope(corpoDaResposta.valor)
+        : {};
     throw new ErroDaApi(envelope?.mensagem ?? mensagemPorEstado(resposta.status), {
       estado: resposta.status,
       codigo: envelope?.codigo ?? null,
+      extra,
+      cabecalhos: cabecalhosDaResposta(resposta.headers),
     });
   }
 
-  if (!corpo.interpretou) {
+  if (!corpoDaResposta.interpretou) {
     throw new ErroDaApi(
       "O servidor respondeu com sucesso mas o conteúdo não era JSON. Tenta outra vez.",
-      { estado: resposta.status, codigo: null },
+      { estado: resposta.status, codigo: null, cabecalhos: cabecalhosDaResposta(resposta.headers) },
     );
   }
 
-  return corpo.valor as T;
+  return corpoDaResposta.valor as T;
 }

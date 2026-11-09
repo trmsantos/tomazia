@@ -25,8 +25,10 @@ import {
   diaEHora,
   resposta,
 } from "../src/testes/eventos";
+import { TEXTOS_DA_GALERIA } from "../src/testes/galeria";
 import { botaoDoWifi, fingirInfoFixo } from "./apoio/cabecalho";
 import { SELETOR_DOS_CARTOES, SELETOR_DOS_CHIPS, fingirEmentaFixa } from "./apoio/ementa";
+import { fingirAGaleria } from "./apoio/galeria";
 import {
   ROTA_DOS_EVENTOS,
   ROTA_DO_CARTAZ,
@@ -528,13 +530,24 @@ test.describe("o relógio, no regresso à página (5.6)", () => {
 });
 
 test.describe("os estados, no ecrã (8, 13)", () => {
-  test("sem eventos não há nada entre a ementa e o fim da página", async ({ page }) => {
-    // No ecrã, e não só no DOM: uma secção com altura zero e sem texto
-    // passa num teste de unidade e deixa um respiro de 64 px aqui.
+  /*
+   * Até à F3-05 este teste dizia-se "sem eventos não há nada entre a
+   * ementa e o fim da página", e media até ao fim do documento. Isso
+   * deixou de ser verdade de propósito (correção do Tomás, 6 de novembro
+   * de 2026): a galeria entrou a seguir aos eventos e **nunca** desaparece
+   * (F3-05, secção 2.1), mesmo vazia — ao contrário da secção de eventos,
+   * que some de vez quando não há nada marcado. Sem eventos, o que se
+   * segue à ementa deixou de ser "nada" e passou a ser a galeria; o que
+   * continua a valer, e é o que importa medir, é que a secção de eventos
+   * não deixa um respiro a mais onde esteve — a galeria herda a mesma
+   * folga de 64 px que já separava a ementa dos eventos.
+   */
+  test("sem eventos, a galeria segue-se à ementa sem um respiro a mais", async ({ page }) => {
     await prenderORelogio(page);
     await fingirInfoFixo(page);
     await fingirEmentaFixa(page);
     await fingirEventosFixos(page, SEM_EVENTOS);
+    await fingirAGaleria(page);
     await page.goto("/");
 
     const ultimoCartao = page.locator(SELETOR_DOS_CARTOES).last();
@@ -544,14 +557,22 @@ test.describe("os estados, no ecrã (8, 13)", () => {
     await expect(seccaoDosEventos(page)).toHaveCount(0);
     await expect(tituloDosEventos(page)).toHaveCount(0);
 
-    const caixa = await ultimoCartao.boundingBox();
-    const alturaDaPagina = await page.evaluate(() => document.documentElement.scrollHeight);
-    expect(caixa, "guarda: não consegui medir o último cartão da ementa").not.toBeNull();
-    if (caixa === null) return;
+    const tituloDaGaleria = page.getByRole("heading", { name: TEXTOS_DA_GALERIA.titulo });
+    await expect(
+      tituloDaGaleria,
+      "sem a secção de eventos, a galeria é o que se segue à ementa — e nunca desaparece",
+    ).toBeVisible();
+
+    const caixaDoCartao = await ultimoCartao.boundingBox();
+    const caixaDaGaleria = await tituloDaGaleria.boundingBox();
+    expect(caixaDoCartao, "guarda: não consegui medir o último cartão da ementa").not.toBeNull();
+    expect(caixaDaGaleria, "guarda: não consegui medir o título da galeria").not.toBeNull();
+    if (caixaDoCartao === null || caixaDaGaleria === null) return;
 
     expect(
-      alturaDaPagina - (await page.evaluate(() => window.scrollY)) - (caixa.y + caixa.height),
-      "sobrou altura por baixo da ementa: a secção sumiu mas o respiro dela ficou",
+      caixaDaGaleria.y - (caixaDoCartao.y + caixaDoCartao.height),
+      "sobrou altura entre a ementa e a galeria: a secção de eventos sumiu mas deixou um " +
+        "respiro a mais onde esteve",
     ).toBeLessThan(96);
   });
 

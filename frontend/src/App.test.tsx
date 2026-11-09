@@ -23,18 +23,27 @@ import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { INFO_SEM_REDE } from "./testes/cabecalho";
 import { EMENTA_DE_TESTE, ID_DA_SECCAO, NOME_DO_BAR, TEXTOS_DA_EMENTA } from "./testes/ementa";
+import { SEM_FOTOS, TEXTOS_DA_GALERIA } from "./testes/galeria";
 import { instalarDeslocamento, instalarMatchMedia } from "./testes/jsdom-da-ementa";
-import { obterEmenta, obterEventos, obterInfo } from "./lib/api/publico";
+import { obterEmenta, obterEventos, obterGaleria, obterInfo } from "./lib/api/publico";
 
 /*
  * Desde a F3-03 o `App` pede duas coisas ao montar: a ementa e o `/info`, que
  * desce por propriedade até ao cabeçalho. O `obterInfo` tem de estar aqui —
  * uma fábrica de mock substitui o módulo inteiro, e uma exportação que falte
  * chega ao código como `undefined` em vez de dar erro no mock.
+ *
+ * `obterGaleria` chegou com a F3-05 (correção do Tomás, 6 de novembro de
+ * 2026): a galeria entrou no `<App />`, a seguir aos eventos, e nunca
+ * desaparece (F3-05, secção 2.1) — sem o mock, o `Galeria.tsx` chama um
+ * `obterGaleria` que esta fábrica não definia, e `vitest` rebentava com
+ * "No obterGaleria export is defined on the mock" assim que o componente
+ * montava, muito antes de qualquer asserção deste ficheiro correr.
  */
 vi.mock("./lib/api/publico", () => ({
   obterEmenta: vi.fn(),
   obterEventos: vi.fn(),
+  obterGaleria: vi.fn(),
   obterInfo: vi.fn(),
 }));
 
@@ -50,9 +59,16 @@ async function desenhar() {
    * e o `.then` do componente rebenta dentro do efeito.
    */
   vi.mocked(obterEventos).mockResolvedValue({ eventos: [] });
+  // Sem fotos aprovadas: o estado de lançamento da galeria (F3-05, 4.3).
+  vi.mocked(obterGaleria).mockResolvedValue(SEM_FOTOS);
 
   const resultado = render(<App />);
   await screen.findByRole("navigation", { name: TEXTOS_DA_EMENTA.nomeDaBarra });
+  // Espera a galeria assentar no estado vazio — sem isto, o teste da
+  // hierarquia de títulos podia medir a árvore a meio da corrida, antes do
+  // `<h3>Ainda não há fotos.</h3>` nascer, e passar sem ter visto a secção
+  // inteira.
+  await screen.findByRole("heading", { name: TEXTOS_DA_GALERIA.vazioTitulo });
 
   return {
     ...resultado,

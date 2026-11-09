@@ -39,7 +39,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../../App";
-import { obterEmenta, obterEventos, obterInfo } from "../../lib/api/publico";
+import { obterEmenta, obterEventos, obterGaleria, obterInfo } from "../../lib/api/publico";
 import { ErroDaApi } from "../../lib/api/cliente";
 import {
   A_CARREGAR,
@@ -51,13 +51,23 @@ import {
 } from "../../testes/cabecalho";
 import type { EstadoDoInfo } from "../../testes/cabecalho";
 import { EMENTA_DE_TESTE, NOME_DO_BAR } from "../../testes/ementa";
+import { SEM_FOTOS } from "../../testes/galeria";
 import { instalarDeslocamento, instalarMatchMedia } from "../../testes/jsdom-da-ementa";
 import type { DeslocamentoFalso, MediaFalsa } from "../../testes/jsdom-da-ementa";
 import { Cabecalho } from "./Cabecalho";
 
+/*
+ * `obterGaleria` chegou com a F3-05 (correção do Tomás, 6 de novembro de
+ * 2026): a galeria entrou no `<App />`, a seguir aos eventos, e nunca
+ * desaparece (F3-05, secção 2.1). Este ficheiro renderiza o `<App />`
+ * inteiro em "os três estados do `/info`" mais abaixo — sem o mock, o
+ * `Galeria.tsx` chama um `obterGaleria` que esta fábrica não definia, e
+ * `vitest` rebentava com "No obterGaleria export is defined on the mock".
+ */
 vi.mock("../../lib/api/publico", () => ({
   obterEmenta: vi.fn(),
   obterEventos: vi.fn(),
+  obterGaleria: vi.fn(),
   obterInfo: vi.fn(),
 }));
 
@@ -101,6 +111,11 @@ beforeEach(() => {
   // quer: o cabeçalho e o salto, sem nada de novo por baixo.
   vi.mocked(obterEventos).mockReset();
   vi.mocked(obterEventos).mockResolvedValue({ eventos: [] });
+  // A F3-05 pôs uma quarta secção, que ao contrário dos eventos nunca
+  // desaparece — mas sem fotos aprovadas ela desenha-se calma (4.3), sem
+  // nada de novo que este ficheiro precise de olhar.
+  vi.mocked(obterGaleria).mockReset();
+  vi.mocked(obterGaleria).mockResolvedValue(SEM_FOTOS);
   cabecalhoEspiado.mockClear();
 });
 

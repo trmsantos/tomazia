@@ -49,12 +49,20 @@ export function cabecalhosDe(opcoes: RequestInit | undefined): Record<string, st
   return normalizados;
 }
 
-/** Uma resposta com o mínimo que o cliente lê. */
-export function respostaDe(estado: number, corpo: string) {
+/**
+ * Uma resposta com o mínimo que o cliente lê.
+ *
+ * `cabecalhos` é opcional e serve o `429` da F3-05: o `Retry-After` vem no
+ * cabeçalho, não no corpo (ADR 0018, S-07), e `ErroDaApi.cabecalhos` é quem
+ * o expõe a quem chama — um `Headers` real, não um objeto simples, porque é
+ * isso que `cliente.ts` recebe de um `fetch` a sério.
+ */
+export function respostaDe(estado: number, corpo: string, cabecalhos?: Record<string, string>) {
   return {
     ok: estado >= 200 && estado < 300,
     status: estado,
     text: () => Promise.resolve(corpo),
+    headers: new Headers(cabecalhos ?? {}),
   };
 }
 

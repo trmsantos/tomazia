@@ -11,6 +11,8 @@ import {
   TEXTOS_DA_EMENTA,
 } from "../../src/testes/ementa";
 import { SEM_EVENTOS } from "../../src/testes/eventos";
+import { SEM_FOTOS } from "../../src/testes/galeria";
+import { ROTA_DA_GALERIA } from "./galeria";
 
 /**
  * Conduzir a página da ementa a partir de um Playwright.
@@ -151,6 +153,27 @@ export async function abrirAEmenta(pagina: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(SEM_EVENTOS),
+    });
+  });
+
+  /*
+   * **`GET /api/galeria` responde «sem fotos», pela mesma razão do
+   * `/api/eventos` acima** (correção do Tomás, 6 de novembro de 2026,
+   * F3-05): a galeria entrou a seguir aos eventos e nunca desaparece
+   * (F3-05, secção 2.1), mesmo vazia — ao contrário da secção de eventos.
+   * Sem este mock, estes testes voltam a depender de um backend ligado: o
+   * pedido falha, a galeria desenha-se em erro, e um bloco de altura
+   * acidental aparece por baixo da ementa consoante a máquina de quem
+   * corre — exactamente o modo de falha que o mock dos eventos já evitava.
+   * Foi assim que `e2e/ementa-acessibilidade.spec.ts` apanhou um controlo
+   * focado fora da janela: "Enviar uma foto", a mais de 2000 px do topo,
+   * porque esta função ainda não sabia que a galeria existia.
+   */
+  await pagina.route(ROTA_DA_GALERIA, async (rota) => {
+    await rota.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(SEM_FOTOS),
     });
   });
 

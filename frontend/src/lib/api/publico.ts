@@ -26,6 +26,7 @@ const CAMINHO_EMENTA = "/ementa" satisfies keyof paths;
 const CAMINHO_EVENTOS = "/eventos" satisfies keyof paths;
 const CAMINHO_GALERIA = "/galeria" satisfies keyof paths;
 const CAMINHO_INFO = "/info" satisfies keyof paths;
+const CAMINHO_FOTOS = "/fotos" satisfies keyof paths;
 
 /** `{ categorias: [...] }` — a ementa inteira, com os produtos aninhados. */
 export type Ementa = paths["/ementa"]["get"]["responses"][200]["content"]["application/json"];
@@ -38,6 +39,14 @@ export type Galeria = paths["/galeria"]["get"]["responses"][200]["content"]["app
 
 /** WiFi, morada, contactos e horário. `horario: null` = nunca configurado. */
 export type Info = paths["/info"]["get"]["responses"][200]["content"]["application/json"];
+
+/**
+ * `{ "estado": "pendente" }` — byte a byte igual, caminho feliz ou isco
+ * (F3-05, secção 6.7, 9). Sem `id` de propósito: é o que torna os dois
+ * casos indistinguíveis.
+ */
+export type RespostaEnvioFoto =
+  paths["/fotos"]["post"]["responses"][202]["content"]["application/json"];
 
 /** `GET /api/ementa`. Sem categorias devolve `{ categorias: [] }`, não um erro. */
 export function obterEmenta(opcoes?: OpcoesDePedido): Promise<Ementa> {
@@ -57,4 +66,15 @@ export function obterGaleria(opcoes?: OpcoesDePedido): Promise<Galeria> {
 /** `GET /api/info`. `wifi` é sempre um objeto, mesmo com os campos a `null`. */
 export function obterInfo(opcoes?: OpcoesDePedido): Promise<Info> {
   return pedir<Info>(CAMINHO_INFO, opcoes);
+}
+
+/**
+ * `POST /api/fotos` — a segunda função que o ADR 0012 pediu, e o primeiro
+ * `POST` do cliente (F3-05, herança da F2-06). `corpo` é o `FormData` da
+ * Folha de envio, já com `ficheiro`, `descricao`, `enviada_por` e o isco
+ * `website` lá dentro — esta função não monta o `FormData`, só o entrega
+ * ao cliente tal como veio.
+ */
+export function enviarFoto(corpo: FormData, opcoes?: OpcoesDePedido): Promise<RespostaEnvioFoto> {
+  return pedir<RespostaEnvioFoto>(CAMINHO_FOTOS, { ...opcoes, metodo: "POST", corpo });
 }
