@@ -50,6 +50,14 @@ from tests.apoio_legado import (  # noqa: F401 - o import é o registo das fixtu
     pasta_de_imagens,
 )
 
+# As da F2-02 — a base de dados em `head` dos testes de `criar_admin.py` e
+# de `backup.py` — vivem em `tests/apoio_scripts_de_admin.py`, pela mesma
+# razão.
+from tests.apoio_scripts_de_admin import (  # noqa: F401 - o import é o registo das fixtures
+    _bd_modelo_scripts,
+    bd_em_head,
+)
+
 VARIAVEIS_DE_DEFINICOES = (
     "AMBIENTE",
     "DATA_DIR",

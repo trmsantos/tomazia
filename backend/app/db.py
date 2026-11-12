@@ -33,8 +33,10 @@ teste.
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, MetaData, create_engine, event
@@ -63,6 +65,31 @@ CONVENCAO_DE_NOMES: dict[str, str] = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=CONVENCAO_DE_NOMES)
+
+
+#: Os primeiros 16 bytes de qualquer base de dados SQLite (incluindo o `\0`
+#: final). Lidos do ficheiro, nunca por um `sqlite3.connect`: `connect()`
+#: num caminho inexistente cria um ficheiro de 0 bytes, sem erro nenhum.
+CABECALHO_SQLITE = b"SQLite format 3\x00"
+
+
+def tem_cabecalho_sqlite(caminho: Path) -> bool:
+    """Se o ficheiro começa com o cabeçalho de uma base de dados SQLite.
+
+    Levanta `OSError` se não o conseguir ler — quem chama decide a frase.
+    Partilhado por `scripts/backup.py` e `scripts/criar_admin.py`.
+    """
+    with caminho.open("rb") as ficheiro:
+        return ficheiro.read(len(CABECALHO_SQLITE)) == CABECALHO_SQLITE
+
+
+def abrir_so_leitura(caminho: Path) -> sqlite3.Connection:
+    """Abre `caminho` só em leitura: nunca cria o ficheiro, se ele desaparecer.
+
+    `Path.as_uri()` e não uma f-string: escapa um `#` ou `?` no caminho, que
+    numa URI `file:` cortavam o nome do ficheiro. Levanta `sqlite3.Error`.
+    """
+    return sqlite3.connect(f"{caminho.as_uri()}?mode=ro", uri=True)
 
 
 def _mensagem_sem_wal(modo_obtido: object) -> str:
@@ -158,7 +185,12 @@ def criar_engine(url: str) -> Engine:
     """
     e_sqlite = url.startswith("sqlite")
     connect_args: dict[str, object] = {"check_same_thread": False} if e_sqlite else {}
-    motor = create_engine(url, connect_args=connect_args)
+    # `hide_parameters=True`: a mensagem de um erro do SQLAlchemy traz o SQL
+    # **e os valores ligados** — um `INSERT`/`UPDATE` de `admins` que falhe
+    # (BD trancada, restrição) imprimiria o `hash_password` nos registos e
+    # no `stdout` dos scripts. Sem os valores, o erro continua a dizer o
+    # que falhou. Ligado sempre, também para a aplicação.
+    motor = create_engine(url, connect_args=connect_args, hide_parameters=True)
     if e_sqlite:
         event.listen(motor, "connect", _aplicar_pragmas_sqlite)
     return motor

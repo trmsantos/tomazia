@@ -67,6 +67,7 @@ import base64
 import binascii
 import math
 from datetime import datetime, timedelta
+from enum import Enum
 from functools import lru_cache
 from typing import Annotated, NamedTuple
 
@@ -412,4 +413,79 @@ def autenticar(sessao: Session, utilizador: str, password: str) -> Admin:
     admin.tentativas_falhadas = 0
     admin.bloqueado_ate = None
     sessao.commit()
+    return admin
+
+
+# --------------------------------------------------------------------------
+# `scripts/criar_admin.py` (F2-02): desbloquear e mudar a password
+# --------------------------------------------------------------------------
+#
+# As duas funções abaixo mexem exatamente nas colunas que `autenticar`
+# também lê e limpa (`tentativas_falhadas`, `bloqueado_ate`,
+# `sessao_versao`) — por isso vivem aqui, e não em `scripts/criar_admin.py`,
+# para que no dia em que o bloqueio ganhar uma terceira coluna haja um
+# sítio só para mudar. Nenhuma das duas toca em `autenticar` nem em
+# `exigir_admin`.
+
+
+class ResultadoDesbloqueio(Enum):
+    """O que `desbloquear_admin` encontrou.
+
+    Nunca um `bool`: um `bool` juntaria "a conta não existe" e "a conta
+    existe mas não estava bloqueada" no mesmo `False`, e a regra 10 do
+    `CLAUDE.md` proíbe exatamente essa troca — "não encontrei" e "não
+    havia nada a fazer" são coisas diferentes.
+    """
+
+    NAO_EXISTE = "nao_existe"
+    NAO_ESTAVA_BLOQUEADA = "nao_estava_bloqueada"
+    DESBLOQUEADO = "desbloqueado"
+
+
+def desbloquear_admin(sessao: Session, utilizador: str) -> ResultadoDesbloqueio:
+    """Limpa `tentativas_falhadas` e `bloqueado_ate` de `utilizador`.
+
+    **Não toca em `sessao_versao`** — decisão do Tomás, herança da F2-04
+    (`docs/TAREFAS.md`, F2-02): a F2-04 decidiu que uma sessão aberta
+    sobrevive ao bloqueio, e destrancar a conta não pode ser o que a
+    expulsa do ecrã onde está.
+
+    Devolve `ResultadoDesbloqueio.NAO_EXISTE` se não houver conta nenhuma
+    com esse `utilizador`; `NAO_ESTAVA_BLOQUEADA` se a conta existir mas as
+    duas colunas já estarem nos valores de omissão (nada para limpar); ou
+    `DESBLOQUEADO`, quando havia mesmo um bloqueio e ele foi limpo agora.
+    """
+    admin = sessao.scalar(select(Admin).where(Admin.utilizador == utilizador))
+    if admin is None:
+        return ResultadoDesbloqueio.NAO_EXISTE
+    tinha_algo_a_limpar = (
+        admin.tentativas_falhadas != 0 or admin.bloqueado_ate is not None
+    )
+    if not tinha_algo_a_limpar:
+        return ResultadoDesbloqueio.NAO_ESTAVA_BLOQUEADA
+    admin.tentativas_falhadas = 0
+    admin.bloqueado_ate = None
+    sessao.commit()
+    return ResultadoDesbloqueio.DESBLOQUEADO
+
+
+def mudar_password(sessao: Session, utilizador: str, password: str) -> Admin | None:
+    """Muda a password de `utilizador` e incrementa `sessao_versao`.
+
+    Decisão do Tomás, 9 de novembro de 2026 (`docs/TAREFAS.md`, F2-02):
+    mudar a password mata as sessões antigas — é o que qualquer pessoa
+    espera de mudar uma password, e o `sessao_versao` já estava preparado
+    para isto desde a F2-04 (é o mesmo contador que `terminar_sessoes`
+    incrementa ao logout).
+
+    Devolve `None` se não houver conta nenhuma com esse `utilizador`; quem
+    chama é que decide a frase de recusa — esta função não imprime nada.
+    """
+    admin = sessao.scalar(select(Admin).where(Admin.utilizador == utilizador))
+    if admin is None:
+        return None
+    admin.hash_password = criar_hash(password)
+    admin.sessao_versao += 1
+    sessao.commit()
+    sessao.refresh(admin)
     return admin
