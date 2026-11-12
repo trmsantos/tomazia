@@ -26,3 +26,11 @@ from tests.apoio_http import (  # noqa: F401 - o import é o registo da fixture
     origem_do_esquema,
     sessao,
 )
+
+# A F2-02: a base de dados em `head` que
+# `test_criar_admin_nao_mostra_a_password.py` usa para lançar
+# `criar_admin.py`.
+from tests.apoio_scripts_de_admin import (  # noqa: F401 - o import é o registo da fixture
+    _bd_modelo_scripts,
+    bd_em_head,
+)
