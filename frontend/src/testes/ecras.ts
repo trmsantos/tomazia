@@ -66,3 +66,21 @@ export const FICHEIROS_DA_F3_05 = [
   "src/lib/imagens/reduzir.ts",
   "src/lib/imagens/formato.ts",
 ];
+
+/**
+ * O login e a navegação da gestão (F4-01), mais os dois módulos partilhados
+ * que ela cria (`lib/api/auth.ts` e `lib/formato/tempo-em-falta.ts`).
+ *
+ * Sentinelas pela mesma razão das listas anteriores: `src/pages/gestao/` é uma
+ * pasta nova, e uma varredura de pasta que ainda não existe devolve zero
+ * ficheiros e passa (regra 10 do `CLAUDE.md`).
+ */
+export const FICHEIROS_DA_F4_01 = [
+  "src/pages/gestao/AppGestao.tsx",
+  "src/pages/gestao/navegacao.tsx",
+  "src/pages/gestao/Entrar.tsx",
+  "src/pages/gestao/MolduraDaGestao.tsx",
+  "src/pages/gestao/SessaoDaGestao.tsx",
+  "src/pages/gestao/Destino.tsx",
+  "src/lib/formato/tempo-em-falta.ts",
+];

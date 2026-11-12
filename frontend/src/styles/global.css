@@ -203,6 +203,37 @@
     padding-bottom: calc(var(--espaco-4) + env(safe-area-inset-bottom, 0px));
   }
 
+  /*
+   * A folga do `<main>` da gestão por baixo da barra de navegação fixa (F4-01,
+   * 5.2): a altura da barra, mais a margem de sistema, mais `--espaco-4`, para
+   * a última linha nunca ficar por baixo dela. Uma classe e não uma utilidade
+   * porque o Tailwind não gera um `padding` a partir de uma soma com `env()`, e
+   * um `style` inline é bloqueado pela CSP. A partir de 1024 px a barra
+   * desaparece e a folga também (a variante `lg:` no `<main>` repõe-na).
+   *
+   * `env(safe-area-inset-bottom)` fica inerte: não se liga `viewport-fit=cover`
+   * (F4-01, 5.2).
+   */
+  .folga-da-barra-da-gestao {
+    padding-bottom: calc(
+      var(--altura-barra-gestao) + env(safe-area-inset-bottom, 0px) + var(--espaco-4)
+    );
+  }
+
+  /*
+   * O destino ativo na coluna lateral da gestão (F4-01, 5.3): um degrau abaixo
+   * do painel, sem dourado nem borda. Só a partir de 1024 px; abaixo, o ativo
+   * distingue-se pelo peso e pela barra de 2 px, sem preenchimento. Uma classe
+   * e não `lg:superficie-escura`: essa variante só repete o `background-color`,
+   * e a reatribuição do papel `--cor-fundo-local` vive noutra regra.
+   */
+  @screen lg {
+    .ativo-na-coluna-da-gestao {
+      --cor-fundo-local: var(--cor-bordo-noite);
+      background-color: var(--cor-fundo-local);
+    }
+  }
+
   /* O fundo não desliza enquanto a Folha está aberta. Uma classe no <body>,
      nunca `document.body.style.overflow`. */
   .sem-deslizar {

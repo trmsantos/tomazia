@@ -325,6 +325,42 @@ describe("um corpo que não é JSON chega legível", () => {
     expect((erro as Error).name).toBe("ErroDaApi");
   });
 
+  it("204 sem corpo: resolve (o POST /auth/logout não tem corpo)", async () => {
+    comFetch(() => respostaDe(204, ""));
+
+    await expect(
+      pedir("/auth/logout", { metodo: "POST", semCorpo: true }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("204 vazio sem `semCorpo`: continua a ser erro (só quem o pede o aceita)", async () => {
+    comFetch(() => respostaDe(204, ""));
+
+    const erro = await pedir("/auth/eu").catch((capturado: unknown) => capturado);
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    expect((erro as ErroDaApi).estado).toBe(204);
+  });
+
+  it("200 com o corpo vazio continua a ser erro: só o 204 dispensa o JSON", async () => {
+    comFetch(() => respostaDe(200, ""));
+
+    const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    expect((erro as ErroDaApi).estado).toBe(200);
+  });
+
+  it("204 com um corpo que não é vazio continua a ser erro", async () => {
+    comFetch(() => respostaDe(204, PAGINA_DE_ERRO_DO_APACHE));
+
+    const erro = await pedir("/auth/logout", { metodo: "POST", semCorpo: true }).catch(
+      (capturado: unknown) => capturado,
+    );
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+  });
+
   it("não-2xx com corpo vazio: usa a frase por estado, em PT-PT", async () => {
     comFetch(() => respostaDe(404, ""));
 

@@ -41,7 +41,7 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
-import { FICHEIROS_DA_F3_05 } from "./testes/ecras";
+import { FICHEIROS_DA_F3_05, FICHEIROS_DA_F4_01 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -287,6 +287,107 @@ describe("a página de demonstração não chega a produção", () => {
       "o grep tem de encontrar a marca no código-fonte da demonstração; " +
         "se não encontra aqui, também não encontraria em dist/ e o teste de cima é vazio",
     ).toBe(0);
+  });
+});
+
+/**
+ * F4-01, Q-02 — o público nunca importa nada de `src/pages/gestao`.
+ *
+ * Molde do «nada em src/ importa da demonstração»: a gestão é carregada à parte
+ * (`import("./pages/gestao/AppGestao")` no `main.tsx`), e o que a mantém fora do
+ * pacote público é **estrutural** — um único ficheiro de fora a importá-la, mesmo
+ * por engano e mesmo só um tipo ou uma constante, faz o Vite metê-la no pacote de
+ * entrada. `orcamento-q02.test.ts` prova-o no build; este prova-o no código, onde
+ * a mensagem diz quem foi.
+ *
+ * A única exceção é o `src/main.tsx`, e só por `import()` dinâmico: um `from` da
+ * gestão no `main.tsx` volta a ser estático.
+ */
+describe("o público não importa src/pages/gestao", () => {
+  const CAMINHO_PARA_A_GESTAO =
+    /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s*)["'](?:[^"']*\/)?gestao(?:\/[^"']*)?["']/;
+  const ESTATICA_PARA_A_GESTAO =
+    /(?:\bfrom\s*|\bimport\s*)["'](?:[^"']*\/)?gestao(?:\/[^"']*)?["']/;
+
+  it("a gestão existe no código-fonte (sem isto, não encontrar nada não prova nada)", () => {
+    const emFalta = FICHEIROS_DA_F4_01.filter(
+      (relativo) => !existsSync(join(RAIZ_FRONTEND, relativo)),
+    );
+
+    expect(
+      emFalta,
+      "Não consigo verificar que o público não importa a gestão: a gestão não existe no " +
+        "código-fonte. Uma varredura que não encontra nada onde nunca houve nada é a " +
+        "falha silenciosa da regra 10.",
+    ).toEqual([]);
+  });
+
+  it("nenhum ficheiro fora de src/pages/gestao a importa; o main.tsx só por import()", () => {
+    const ficheiros = listarFicheiros(join(RAIZ_FRONTEND, "src"), {
+      extensoes: [".ts", ".tsx"],
+    }).filter((ficheiro) => {
+      const relativo = caminhoRelativo(ficheiro);
+      return (
+        !relativo.startsWith("src/pages/gestao/") &&
+        !relativo.startsWith("src/testes/") &&
+        !relativo.startsWith("src/demonstracao/") &&
+        !/\.(test|spec)\.tsx?$/.test(relativo)
+      );
+    });
+
+    exigirSentinelas(
+      ficheiros,
+      [
+        "src/App.tsx",
+        "src/main.tsx",
+        "src/pages/publico/Ementa.tsx",
+        "src/pages/publico/FolhaEnviarFoto.tsx",
+        "src/lib/api/cliente.ts",
+        "src/lib/api/publico.ts",
+        "src/lib/formato/tempo-em-falta.ts",
+        "src/components/ui/Campo.tsx",
+      ],
+      "importações da gestão",
+    );
+
+    const violacoes: string[] = [];
+    for (const ficheiro of ficheiros) {
+      const relativo = caminhoRelativo(ficheiro);
+      const regra = relativo === "src/main.tsx" ? ESTATICA_PARA_A_GESTAO : CAMINHO_PARA_A_GESTAO;
+      lerTexto(ficheiro, relativo)
+        .split("\n")
+        .forEach((linha, indice) => {
+          if (regra.test(linha)) violacoes.push(`${relativo}:${indice + 1}`);
+        });
+    }
+
+    expect(violacoes).toEqual([]);
+  });
+
+  it("o main.tsx carrega mesmo a gestão por import() dinâmico (a exceção existe)", () => {
+    const principal = lerTexto(join(RAIZ_FRONTEND, "src/main.tsx"), "src/main.tsx");
+    expect(principal).toMatch(/import\s*\(\s*["']\.\/pages\/gestao\/AppGestao["']\s*\)/);
+  });
+
+  it("autoteste dos padrões: apanham o que têm de apanhar e deixam passar o resto", () => {
+    for (const exemplo of [
+      'import { Entrar } from "./pages/gestao/Entrar";',
+      'import { navegar } from "../gestao/navegacao";',
+      'const pagina = await import("./pages/gestao/AppGestao");',
+      'export * from "../pages/gestao";',
+      'const x = require("./gestao/Destino");',
+    ]) {
+      expect(CAMINHO_PARA_A_GESTAO.test(exemplo), `não apanhou: ${exemplo}`).toBe(true);
+    }
+    for (const exemplo of [
+      'const caminho = "/gestao/entrar";',
+      'import { gestaoDeTudo } from "./gestaoDeTudo";',
+      'navegar("/gestao/entrar", { substituir: true });',
+    ]) {
+      expect(CAMINHO_PARA_A_GESTAO.test(exemplo), `apanhou a mais: ${exemplo}`).toBe(false);
+    }
+    expect(ESTATICA_PARA_A_GESTAO.test('import { A } from "./pages/gestao/AppGestao";')).toBe(true);
+    expect(ESTATICA_PARA_A_GESTAO.test('import("./pages/gestao/AppGestao")')).toBe(false);
   });
 });
 

@@ -185,7 +185,12 @@ export default {
       cartao: "var(--raio-cartao)",
       cheio: "var(--raio-cheio)",
     },
-    borderWidth: { 0: "0px", DEFAULT: "var(--contorno-fino)" },
+    borderWidth: {
+      0: "0px",
+      DEFAULT: "var(--contorno-fino)",
+      // A barra do destino ativo na navegação da gestão (F4-01, 5.2).
+      marca: "var(--espessura-marca-ativa)",
+    },
 
     // A caixa do cartaz de um evento (F3-04, 6.2) e o quadrado de cada foto
     // da galeria (F3-05, 4.2). Substituída e não estendida, como as outras
@@ -252,11 +257,21 @@ export default {
       padding: { cabecalho: "var(--altura-cabecalho)" },
       // O carril e o manípulo do Interruptor: 48 × 28 e 24 × 24 não são passos
       // da escala de espaçamento, por isso têm tokens próprios.
-      width: { carril: "var(--carril-largura)", manipulo: "var(--manipulo)" },
+      width: {
+        carril: "var(--carril-largura)",
+        manipulo: "var(--manipulo)",
+        // A coluna lateral da gestão (F4-01, 5.3).
+        "menu-gestao": "var(--largura-menu-gestao)",
+      },
+      // As duas colunas da moldura da gestão a partir de 1024 px: o menu e o resto.
+      gridTemplateColumns: { gestao: "var(--largura-menu-gestao) 1fr" },
       height: {
         carril: "var(--carril-altura)",
         manipulo: "var(--manipulo)",
         barra: "var(--altura-barra-chips)",
+        // A barra inferior da gestão no telemóvel (F4-01, 5.2). O `<main>`
+        // desconta-a com `.folga-da-barra-da-gestao`, do mesmo token.
+        "barra-gestao": "var(--altura-barra-gestao)",
         // A altura do cabeçalho fixo, do mesmo sítio de onde sai a âncora das
         // categorias. 8 px a mais aqui desalinham os onze saltos de uma vez, e
         // o sintoma aparece longe da causa (F3-03, secção 3).

@@ -86,16 +86,12 @@ export function posicao(n: number, m: number): string {
 }
 
 /**
- * As três formas do tempo composto do 429 (secção 9.1).
- *
- * Reexportada do próprio ecrã (`FolhaEnviarFoto.tsx`), não reimplementada
- * aqui: as duas versões já tinham divergido na fronteira dos 60–119 s (a
- * desta fixture arredondava para "2 minutos" aos 119 s; a do ecrã diz "1
- * minuto" até aos 119, como a tabela da secção 9.1 manda) — correção do
- * Tomás, 6 de novembro de 2026, revisão de código. Duas implementações da
- * mesma fórmula são duas oportunidades de uma delas ficar para trás.
+ * A frase «Podes tentar outra vez daqui a…», reexportada do módulo partilhado
+ * (`src/lib/formato/tempo-em-falta.ts`) e não reimplementada aqui: as duas
+ * versões já tinham divergido na fronteira dos 60–119 s. Desde a F4-01 a
+ * regra é arredondar sempre para cima acima dos 60 s.
  */
-export { tempoComposto as tempoDeEspera } from "../pages/publico/FolhaEnviarFoto";
+export { tempoComposto as tempoDeEspera } from "../lib/formato/tempo-em-falta";
 
 export const ID_DA_SECCAO = "galeria";
 export const ID_DO_TITULO = "titulo-galeria";

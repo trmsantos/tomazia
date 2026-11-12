@@ -241,6 +241,24 @@
    */
   --altura-contagem: calc(var(--espaco-3) + var(--texto-nota) * var(--entrelinha-nota));
 
+  /* A altura da barra de navegação da gestão no telemóvel (F4-01, 5.2): dois
+     `--espaco-2` de folga, o ícone de 24 px, `--espaco-1` entre ele e o rótulo,
+     o rótulo de 14 px a 21 px de entrelinha e o fio de cima. Um token e não um
+     literal: o `<main>` desconta-a, o Aviso temporário assenta por cima dela e
+     as duas contas têm de dar o mesmo número. O teste ponta a ponta mede a
+     altura real da barra contra este valor: se a entrelinha do rótulo não der
+     21 px, corrige-se o token, não o teste. */
+  --altura-barra-gestao: calc(
+    2 * var(--espaco-2) + 24px + var(--espaco-1) + 21px + var(--contorno-fino)
+  );
+
+  /* A coluna lateral da gestão a partir de 1024 px (F4-01, 5.3). */
+  --largura-menu-gestao: 240px;
+
+  /* A barra de 2 px que marca o destino ativo na barra inferior da gestão
+     (F4-01, 5.2): o estado ativo não é só cor. */
+  --espessura-marca-ativa: 2px;
+
   /* Interruptor: carril 48 × 28 com o manípulo de 24 e --espaco-1 de folga.
      O 28 e o 20 não são passos da escala de espaçamento (não há 28 px nos sete
      passos), por isso vivem aqui com nome em vez de ficarem literais na

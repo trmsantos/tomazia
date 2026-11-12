@@ -66,6 +66,13 @@ export type OpcoesDePedido = {
   sinal?: AbortSignal;
   metodo?: "GET" | "POST";
   /**
+   * Aceita um 204 com o corpo vazio como sucesso (`POST /auth/logout`). Só
+   * quem o pede: sem esta opção um 204 é erro, porque o chamador espera JSON, e
+   * um 204 vindo de um proxy a meio de `GET /auth/eu` resolvia como
+   * `undefined` e a guarda lia-o como sessão confirmada.
+   */
+  semCorpo?: boolean;
+  /**
    * `FormData` vai tal e qual para `body`, **sem** `Content-Type` posto à
    * mão: é o browser que o escreve, com a fronteira. Um `Content-Type` de
    * multipart escrito à mão, sem a fronteira que só o browser sabe gerar,
@@ -315,6 +322,13 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
       extra,
       cabecalhos: cabecalhosDaResposta(resposta.headers),
     });
+  }
+
+  // Um 204 não tem corpo por definição (`POST /auth/logout`): o corpo vazio é
+  // o que ele diz, não um JSON em falta — mas só para quem o pediu (`semCorpo`).
+  // Um 204 não pedido, um 200 vazio, ou um 204 com lixo, são erro (regra 10).
+  if (opcoes?.semCorpo === true && resposta.status === 204 && texto === "") {
+    return undefined as T;
   }
 
   if (!corpoDaResposta.interpretou) {

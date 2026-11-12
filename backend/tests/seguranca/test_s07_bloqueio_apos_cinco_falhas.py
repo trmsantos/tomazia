@@ -132,8 +132,7 @@ class TestMaquinaDeEstados:
         # constante importada do serviço — comparar a resposta com a
         # própria fonte que a produz nunca cai (achado em revisão).
         assert corpo["mensagem"] == (
-            "Conta bloqueada durante 15 minutos, depois de várias "
-            "tentativas falhadas. Tenta novamente depois desse tempo."
+            "A conta está bloqueada por causa de várias tentativas falhadas."
         )
 
     def test_bloqueio_regista_cinco_tentativas_e_quinze_minutos_na_bd(
