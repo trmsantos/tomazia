@@ -31,6 +31,19 @@
 DirectoryIndex index.html
 
 # ============================================================
+# Teto do corpo dos pedidos à API, segunda camada. A primeira é o
+# `LimiteDoCorpo` da app (64 KiB, com o upload de fotos isento); esta pára
+# os pedidos enormes antes de chegarem ao Passenger. 8454144 = 8 MiB do
+# ficheiro + 64 KiB de margem do multipart: é o maior corpo legítimo (o
+# upload, `LIMITE_CONTENT_LENGTH` em `app/routers/fotos.py`), e
+# `backend/tests/seguranca/test_htaccess_limita_o_corpo_da_api.py` prende
+# os dois números um ao outro.
+# ============================================================
+<If "%{REQUEST_URI} =~ m#^/api(/|$)#">
+  LimitRequestBody 8454144
+</If>
+
+# ============================================================
 # Cabeçalhos de segurança, em todas as respostas.
 # ============================================================
 <IfModule mod_headers.c>

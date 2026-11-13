@@ -18,11 +18,11 @@ uma exceção levantada aqui escaparia a esses tratadores e sairia como um
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from app.erros import caminho_de_gestao
 
 #: O nome do cabeçalho e o único valor aceite. Um valor presente mas
 #: diferente (`"0"`, `"true"`, `"2"`) tem de dar o mesmo resultado que um
@@ -45,21 +45,36 @@ METODOS_DE_MUTACAO = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 MENSAGEM_CABECALHO_EM_FALTA = "Não foi possível processar este pedido a partir daqui."
 
 
-class GuardaXTomazia(BaseHTTPMiddleware):
-    """Responde `403` a qualquer mutação sem `X-Tomazia: 1`, antes do router."""
+class GuardaXTomazia:
+    """Responde `403` a qualquer mutação sem `X-Tomazia: 1`, antes do router.
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    ASGI puro, não `BaseHTTPMiddleware`: este corre o resto da app dentro
+    de um grupo de tarefas, e uma exceção levantada ao ler o corpo (o `413`
+    do `LimiteDoCorpo`) chegava ao FastAPI embrulhada num `ExceptionGroup`
+    e saía como um `400` genérico.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, escopo: Scope, receber: Receive, enviar: Send) -> None:
         if (
-            request.method in METODOS_DE_MUTACAO
-            and request.headers.get(NOME_DO_CABECALHO) != VALOR_EXIGIDO
+            escopo["type"] == "http"
+            and escopo["method"] in METODOS_DE_MUTACAO
+            and Headers(scope=escopo).get(NOME_DO_CABECALHO) != VALOR_EXIGIDO
         ):
-            return JSONResponse(
+            resposta = JSONResponse(
                 status_code=403,
                 content={
                     "erro": "cabecalho_x_tomazia_em_falta",
                     "mensagem": MENSAGEM_CABECALHO_EM_FALTA,
                 },
+                # Fora do `ExceptionMiddleware`, por isso o `no-store` das
+                # respostas de `/gestao` tem de vir daqui.
+                headers=(
+                    {"Cache-Control": "no-store"} if caminho_de_gestao(escopo) else None
+                ),
             )
-        return await call_next(request)
+            await resposta(escopo, receber, enviar)
+            return
+        await self.app(escopo, receber, enviar)

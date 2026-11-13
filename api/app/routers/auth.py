@@ -18,6 +18,7 @@ from fastapi import APIRouter, Cookie, Depends, Response
 from app.dependencias import SessaoDaBD
 from app.models.admins import Admin
 from app.schemas.auth import PedidoLogin, RespostaAdmin
+from app.schemas.erros import RespostaDeErro
 from app.services import auth as servico
 
 #: Nunca em cache: um `Set-Cookie` ou um `401`/`200` de sessão guardados
@@ -32,43 +33,35 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 #: `HTTPValidationError` por omissão.
 _RESPOSTAS_DO_LOGIN: dict[int | str, dict[str, Any]] = {
     400: {
+        "model": RespostaDeErro,
         "description": (
             "Utilizador inexistente ou password errada: `erro` é "
             "`credenciais_invalidas`, sempre a mesma resposta."
-        )
+        ),
     },
     422: {
+        "model": RespostaDeErro,
         "description": (
             "Falta `utilizador` ou `password`, ou o corpo não é válido "
             "(envelope `{erro, mensagem}`)."
-        )
+        ),
     },
     429: {
+        "model": RespostaDeErro,
         "description": (
             "Conta bloqueada depois de 5 falhas seguidas: `erro` é "
             "`conta_bloqueada`, com `segundos_em_falta` e o cabeçalho "
             "`Retry-After`."
-        )
+        ),
     },
 }
 
 _RESPOSTAS_DO_EU: dict[int | str, dict[str, Any]] = {
-    401: {"description": "Sem sessão válida: `erro` é `sessao_em_falta`."},
+    401: {
+        "model": RespostaDeErro,
+        "description": "Sem sessão válida: `erro` é `sessao_em_falta`.",
+    },
 }
-
-
-def _definir_cookie_de_sessao(
-    resposta: Response, admin_id: int, sessao_versao: int
-) -> None:
-    resposta.set_cookie(
-        key=servico.NOME_DO_COOKIE,
-        value=servico.assinar_sessao(admin_id, sessao_versao),
-        max_age=int(servico.VALIDADE_DA_SESSAO.total_seconds()),
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        path="/",
-    )
 
 
 @router.post("/login", response_model=RespostaAdmin, responses=_RESPOSTAS_DO_LOGIN)
@@ -81,7 +74,7 @@ def login(resposta: Response, sessao: SessaoDaBD, corpo: PedidoLogin) -> Respost
     depois de 5 falhas seguidas.
     """
     admin = servico.autenticar(sessao, corpo.utilizador, corpo.password)
-    _definir_cookie_de_sessao(resposta, admin.id, admin.sessao_versao)
+    servico.definir_cookie_de_sessao(resposta, admin.id, admin.sessao_versao)
     resposta.headers["Cache-Control"] = SEM_CACHE
     return RespostaAdmin(id=admin.id, utilizador=admin.utilizador)
 
