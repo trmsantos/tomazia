@@ -33,6 +33,7 @@
  *    acidental a cada "Cancelar".
  */
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Botao } from "./Botao";
@@ -211,5 +212,22 @@ describe("Botão", () => {
     render(<Botao variante="principal">Publicar evento</Botao>);
 
     expect(screen.getByRole("button").className).not.toMatch(/outline-none|focus:outline-none/);
+  });
+
+  describe("as duas propriedades que o «Sair» acrescentou (F4-01, 7.4)", () => {
+    it("descritoPor vira aria-describedby; sem ele, o atributo não existe", () => {
+      const { rerender } = render(<Botao descritoPor="linha-de-erro">Sair</Botao>);
+      expect(screen.getByRole("button")).toHaveAttribute("aria-describedby", "linha-de-erro");
+
+      rerender(<Botao>Sair</Botao>);
+      expect(screen.getByRole("button")).not.toHaveAttribute("aria-describedby");
+    });
+
+    it("ref chega ao <button>, para o ecrã lhe devolver o foco", () => {
+      const referencia = createRef<HTMLButtonElement>();
+      render(<Botao ref={referencia}>Sair</Botao>);
+
+      expect(referencia.current).toBe(screen.getByRole("button"));
+    });
   });
 });

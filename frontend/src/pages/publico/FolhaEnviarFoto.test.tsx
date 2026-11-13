@@ -645,10 +645,11 @@ describe("o 429: o tempo composto, e o maior dos dois números (secção 9)", ()
     expect(screen.getByText("Podes tentar outra vez daqui a 3 minutos.")).toBeInTheDocument();
   });
 
-  it("90 s, sem Retry-After: a linha do meio da tabela 9.1, '1 minuto'", async () => {
-    // Os outros casos desta bateria são 0, 65 e 125 — nenhum cai na faixa
-    // 60–119 s da tabela 9.1, que diz "1 minuto" (não "2 minutos", que é o
-    // que `Math.ceil(90/60)` daria se a fórmula fosse só esse arredondamento).
+  it("90 s, sem Retry-After: arredonda para cima, '2 minutos' (regra nova da F4-01)", async () => {
+    // Antes da F4-01 a tabela 9.1 dizia "1 minuto" para 60–119 s, com o botão
+    // ainda bloqueado até aos 119 s. Decisão do Tomás (F4-01): arredondar
+    // sempre para cima acima de 60 s — a frase não pode prometer menos do que
+    // falta. 60 s continua a ser "1 minuto" (ver `tempo-em-falta.test.ts`).
     await comFicheiroPronto();
     const pedidos = clienteDeEnvioFalso();
     fireEvent.click(botaoDeEnviar());
@@ -665,7 +666,7 @@ describe("o 429: o tempo composto, e o maior dos dois números (secção 9)", ()
       await Promise.resolve();
     });
 
-    expect(screen.getByText("Podes tentar outra vez daqui a 1 minuto.")).toBeInTheDocument();
+    expect(screen.getByText("Podes tentar outra vez daqui a 2 minutos.")).toBeInTheDocument();
   });
 
   it("com os dois presentes e a divergirem, usa o MAIOR dos dois", async () => {

@@ -645,6 +645,13 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaAdmin"];
                 };
             };
+            /** @description Sem sessão válida: `erro` é `sessao_em_falta`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -678,14 +685,26 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaAdmin"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Utilizador inexistente ou password errada: `erro` é `credenciais_invalidas`, sempre a mesma resposta. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Falta `utilizador` ou `password`, ou o corpo não é válido (envelope `{erro, mensagem}`). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Conta bloqueada depois de 5 falhas seguidas: `erro` é `conta_bloqueada`, com `segundos_em_falta` e o cabeçalho `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };

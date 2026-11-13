@@ -5,6 +5,7 @@ import { Botao } from "../../components/ui/Botao";
 import { Folha } from "../../components/ui/Folha";
 import { ErroDaApi } from "../../lib/api/cliente";
 import { enviarFoto } from "../../lib/api/publico";
+import { tempoComposto } from "../../lib/formato/tempo-em-falta";
 import { reduzir } from "../../lib/imagens/reduzir";
 
 /**
@@ -69,20 +70,6 @@ const DESTINO_POR_CODIGO: Record<string, "foto" | "legenda" | "nome" | "geral"> 
   tamanho_do_pedido_em_falta: "geral",
   limite_de_envios_excedido: "geral",
 };
-
-/**
- * "Podes tentar outra vez daqui a…" (secção 9.1).
- *
- * Exportada para `src/testes/galeria.ts` a reusar em vez de manter uma
- * cópia própria — tinham divergido na fronteira dos 60–119 s (correção do
- * Tomás, revisão de código): duas implementações da mesma fórmula são duas
- * oportunidades de uma delas ficar para trás.
- */
-export function tempoComposto(segundos: number): string {
-  if (segundos < 60) return "Podes tentar outra vez daqui a menos de um minuto.";
-  if (segundos < 120) return "Podes tentar outra vez daqui a 1 minuto.";
-  return `Podes tentar outra vez daqui a ${String(Math.ceil(segundos / 60))} minutos.`;
-}
 
 type LinhaGeral =
   | { tipo: "simples"; texto: string }

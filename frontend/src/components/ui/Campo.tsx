@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, Ref } from "react";
 import { useId } from "react";
 
 import { juntar } from "./juntar";
@@ -33,6 +33,33 @@ export type PropriedadesDoCampo = {
   multilinha?: boolean;
   valor?: string;
   aoMudar?: (valor: string) => void;
+
+  /*
+   * F4-01 (3.2 e 3.5): o que o formulário de login precisa. Todas opcionais, e
+   * nenhuma muda o que o Campo faz sem elas.
+   */
+  /** `type` do `<input>`. Por omissão "text"; ignorado em `multilinha`. */
+  tipo?: "text" | "password";
+  /** `name` — o do backend, para o gestor de passwords ligar o par certo. */
+  nome?: string;
+  autocompletar?: string;
+  autocapitalize?: "none" | "sentences" | "words" | "characters";
+  autocorrect?: "on" | "off";
+  spellcheck?: boolean;
+  /**
+   * O `id` de um elemento *de fora* que também descreve o campo (a mensagem
+   * do login), acrescentado ao `aria-describedby` depois da ajuda e do erro.
+   * Não marca o campo como inválido.
+   */
+  descritoPor?: string;
+  /**
+   * Inválido sem texto de erro próprio: `aria-invalid` e o contorno de erro.
+   * É o caso do 400 do login, em que uma só mensagem serve os dois campos
+   * (3.5) e repeti-la em cada um leria-se como duas coisas diferentes.
+   */
+  invalido?: boolean;
+  /** O nó do `<input>` (só o de uma linha), para o ecrã lhe mover o foco (React 19: `ref` é uma propriedade). */
+  ref?: Ref<HTMLInputElement>;
 };
 
 export function Campo({
@@ -47,13 +74,27 @@ export function Campo({
   multilinha = false,
   valor,
   aoMudar,
+  tipo = "text",
+  nome,
+  autocompletar,
+  autocapitalize,
+  autocorrect,
+  spellcheck,
+  descritoPor,
+  invalido = false,
+  ref,
 }: PropriedadesDoCampo): ReactElement {
   const gerado = useId();
   const identificador = id ?? gerado;
   const idDaAjuda = `${identificador}-ajuda`;
   const idDoErro = `${identificador}-erro`;
 
-  const descritores = juntar(ajuda !== undefined && idDaAjuda, erro !== undefined && idDoErro);
+  const descritores = juntar(
+    ajuda !== undefined && idDaAjuda,
+    erro !== undefined && idDoErro,
+    descritoPor,
+  );
+  const comErro = erro !== undefined || invalido;
 
   const classes = juntar(
     "min-h-toque w-full px-3 py-2 rounded-pequeno",
@@ -69,8 +110,8 @@ export function Campo({
     // Só de leitura não é desativado: o valor é para ser lido e copiado, por
     // isso fica com a opacidade normal e só perde a fronteira.
     soLeitura ? "border-transparent" : "",
-    erro !== undefined && !soLeitura ? "border-erro" : "",
-    erro === undefined && !soLeitura ? "border-contorno" : "",
+    comErro && !soLeitura ? "border-erro" : "",
+    !comErro && !soLeitura ? "border-contorno" : "",
   );
 
   const comuns = {
@@ -81,7 +122,11 @@ export function Campo({
     disabled: desativado,
     readOnly: soLeitura,
     value: valor,
-    "aria-invalid": erro !== undefined ? ("true" as const) : undefined,
+    name: nome,
+    autoComplete: autocompletar,
+    autoCapitalize: autocapitalize,
+    spellCheck: spellcheck,
+    "aria-invalid": comErro ? ("true" as const) : undefined,
     "aria-describedby": descritores.length > 0 ? descritores : undefined,
     onChange: (evento: { target: { value: string } }): void => {
       aoMudar?.(evento.target.value);
@@ -100,7 +145,11 @@ export function Campo({
         </p>
       )}
 
-      {multilinha ? <textarea rows={3} {...comuns} /> : <input type="text" {...comuns} />}
+      {multilinha ? (
+        <textarea rows={3} {...comuns} />
+      ) : (
+        <input type={tipo} ref={ref} autoCorrect={autocorrect} {...comuns} />
+      )}
 
       {erro !== undefined && (
         <p id={idDoErro} className="text-nota text-erro">

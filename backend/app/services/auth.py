@@ -121,8 +121,7 @@ MENSAGEM_CREDENCIAIS_INVALIDAS = (
     "Utilizador ou password inválidos. Confirma os dois e tenta novamente."
 )
 MENSAGEM_CONTA_BLOQUEADA = (
-    "Conta bloqueada durante 15 minutos, depois de várias tentativas falhadas. "
-    "Tenta novamente depois desse tempo."
+    "A conta está bloqueada por causa de várias tentativas falhadas."
 )
 MENSAGEM_SESSAO_EM_FALTA = "Sessão inexistente ou expirada. Inicia sessão novamente."
 

@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, Ref } from "react";
 
 import { juntar } from "./juntar";
 
@@ -66,6 +66,13 @@ export type PropriedadesDoBotao = {
   rotulo?: string;
   onClick?: () => void;
   larguraTotal?: boolean;
+  /**
+   * O `id` de um elemento que descreve o botão (a linha de erro do «Sair»,
+   * F4-01 7.4). Vai para `aria-describedby`.
+   */
+  descritoPor?: string;
+  /** O nó do `<button>`, para o ecrã lhe devolver o foco (React 19: `ref` é uma propriedade). */
+  ref?: Ref<HTMLButtonElement>;
 };
 
 export function Botao({
@@ -78,11 +85,15 @@ export function Botao({
   rotulo,
   onClick,
   larguraTotal = false,
+  descritoPor,
+  ref,
 }: PropriedadesDoBotao): ReactElement {
   const travado = desativado || aTrabalhar;
 
   return (
     <button
+      ref={ref}
+      aria-describedby={descritoPor}
       type={tipo === "submit" ? "submit" : "button"}
       className={juntar(
         BASE,
