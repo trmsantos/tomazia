@@ -55,7 +55,12 @@ jobs:
   backend:
     name: backend
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # Era 10. Com a F2-05 a suite passou de ~1900 para ~3150 testes (cada um
+    # corre duas vezes, `[modelos]` e `[migracao]`), e o pytest no runner foi
+    # cancelado aos 10 minutos em 73%, sem nenhuma falha. 20 dá folga ao
+    # crescimento das F4; se voltar a apertar, o caminho é paralelizar, não
+    # subir outra vez sem pensar.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
