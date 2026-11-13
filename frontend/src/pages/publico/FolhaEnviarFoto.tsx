@@ -378,7 +378,12 @@ function ConteudoDaFolha(): ReactElement {
       tipo: "limite",
       mensagem: erro.message,
       tempo: tempoComposto(segundos),
-      ateQuando: Date.now() + segundos * 1000,
+      // Pelo menos 1 s: com `segundos_em_falta: 0` o temporizador de 0 ms
+      // voltava a activar o botão logo a seguir a dizer "menos de um
+      // minuto" — e no runner do CI, mais lento, ganhava a corrida ao teste
+      // que o proíbe ("nunca 'tenta já'", regra 10). O backend arredonda
+      // para cima, por isso um 0 só chega na fronteira exacta do prazo.
+      ateQuando: Date.now() + Math.max(segundos, 1) * 1000,
     });
   }
 
