@@ -16,7 +16,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tests import apoio_fotos
-from tests.apoio_gestao import CABECALHO_MUTACAO
+from tests.apoio_gestao import CABECALHO_MUTACAO, CORPOS_VALIDOS
+
+CORPO_DAS_DEFINICOES = CORPOS_VALIDOS[("PUT", "/gestao/definicoes")]
+CORPO_DA_PASSWORD = CORPOS_VALIDOS[("POST", "/gestao/conta/password")]
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
@@ -49,6 +52,27 @@ CASOS: tuple[tuple[str, str, object, int], ...] = (
     ("POST", "/gestao/eventos/301/duplicar", None, 201),
     ("DELETE", "/gestao/eventos/302", None, 204),
     ("GET", "/gestao/resumo", None, 200),
+    # F2-05c
+    ("GET", "/gestao/definicoes", None, 200),
+    ("PUT", "/gestao/definicoes", CORPO_DAS_DEFINICOES, 200),
+    (
+        "PUT",
+        "/gestao/definicoes",
+        {**CORPO_DAS_DEFINICOES, "maps_url": "http://x"},
+        422,
+    ),
+    ("GET", "/gestao/clientes", None, 200),
+    ("GET", "/gestao/clientes.csv", None, 200),
+    ("DELETE", "/gestao/clientes/401", None, 204),
+    ("DELETE", "/gestao/clientes/999", None, 404),
+    ("POST", "/gestao/conta/password", CORPO_DA_PASSWORD, 200),
+    (
+        "POST",
+        "/gestao/conta/password",
+        {**CORPO_DA_PASSWORD, "password_atual": "errada"},
+        400,
+    ),
+    ("POST", "/gestao/conta/password", {**CORPO_DA_PASSWORD, "password_nova": ""}, 422),
     ("PATCH", "/gestao/eventos/999", {"titulo": "X"}, 404),
     ("DELETE", "/gestao/eventos/999", None, 404),
     ("POST", "/gestao/eventos/999/duplicar", None, 404),

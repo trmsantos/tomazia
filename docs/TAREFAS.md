@@ -134,6 +134,12 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
   - **publicar sem data** dá 422 `evento_sem_data` com `campo="inicio"`, verificado na fronteira e, se uma corrida o deixar passar, pelo `CHECK ck_eventos_publicado_exige_inicio` mapeado para o mesmo 422;
   - `GET /gestao/eventos` divide em `proximos`, `rascunhos` (os sem data no fim) e `arquivo` com o mesmo corte do `/eventos` público;
   - o resumo conta os novos registos com `criado_em >= agora - 7 dias`, limite inclusivo.
+- **Decidido na F2-05c (definições, clientes e conta), para a F4-05 não o redescobrir:**
+  - `PUT /gestao/definicoes` substitui os sete campos numa só transação (todos obrigatórios; `horario: null` apaga o horário). A gestão vê `horario_estado` — `configurado`, `nao_configurado` ou `invalido` (ADR 0011) — e textos vazios como `""`; o público continua a ver `null`;
+  - o horário exige os sete dias, cada um uma vez, no máximo 6 períodos por dia, sem sobreposição (medida na linha do dia: `fecha < abre` soma 24 h);
+  - `maps_url` e `instagram` só `https://`, até 500 caracteres; o Instagram só com anfitrião `instagram.com` ou `www.instagram.com`. Campos de uma linha até 200 caracteres e sem quebras de linha; os do WiFi **não** aparam as pontas (uma password de rede pode ter espaços);
+  - o CSV de clientes leva `;`, UTF-8 com BOM e CRLF; cabeçalho `Nome;Email;Telemóvel;Data do consentimento;Versão dos termos;Data de inscrição`; datas `DD/MM/AAAA HH:MM` em Lisboa. Uma célula começada por espaço em branco, BOM, `=`, `+`, `-` ou `@` ganha um `'` à frente — **no Excel, os telemóveis `+351…` aparecem com essa plica**; é o preço da proteção contra fórmulas e fica para o Tomás aceitar ou pedir outra forma. O `token_cancelar` nunca sai;
+  - mudar password: ADR 0019 — pede a atual, que conta para o mesmo bloqueio do login nos dois sentidos; as outras sessões morrem pelo `sessao_versao`; quem muda recebe um cookie novo. Só a password nova vazia é recusada.
 - **Medido no plano da F2-05:** um id acima de `2**63-1` no caminho dá **500** (`OverflowError` do SQLite), também nas rotas de fotos de hoje. Os ids de caminho e de corpo passam a ser limitados na fronteira.
 
 ### F2-06 Fotos

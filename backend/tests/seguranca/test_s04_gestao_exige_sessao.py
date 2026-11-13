@@ -108,6 +108,12 @@ METODOS_DE_GESTAO_POR_CAMINHO: dict[str, frozenset[str]] = {
     "/gestao/eventos/{id}": frozenset({"PATCH", "DELETE"}),
     "/gestao/eventos/{id}/duplicar": frozenset({"POST"}),
     "/gestao/resumo": frozenset({"GET"}),
+    # F2-05c: definições, clientes e mudar password.
+    "/gestao/definicoes": frozenset({"GET", "PUT"}),
+    "/gestao/clientes": frozenset({"GET"}),
+    "/gestao/clientes.csv": frozenset({"GET"}),
+    "/gestao/clientes/{id}": frozenset({"DELETE"}),
+    "/gestao/conta/password": frozenset({"POST"}),
 }
 
 #: Derivado do dicionário acima, nunca escrito em paralelo: os dois
@@ -370,7 +376,7 @@ class TestCamada3cMutacaoBemFormadaSemSessao:
     """
 
     def test_o_conjunto_de_mutacoes_com_corpo_nao_e_vazio(self) -> None:
-        assert len(MUTACOES_COM_CORPO) == 8, MUTACOES_COM_CORPO
+        assert len(MUTACOES_COM_CORPO) == 10, MUTACOES_COM_CORPO
 
     @pytest.mark.parametrize(
         "metodo,caminho",

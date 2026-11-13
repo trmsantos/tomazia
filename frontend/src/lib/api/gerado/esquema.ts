@@ -274,6 +274,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gestao/clientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Clientes
+         * @description Do mais recente para o mais antigo, sem nenhuma credencial.
+         */
+        get: operations["listar_clientes_gestao_clientes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/clientes.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Descarregar Clientes Csv
+         * @description O CSV dos clientes, a abrir bem no Excel em português.
+         */
+        get: operations["descarregar_clientes_csv_gestao_clientes_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/clientes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar Cliente
+         * @description Apaga mesmo (eliminação a pedido, RGPD).
+         */
+        delete: operations["eliminar_cliente_gestao_clientes__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/conta/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mudar Password
+         * @description Muda a password de quem tem a sessão e reemite a sessão desta pessoa.
+         *
+         *     Pede a atual, que conta para o mesmo bloqueio do login. As outras
+         *     sessões terminam (`sessao_versao`); a de quem muda continua, com o
+         *     cookie novo desta resposta.
+         */
+        post: operations["mudar_password_gestao_conta_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/definicoes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Obter Definicoes
+         * @description As sete definições; texto vazio como `""`, e o estado do horário.
+         */
+        get: operations["obter_definicoes_gestao_definicoes_get"];
+        /**
+         * Substituir Definicoes
+         * @description Substitui os sete campos numa só transação. `horario: null` apaga-o.
+         */
+        put: operations["substituir_definicoes_gestao_definicoes_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gestao/eventos": {
         parameters: {
             query?: never;
@@ -567,6 +675,60 @@ export interface components {
             slug: string;
         };
         /**
+         * ClienteGestao
+         * @description Um cliente inscrito. **Nunca** o `token_cancelar`: é uma credencial.
+         */
+        ClienteGestao: {
+            /**
+             * Consentimento Em
+             * Format: date-time
+             */
+            consentimento_em: string;
+            /**
+             * Criado Em
+             * Format: date-time
+             */
+            criado_em: string;
+            /** Email */
+            email: string;
+            /** Id */
+            id: number;
+            /** Nome */
+            nome: string;
+            /** Telemovel */
+            telemovel: string | null;
+            /** Versao Termos */
+            versao_termos: string;
+        };
+        /**
+         * DefinicoesGestao
+         * @description Corpo de `GET` e `PUT /gestao/definicoes`.
+         *
+         *     Texto vazio sai como `""` (como a BD diz "não há"); o `/info` público
+         *     dá-lhe `null`.
+         */
+        DefinicoesGestao: {
+            /** Horario */
+            horario: components["schemas"]["DiaDoHorario"][] | null;
+            /**
+             * Horario Estado
+             * @enum {string}
+             */
+            horario_estado: "configurado" | "nao_configurado" | "invalido";
+            /** Instagram */
+            instagram: string;
+            /** Maps Url */
+            maps_url: string;
+            /** Morada */
+            morada: string;
+            /** Telefone */
+            telefone: string;
+            /** Wifi Password */
+            wifi_password: string;
+            /** Wifi Rede */
+            wifi_rede: string;
+        };
+        /**
          * DiaDoHorario
          * @description Um dia da semana e os seus períodos.
          *
@@ -752,6 +914,29 @@ export interface components {
             preco_cent: number;
         };
         /**
+         * PedidoDefinicoes
+         * @description `PUT` substitui os sete campos numa só transação.
+         *
+         *     `horario: null` = "não configurado" e apaga a chave. Os sete são
+         *     obrigatórios: um campo em falta não pode apagar o que lá estava.
+         */
+        PedidoDefinicoes: {
+            /** Horario */
+            horario: components["schemas"]["DiaDoHorario"][] | null;
+            /** Instagram */
+            instagram: string;
+            /** Maps Url */
+            maps_url: string;
+            /** Morada */
+            morada: string;
+            /** Telefone */
+            telefone: string;
+            /** Wifi Password */
+            wifi_password: string;
+            /** Wifi Rede */
+            wifi_rede: string;
+        };
+        /**
          * PedidoLogin
          * @description Corpo de `POST /auth/login`.
          */
@@ -760,6 +945,16 @@ export interface components {
             password: string;
             /** Utilizador */
             utilizador: string;
+        };
+        /**
+         * PedidoMudarPassword
+         * @description Muda a password de **quem tem a sessão**: nunca leva `utilizador`.
+         */
+        PedidoMudarPassword: {
+            /** Password Atual */
+            password_atual: string;
+            /** Password Nova */
+            password_nova: string;
         };
         /**
          * PedidoOrdem
@@ -826,6 +1021,14 @@ export interface components {
             id: number;
             /** Utilizador */
             utilizador: string;
+        };
+        /**
+         * RespostaClientes
+         * @description Corpo de `GET /gestao/clientes`, do mais recente para o mais antigo.
+         */
+        RespostaClientes: {
+            /** Clientes */
+            clientes: components["schemas"]["ClienteGestao"][];
         };
         /**
          * RespostaDeErro
@@ -1577,6 +1780,281 @@ export interface operations {
                 };
             };
             /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    listar_clientes_gestao_clientes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaClientes"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    descarregar_clientes_csv_gestao_clientes_csv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description O ficheiro CSV (UTF-8 com BOM). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": unknown;
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    eliminar_cliente_gestao_clientes__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O cliente não existe: `cliente_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    mudar_password_gestao_conta_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoMudarPassword"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaAdmin"];
+                };
+            };
+            /** @description A password atual não confere: `password_atual_errada`, com `campo`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Conta bloqueada depois de 5 falhas: `conta_bloqueada`, com `segundos_em_falta` e `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    obter_definicoes_gestao_definicoes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefinicoesGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    substituir_definicoes_gestao_definicoes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoDefinicoes"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefinicoesGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo inválido: `dados_invalidos`, com `campo`. O `maps_url` e o `instagram` só aceitam `https://`; o horário tem os sete dias, sem períodos sobrepostos. */
             422: {
                 headers: {
                     [name: string]: unknown;

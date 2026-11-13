@@ -238,9 +238,14 @@ class TestCamada3OpenAPI:
                     if nomes:
                         encontrados.setdefault(caminho, set()).update(nomes)
 
-        assert encontrados == {"/auth/login": {"password"}}, (
-            f"propriedades com `password` por caminho: {encontrados}"
-        )
+        # F2-05c: a mudança de password (`/gestao/conta/password`, exige a
+        # atual, nunca recebe um `utilizador`) e o WiFi (`wifi_password`,
+        # que não é a password de nenhum admin).
+        assert encontrados == {
+            "/auth/login": {"password"},
+            "/gestao/conta/password": {"password_atual", "password_nova"},
+            "/gestao/definicoes": {"wifi_password"},
+        }, f"propriedades com `password` por caminho: {encontrados}"
 
     def test_hash_password_nunca_aparece_num_esquema(self) -> None:
         """Nem à entrada nem à saída: `hash_password` não é um campo de API."""

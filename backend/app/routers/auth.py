@@ -64,20 +64,6 @@ _RESPOSTAS_DO_EU: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _definir_cookie_de_sessao(
-    resposta: Response, admin_id: int, sessao_versao: int
-) -> None:
-    resposta.set_cookie(
-        key=servico.NOME_DO_COOKIE,
-        value=servico.assinar_sessao(admin_id, sessao_versao),
-        max_age=int(servico.VALIDADE_DA_SESSAO.total_seconds()),
-        httponly=True,
-        secure=True,
-        samesite="strict",
-        path="/",
-    )
-
-
 @router.post("/login", response_model=RespostaAdmin, responses=_RESPOSTAS_DO_LOGIN)
 def login(resposta: Response, sessao: SessaoDaBD, corpo: PedidoLogin) -> RespostaAdmin:
     """Verifica as credenciais e abre sessão.
@@ -88,7 +74,7 @@ def login(resposta: Response, sessao: SessaoDaBD, corpo: PedidoLogin) -> Respost
     depois de 5 falhas seguidas.
     """
     admin = servico.autenticar(sessao, corpo.utilizador, corpo.password)
-    _definir_cookie_de_sessao(resposta, admin.id, admin.sessao_versao)
+    servico.definir_cookie_de_sessao(resposta, admin.id, admin.sessao_versao)
     resposta.headers["Cache-Control"] = SEM_CACHE
     return RespostaAdmin(id=admin.id, utilizador=admin.utilizador)
 

@@ -66,6 +66,7 @@ from __future__ import annotations
 import base64
 import binascii
 import math
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import lru_cache
@@ -73,7 +74,7 @@ from typing import Annotated, NamedTuple
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerificationError, VerifyMismatchError
-from fastapi import Cookie, HTTPException
+from fastapi import Cookie, HTTPException, Response
 from itsdangerous import BadSignature, Signer
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -83,6 +84,7 @@ from app.dependencias import SessaoDaBD
 from app.erros import ErroDaApi
 from app.models.admins import Admin
 from app.models.tipos import agora_utc
+from app.services.sql import linhas_afetadas
 
 #: `docs/ESPECIFICACAO.md`: "cookie de sessão assinado [...] 12 horas".
 VALIDADE_DA_SESSAO = timedelta(hours=12)
@@ -115,6 +117,10 @@ ETIQUETA_DO_SEGREDO = b"sessao.v1"
 #: um `int` nunca o contém, e `datetime.isoformat()` também não (usa `-`,
 #: `:`, `.`, `+`).
 SEPARADOR_DO_VALOR = "|"
+
+MENSAGEM_PASSWORD_ATUAL_ERRADA = (
+    "A password atual não está certa. Confirma-a e tenta novamente."
+)
 
 #: Texto do ui-ux, revisto em revisão da F2-04.
 MENSAGEM_CREDENCIAIS_INVALIDAS = (
@@ -213,6 +219,26 @@ def assinar_sessao(admin_id: int, sessao_versao: int) -> str:
     )
     assinado = _assinador().sign(valor.encode("utf-8"))
     return base64.urlsafe_b64encode(assinado).decode("ascii")
+
+
+def definir_cookie_de_sessao(
+    resposta: Response, admin_id: int, sessao_versao: int
+) -> None:
+    """Escreve o cookie de sessão na `resposta`: o único sítio que o faz.
+
+    O login e a mudança de password reemitem o mesmo cookie, com os mesmos
+    atributos (`__Host-`, `Secure`, `HttpOnly`, `SameSite=Strict`,
+    `Path=/`, sem `Domain`, 12 horas).
+    """
+    resposta.set_cookie(
+        key=NOME_DO_COOKIE,
+        value=assinar_sessao(admin_id, sessao_versao),
+        max_age=int(VALIDADE_DA_SESSAO.total_seconds()),
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+    )
 
 
 def ler_sessao(valor: str) -> SessaoAssinada | None:
@@ -351,32 +377,32 @@ def terminar_sessoes(sessao: Session, admin_id: int, sessao_versao: int) -> None
 # --------------------------------------------------------------------------
 
 
-def autenticar(sessao: Session, utilizador: str, password: str) -> Admin:
-    """Verifica `utilizador`/`password` e aplica o bloqueio de 15 minutos.
+def verificar_com_bloqueio(
+    sessao: Session,
+    admin: Admin,
+    password: str,
+    erro_de_falha: Callable[[], ErroDaApi],
+) -> None:
+    """A máquina de estados do bloqueio, comum ao login e à mudança de password.
 
     Por ordem (decisão do Tomás, 4 de novembro de 2026):
 
-    1. conta não existe → verifica contra o hash-isco, `400`;
-    2. `bloqueado_ate` já passou → repõe o contador a zero **antes** de
+    1. `bloqueado_ate` já passou → repõe o contador a zero **antes** de
        avaliar, para a conta não sair do bloqueio já com 5 tentativas
        gastas;
-    3. `bloqueado_ate` no futuro → `429`, sem incrementar nem estender;
-    4. password errada → incrementa; à quinta falha, bloqueia 15 minutos;
-       resposta sempre `400`, a quinta falha incluída;
-    5. password certa → limpa o contador e o bloqueio, devolve o admin.
-    """
-    admin = sessao.scalar(select(Admin).where(Admin.utilizador == utilizador))
-    if admin is None:
-        # Mesmo trabalho que uma conta real faria, para o tempo de
-        # resposta não denunciar que o utilizador não existe.
-        verificar_password(_hash_isco(), password)
-        raise ErroDaApi(
-            400,
-            "credenciais_invalidas",
-            MENSAGEM_CREDENCIAIS_INVALIDAS,
-            cabecalhos=CABECALHOS_SEM_CACHE,
-        )
+    2. `bloqueado_ate` no futuro → `429`, sem incrementar nem estender e
+       **sem verificar nada**;
+    3. password errada → incrementa; à quinta falha, bloqueia 15 minutos;
+       levanta `erro_de_falha()` (um `400`, a quinta falha incluída);
+    4. password certa → limpa o contador e o bloqueio e volta.
 
+    O contador é **um só, por conta**: o login e `POST /gestao/conta/password`
+    gastam as mesmas cinco tentativas. Sem isto, a rota de mudar password
+    seria um sítio para adivinhar a password sem limite com um cookie
+    roubado, a contornar o S-07. `erro_de_falha` deixa cada chamador dizer a
+    sua frase (`credenciais_invalidas` no login, `password_atual_errada`
+    na mudança) sem duplicar a regra.
+    """
     agora = agora_utc()
 
     if admin.bloqueado_ate is not None and admin.bloqueado_ate <= agora:
@@ -402,17 +428,94 @@ def autenticar(sessao: Session, utilizador: str, password: str) -> Admin:
         if admin.tentativas_falhadas >= LIMITE_DE_TENTATIVAS:
             admin.bloqueado_ate = agora + DURACAO_DO_BLOQUEIO
         sessao.commit()
-        raise ErroDaApi(
-            400,
-            "credenciais_invalidas",
-            MENSAGEM_CREDENCIAIS_INVALIDAS,
-            cabecalhos=CABECALHOS_SEM_CACHE,
-        )
+        raise erro_de_falha()
 
     admin.tentativas_falhadas = 0
     admin.bloqueado_ate = None
     sessao.commit()
+
+
+def _credenciais_invalidas() -> ErroDaApi:
+    return ErroDaApi(
+        400,
+        "credenciais_invalidas",
+        MENSAGEM_CREDENCIAIS_INVALIDAS,
+        cabecalhos=CABECALHOS_SEM_CACHE,
+    )
+
+
+def autenticar(sessao: Session, utilizador: str, password: str) -> Admin:
+    """Verifica `utilizador`/`password` e aplica o bloqueio de 15 minutos.
+
+    Conta que não existe → verifica contra o hash-isco, `400`. O resto é
+    `verificar_com_bloqueio`.
+    """
+    admin = sessao.scalar(select(Admin).where(Admin.utilizador == utilizador))
+    if admin is None:
+        # Mesmo trabalho que uma conta real faria, para o tempo de
+        # resposta não denunciar que o utilizador não existe.
+        verificar_password(_hash_isco(), password)
+        raise _credenciais_invalidas()
+
+    verificar_com_bloqueio(sessao, admin, password, _credenciais_invalidas)
     return admin
+
+
+def mudar_password_da_sessao(
+    sessao: Session, admin: Admin, password_atual: str, password_nova: str
+) -> int:
+    """Muda a password de `admin` (a da sessão) e devolve a `sessao_versao` nova.
+
+    1. a password atual passa pelo **mesmo bloqueio** do login
+       (`verificar_com_bloqueio`): `400 password_atual_errada` conta uma
+       falha, a conta bloqueada dá `429` sem verificar nada;
+    2. um só `UPDATE ... WHERE id = ? AND sessao_versao = ?` com a versão
+       que a sessão tinha quando o `exigir_admin` a confirmou: grava o hash
+       novo, sobe a versão (o que mata **todas** as outras sessões, ADR
+       0016) e limpa o bloqueio. Zero linhas = a sessão foi revogada entre
+       a verificação e a escrita (um logout noutro separador): `401`, e não
+       se muda nada nem se reemite sessão nenhuma.
+
+    A versão lê-se **antes** de verificar: o `commit` da verificação
+    expira o objeto, e lê-lo depois devolveria a versão já revogada.
+    Não reutiliza `mudar_password` (a do script, que lê, altera e escreve
+    sem verificar a versão).
+    """
+    versao_da_sessao = admin.sessao_versao
+    admin_id = admin.id
+    verificar_com_bloqueio(sessao, admin, password_atual, _password_atual_errada)
+
+    novo_hash = criar_hash(password_nova)
+    atualizadas = sessao.execute(
+        update(Admin)
+        .where(Admin.id == admin_id, Admin.sessao_versao == versao_da_sessao)
+        .values(
+            hash_password=novo_hash,
+            sessao_versao=Admin.sessao_versao + 1,
+            tentativas_falhadas=0,
+            bloqueado_ate=None,
+        )
+    )
+    if linhas_afetadas(atualizadas) == 0:
+        sessao.rollback()
+        raise ErroDaApi(
+            401,
+            "sessao_em_falta",
+            MENSAGEM_SESSAO_EM_FALTA,
+            cabecalhos=CABECALHOS_SEM_CACHE,
+        )
+    sessao.commit()
+    return versao_da_sessao + 1
+
+
+def _password_atual_errada() -> ErroDaApi:
+    return ErroDaApi(
+        400,
+        "password_atual_errada",
+        MENSAGEM_PASSWORD_ATUAL_ERRADA,
+        campo="password_atual",
+        cabecalhos=CABECALHOS_SEM_CACHE,
+    )
 
 
 # --------------------------------------------------------------------------

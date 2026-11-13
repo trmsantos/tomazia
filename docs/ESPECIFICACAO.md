@@ -66,6 +66,7 @@ Caminhos relativos a `/api`. Erros em JSON: `{"erro": "codigo", "mensagem": "Tex
 | `GET /gestao/fotos`, `GET /gestao/fotos/{id}/imagem`, `POST .../aprovar`, `POST .../rejeitar` | Moderação | Admin |
 | `GET`, `PUT /gestao/definicoes` | WiFi, horário, morada, redes | Admin |
 | `GET /gestao/clientes`, `GET /gestao/clientes.csv`, `DELETE /gestao/clientes/{id}` | Lista de novidades | Admin |
+| `POST /gestao/conta/password` | Mudar a password (pede a atual; ADR 0019) | Admin |
 
 Autenticação: argon2id; cookie de sessão assinado, `HttpOnly`, `Secure`, `SameSite=Strict`, 12 horas; cabeçalho `X-Tomazia: 1` obrigatório em mutações; bloqueio de 15 minutos após 5 falhas, contado por conta. O logout revoga a sessão a sério, incrementando `admins.sessao_versao`, e por isso termina todas as sessões daquele admin (ADR 0016) — um cookie assinado não tem como revogar só uma.
 
