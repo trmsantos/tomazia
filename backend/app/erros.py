@@ -33,6 +33,8 @@ chamada em `app.main.criar_app()`.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -96,6 +98,7 @@ def _mensagem_de_estado(estado: int) -> str:
 class ErroDaApi(Exception):
     """Um erro HTTP com o envelope `{"erro", "mensagem"}` da especificação.
 
+    `campo`: o campo do corpo a que o erro se refere, quando faz sentido.
     `extra`: campos adicionais a juntar ao corpo da resposta — por
     exemplo, `segundos_em_falta` no `429` do S-07. `cabecalhos`: cabeçalhos
     adicionais a juntar à resposta — por exemplo, `Retry-After` no mesmo
@@ -108,6 +111,7 @@ class ErroDaApi(Exception):
         codigo: str,
         mensagem: str,
         *,
+        campo: str | None = None,
         extra: dict[str, Any] | None = None,
         cabecalhos: dict[str, str] | None = None,
     ) -> None:
@@ -115,19 +119,56 @@ class ErroDaApi(Exception):
         self.estado = estado
         self.codigo = codigo
         self.mensagem = mensagem
+        self.campo = campo
         self.extra = extra or {}
         self.cabecalhos = cabecalhos or {}
 
     def corpo(self) -> dict[str, Any]:
-        return {"erro": self.codigo, "mensagem": self.mensagem, **self.extra}
+        corpo: dict[str, Any] = {"erro": self.codigo, "mensagem": self.mensagem}
+        if self.campo is not None:
+            corpo["campo"] = self.campo
+        return {**corpo, **self.extra}
 
 
-def _tratar_erro_da_api(_pedido: Request, excecao: Exception) -> JSONResponse:
+def caminho_sem_prefixo(escopo: Any) -> str:
+    """O caminho do pedido sem o `root_path` (`/api` sob o Passenger).
+
+    Em produção o a2wsgi monta `path` = `SCRIPT_NAME` + `PATH_INFO` e
+    `root_path` = `SCRIPT_NAME`: os caminhos das rotas não levam o prefixo.
+    É a única função que o corta; os middlewares e os tratadores usam-na.
+    """
+    caminho = str(escopo.get("path", ""))
+    raiz = str(escopo.get("root_path", ""))
+    if raiz and caminho.startswith(raiz):
+        caminho = caminho[len(raiz) :]
+    return caminho
+
+
+def caminho_de_gestao(escopo: Any) -> bool:
+    """O pedido é para `/gestao` (sem contar o prefixo `/api` do Passenger)?
+
+    Pelo **caminho do pedido**, não pela rota que casou: assim cobre também
+    o 404 de um caminho que não existe debaixo de `/gestao`, o `403` do
+    `GuardaXTomazia` e o `413` do `LimiteDoCorpo`, que nunca chegam a casar
+    uma rota. É um só mecanismo para todos os erros.
+    """
+    caminho = caminho_sem_prefixo(escopo)
+    return caminho == "/gestao" or caminho.startswith("/gestao/")
+
+
+def _cabecalhos_da_rota(pedido: Request, cabecalhos: Mapping[str, str] | None) -> Any:
+    """Junta `Cache-Control: no-store` quando o pedido é de gestão."""
+    if caminho_de_gestao(pedido.scope):
+        return {"Cache-Control": "no-store", **(cabecalhos or {})}
+    return dict(cabecalhos) if cabecalhos else None
+
+
+def _tratar_erro_da_api(pedido: Request, excecao: Exception) -> JSONResponse:
     assert isinstance(excecao, ErroDaApi)  # garantido por `add_exception_handler`
     return JSONResponse(
         status_code=excecao.estado,
         content=excecao.corpo(),
-        headers=excecao.cabecalhos or None,
+        headers=_cabecalhos_da_rota(pedido, excecao.cabecalhos),
     )
 
 
@@ -142,7 +183,7 @@ _ESTADOS_SEM_CORPO = frozenset(
 )
 
 
-def _tratar_http_exception(_pedido: Request, excecao: Exception) -> Response:
+def _tratar_http_exception(pedido: Request, excecao: Exception) -> Response:
     assert isinstance(excecao, HTTPException)
     if excecao.status_code in _ESTADOS_SEM_CORPO:
         return Response(status_code=excecao.status_code, headers=excecao.headers)
@@ -175,15 +216,51 @@ def _tratar_http_exception(_pedido: Request, excecao: Exception) -> Response:
     return JSONResponse(
         status_code=excecao.status_code,
         content=corpo,
-        headers=excecao.headers,
+        headers=_cabecalhos_da_rota(pedido, excecao.headers),
     )
 
 
-def _tratar_erro_de_validacao(_pedido: Request, excecao: Exception) -> JSONResponse:
+#: Um nome de campo plausível: letras, algarismos e `_`, até 64.
+_PARECE_UM_CAMPO = re.compile(r"[A-Za-z0-9_]{1,64}")
+
+
+def _campo_do_corpo(excecao: RequestValidationError) -> str | None:
+    """O primeiro componente do `loc` de um erro **do corpo**, ou `None`.
+
+    Só o nome do campo: nunca o valor enviado (`input`) nem a mensagem do
+    Pydantic, que o pode repetir. Erros do caminho ou da query não
+    inventam um campo. Um campo a mais (`extra_forbidden`) tem `loc`
+    `("body", "slug")` e sai nomeado; um corpo que nem é um objeto, ou um
+    JSON partido, tem `loc` `("body",)` e fica sem campo.
+    """
+    for erro in excecao.errors():
+        loc = erro.get("loc", ())
+        if len(loc) >= 2 and loc[0] == "body" and isinstance(loc[1], str):
+            campo = loc[1]
+            # Num `extra_forbidden` o nome é o que o cliente inventou, sem
+            # limite de tamanho e com os caracteres que quisesse. Só volta
+            # se parecer um nome de campo; senão, o erro fica sem `campo`.
+            if erro.get("type") == "extra_forbidden" and not _PARECE_UM_CAMPO.fullmatch(
+                campo
+            ):
+                return None
+            return campo
+    return None
+
+
+def _tratar_erro_de_validacao(pedido: Request, excecao: Exception) -> JSONResponse:
     assert isinstance(excecao, RequestValidationError)
+    corpo: dict[str, Any] = {
+        "erro": "dados_invalidos",
+        "mensagem": MENSAGEM_CORPO_INVALIDO,
+    }
+    campo = _campo_do_corpo(excecao)
+    if campo is not None:
+        corpo["campo"] = campo
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        content={"erro": "dados_invalidos", "mensagem": MENSAGEM_CORPO_INVALIDO},
+        content=corpo,
+        headers=_cabecalhos_da_rota(pedido, None),
     )
 
 

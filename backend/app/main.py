@@ -13,13 +13,16 @@ diretamente em `criar_app()`, nunca num `lifespan`.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import FastAPI
 
 from app.config import obter_definicoes
 from app.erros import registar_tratadores_de_erro
+from app.limite_do_corpo import LimiteDoCorpo
 from app.marca import GuardaXTomazia
 from app.routers import auth, fotos, gestao, publico, saude
+from app.schemas.erros import RespostaDeErro
 
 #: Instante, em UTC, em que este *processo* importou `app.main` — não em
 #: que um pedido chegou, nem em que `criar_app()` correu. É calculado uma
@@ -37,6 +40,62 @@ from app.routers import auth, fotos, gestao, publico, saude
 #: que `jq`'s `fromdateiso8601` (e `strptime` em shell) exige para o
 #: conseguir comparar com outro instante.
 ARRANCADO_EM: str = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+REF_RESPOSTA_DE_ERRO = "#/components/schemas/RespostaDeErro"
+DESCRICAO_DO_422 = (
+    "Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` "
+    "diz qual o campo do corpo, quando se sabe."
+)
+
+
+def _reescrever_422(esquema: dict[str, Any]) -> None:
+    """Todos os `422` passam a ser o envelope da app, não o `detail` do FastAPI.
+
+    O FastAPI documenta cada validação como `HTTPValidationError`
+    (`{"detail": [...]}`), mas `app/erros.py` devolve `{erro, mensagem,
+    campo}`. Quem gera tipos a partir do esquema lia `detail` e
+    encontrava `undefined`. É global, não rota a rota: uma rota nova
+    com parâmetros herda a correção sem ninguém se lembrar dela.
+    """
+    componentes: dict[str, Any] = esquema.setdefault("components", {}).setdefault(
+        "schemas", {}
+    )
+    if "RespostaDeErro" not in componentes:
+        componentes["RespostaDeErro"] = RespostaDeErro.model_json_schema()
+    for item in esquema.get("paths", {}).values():
+        for operacao in item.values():
+            if not isinstance(operacao, dict):
+                continue
+            respostas = operacao.get("responses", {})
+            if "422" in respostas:
+                antiga = respostas["422"]
+                descricao = antiga.get("description")
+                # Só o `content` muda. A descrição do FastAPI ("Validation
+                # Error") é a única que se substitui: as que a rota escreveu
+                # (`categoria_inexistente` com `campo`...) ficam.
+                if not descricao or descricao == "Validation Error":
+                    descricao = DESCRICAO_DO_422
+                antiga["description"] = descricao
+                antiga["content"] = {
+                    "application/json": {"schema": {"$ref": REF_RESPOSTA_DE_ERRO}}
+                }
+    componentes.pop("HTTPValidationError", None)
+    componentes.pop("ValidationError", None)
+
+
+def _openapi_da_app(aplicacao: FastAPI) -> Any:
+    """Troca o `aplicacao.openapi` para reescrever os `422` uma vez."""
+    gerar = aplicacao.openapi
+
+    def openapi() -> dict[str, Any]:
+        em_cache = aplicacao.openapi_schema is not None
+        esquema = gerar()
+        if not em_cache:
+            _reescrever_422(esquema)
+        return esquema
+
+    return openapi
 
 
 def criar_app() -> FastAPI:
@@ -69,7 +128,11 @@ def criar_app() -> FastAPI:
     # Middleware sobre o método, não `Depends` por rota (S-06): aplica-se a
     # qualquer pedido, incluindo rotas acrescentadas depois deste ponto.
     aplicacao.add_middleware(GuardaXTomazia)
+    # Depois do guarda, para ficar por fora dele: o teto do corpo corre
+    # primeiro, antes de qualquer outra coisa tocar no pedido.
+    aplicacao.add_middleware(LimiteDoCorpo)
     registar_tratadores_de_erro(aplicacao)
+    aplicacao.openapi = _openapi_da_app(aplicacao)  # type: ignore[method-assign]
 
     aplicacao.include_router(saude.router)
     aplicacao.include_router(publico.router)

@@ -47,6 +47,7 @@ apagar o teste não.**
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -58,11 +59,18 @@ from tests.apoio_auth import (
     fixar_relogio_auth,
     nome_e_valor_do_cookie,
 )
+from tests.apoio_gestao import (
+    CORPOS_VALIDOS,
+    caminho_concreto,
+    corpo_valido,
+    fotografia,
+)
 from tests.apoio_rotas import exigir_cobertura_do_openapi, rotas_declaradas
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+    from sqlalchemy import Engine
     from sqlalchemy.orm import Session
 
     from app.models.admins import Admin
@@ -88,6 +96,13 @@ METODOS_DE_GESTAO_POR_CAMINHO: dict[str, frozenset[str]] = {
     "/gestao/fotos/{id}/imagem": frozenset({"GET"}),
     "/gestao/fotos/{id}/aprovar": frozenset({"POST"}),
     "/gestao/fotos/{id}/rejeitar": frozenset({"POST"}),
+    # F2-05a: categorias, produtos e reordenação.
+    "/gestao/categorias": frozenset({"GET", "POST"}),
+    "/gestao/categorias/{id}": frozenset({"PATCH", "DELETE"}),
+    "/gestao/categorias/ordem": frozenset({"PUT"}),
+    "/gestao/categorias/{id}/produtos/ordem": frozenset({"PUT"}),
+    "/gestao/produtos": frozenset({"POST"}),
+    "/gestao/produtos/{id}": frozenset({"PATCH", "DELETE"}),
 }
 
 #: Derivado do dicionário acima, nunca escrito em paralelo: os dois
@@ -256,11 +271,13 @@ class TestCamada3ListaExplicita:
         assert _rotas_de_gestao(criar_app()) == ROTAS_DE_GESTAO_ESPERADAS
 
 
-#: `{id}` trocado por `1`: a dependência do router (`exigir_admin`)
+#: Todo o `{...}` trocado por `1` (`re.sub`, não `replace("{id}", ...)`: um
+#: parâmetro com outro nome ficava por trocar e o pedido ia para um caminho
+#: literal `{x}`). Antes: a dependência do router (`exigir_admin`)
 #: resolve-se antes dos parâmetros de caminho, por isso o 401 ganha ao 422
 #: mesmo com um id que, depois de implementada a rota, pode nem existir.
 PARAMETROS_CADA_ROTA_X_METODO: tuple[tuple[str, str], ...] = tuple(
-    (caminho.replace("{id}", "1"), metodo)
+    (re.sub(r"\{[^}]+\}", "1", caminho), metodo)
     for caminho, metodos in sorted(METODOS_DE_GESTAO_POR_CAMINHO.items())
     for metodo in sorted(metodos)
 )
@@ -319,3 +336,98 @@ class TestCamada4Estrutural:
             "`dependencies`. É isto, não um `Depends` por rota, que torna "
             "impossível uma rota nova da F2-05 nascer sem proteção"
         )
+
+
+#: As mutações com corpo, por (método, caminho com `{id}`) — vêm de
+#: `tests/apoio_gestao.py`, que rebenta com uma rota de gestão por classificar.
+MUTACOES_COM_CORPO: tuple[tuple[str, str], ...] = tuple(
+    (metodo, caminho)
+    for caminho, metodos in sorted(METODOS_DE_GESTAO_POR_CAMINHO.items())
+    for metodo in sorted(metodos)
+    if metodo in ("POST", "PUT", "PATCH") and (metodo, caminho) in CORPOS_VALIDOS
+)
+
+TODAS_AS_MUTACOES: tuple[tuple[str, str], ...] = tuple(
+    (metodo, caminho)
+    for caminho, metodos in sorted(METODOS_DE_GESTAO_POR_CAMINHO.items())
+    for metodo in sorted(metodos)
+    if metodo != "GET"
+)
+
+
+class TestCamada3cMutacaoBemFormadaSemSessao:
+    """Corpo JSON **válido**, sem sessão: 401 e nenhuma linha alterada.
+
+    A Camada 3b manda mutações sem corpo, e o FastAPI lê o corpo **antes**
+    das `dependencies` do router: sem este caso, um 401 que só funcionasse
+    para pedidos vazios passava despercebido. A prova é a contagem e o
+    conteúdo das tabelas antes e depois, não só o estado.
+    """
+
+    def test_o_conjunto_de_mutacoes_com_corpo_nao_e_vazio(self) -> None:
+        assert len(MUTACOES_COM_CORPO) == 6, MUTACOES_COM_CORPO
+
+    @pytest.mark.parametrize(
+        "metodo,caminho",
+        TODAS_AS_MUTACOES,
+        ids=[f"{m} {c}" for m, c in TODAS_AS_MUTACOES],
+    )
+    def test_e_401_e_nada_muda(
+        self,
+        cliente_sem_sessao_com_ementa: TestClient,
+        motor: Engine,
+        metodo: str,
+        caminho: str,
+    ) -> None:
+        antes = fotografia(motor)
+        corpo = corpo_valido(metodo, caminho)
+        url = caminho_concreto(metodo, caminho)
+        pedido = {"json": corpo} if corpo is not None else {}
+        resposta = cliente_sem_sessao_com_ementa.request(
+            metodo, url, headers=CABECALHO_MUTACAO, **pedido
+        )
+        assert resposta.status_code == 401, (
+            f"{metodo} {url} com corpo válido e sem sessão devolveu "
+            f"{resposta.status_code}: {resposta.text}"
+        )
+        assert resposta.json()["erro"] == "sessao_em_falta"
+        assert fotografia(motor) == antes
+
+    @pytest.mark.parametrize(
+        "metodo,caminho",
+        MUTACOES_COM_CORPO,
+        ids=[f"{m} {c}" for m, c in MUTACOES_COM_CORPO],
+    )
+    def test_json_partido_sem_sessao_e_422_e_nao_401(
+        self,
+        cliente_sem_sessao_com_ementa: TestClient,
+        motor: Engine,
+        metodo: str,
+        caminho: str,
+    ) -> None:
+        """Medido na F2-05: o FastAPI lê o corpo antes das `dependencies`.
+
+        Um JSON **partido** sem sessão responde 422, não 401. Revela só que
+        a rota aceita JSON — nada que o `/openapi.json` em desenvolvimento
+        já não diga — e um pedido bem formado sem sessão continua a dar 401
+        (teste acima). Está aqui preso, com a razão escrita, para quem
+        mexer na ordem da validação o fazer de olhos abertos; **não** é uma
+        garantia a manter se se encontrar forma de dar 401 primeiro (nesse
+        caso, trocar a asserção para 401 e apagar esta docstring).
+
+        **Ler o corpo antes da autenticação não fuga informação, mas custa
+        recursos:** medido na revisão, 10 MB de JSON sem sessão deram 401 ao
+        fim de 2,9 s e 62 MB de pico de memória. O que fecha isto é o teto do
+        corpo (`app.limite_do_corpo.LimiteDoCorpo`, 64 KiB, com o `LimitRequestBody`
+        do Apache por trás), provado em
+        `test_corpo_tem_limite_antes_da_autenticacao.py`.
+        """
+        antes = fotografia(motor)
+        resposta = cliente_sem_sessao_com_ementa.request(
+            metodo,
+            caminho_concreto(metodo, caminho),
+            content=b'{"nome": ',
+            headers={**CABECALHO_MUTACAO, "Content-Type": "application/json"},
+        )
+        assert resposta.status_code == 422, resposta.text
+        assert fotografia(motor) == antes

@@ -189,6 +189,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gestao/categorias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Categorias
+         * @description Toda a ementa, incluindo o escondido e o indisponível, por ordem.
+         */
+        get: operations["listar_categorias_gestao_categorias_get"];
+        put?: never;
+        /**
+         * Criar Categoria
+         * @description Cria a categoria no fim. O slug vem do nome e nunca mais muda.
+         */
+        post: operations["criar_categoria_gestao_categorias_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/categorias/ordem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reordenar Categorias
+         * @description `ids` é a lista completa das categorias, pela ordem pretendida.
+         */
+        put: operations["reordenar_categorias_gestao_categorias_ordem_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/categorias/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Eliminar Categoria */
+        delete: operations["eliminar_categoria_gestao_categorias__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Alterar Categoria
+         * @description Muda o nome e/ou a visibilidade. O slug não muda. Corpo `{}`: nada muda.
+         */
+        patch: operations["alterar_categoria_gestao_categorias__id__patch"];
+        trace?: never;
+    };
+    "/gestao/categorias/{id}/produtos/ordem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reordenar Produtos
+         * @description `ids` é a lista completa dos produtos desta categoria.
+         */
+        put: operations["reordenar_produtos_gestao_categorias__id__produtos_ordem_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gestao/fotos": {
         parameters: {
             query?: never;
@@ -269,6 +354,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gestao/produtos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Criar Produto
+         * @description Cria o produto no fim da categoria.
+         */
+        post: operations["criar_produto_gestao_produtos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/produtos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Eliminar Produto */
+        delete: operations["eliminar_produto_gestao_produtos__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Alterar Produto
+         * @description Valores absolutos, nunca alternar. Mudar de categoria põe-no no fim da nova.
+         */
+        patch: operations["alterar_produto_gestao_produtos__id__patch"];
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -328,6 +454,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CategoriaGestao */
+        CategoriaGestao: {
+            /** Id */
+            id: number;
+            /** Nome */
+            nome: string;
+            /** Produtos */
+            produtos: components["schemas"]["ProdutoGestao"][];
+            /** Slug */
+            slug: string;
+            /** Visivel */
+            visivel: boolean;
+        };
         /**
          * CategoriaPublica
          * @description Um cartão da ementa, com os produtos disponíveis lá dentro.
@@ -423,10 +562,57 @@ export interface components {
             /** Id */
             id: number;
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /**
+         * PedidoAlterarCategoria
+         * @description Só se altera o que vem no corpo. O `slug` nunca muda.
+         */
+        PedidoAlterarCategoria: {
+            /** Nome */
+            nome?: string;
+            /** Visivel */
+            visivel?: boolean;
+        };
+        /**
+         * PedidoAlterarProduto
+         * @description `PATCH` com valores absolutos: preço e disponibilidade nunca alternam.
+         */
+        PedidoAlterarProduto: {
+            /** Categoria Id */
+            categoria_id?: number;
+            /** Descricao */
+            descricao?: string | null;
+            /** Disponivel */
+            disponivel?: boolean;
+            /** Nome */
+            nome?: string;
+            /** Preco Cent */
+            preco_cent?: number;
+        };
+        /** PedidoCriarCategoria */
+        PedidoCriarCategoria: {
+            /** Nome */
+            nome: string;
+            /**
+             * Visivel
+             * @default true
+             */
+            visivel: boolean;
+        };
+        /** PedidoCriarProduto */
+        PedidoCriarProduto: {
+            /** Categoria Id */
+            categoria_id: number;
+            /** Descricao */
+            descricao?: string | null;
+            /**
+             * Disponivel
+             * @default true
+             */
+            disponivel: boolean;
+            /** Nome */
+            nome: string;
+            /** Preco Cent */
+            preco_cent: number;
         };
         /**
          * PedidoLogin
@@ -437,6 +623,14 @@ export interface components {
             password: string;
             /** Utilizador */
             utilizador: string;
+        };
+        /**
+         * PedidoOrdem
+         * @description A lista completa de ids, na ordem pretendida, sem repetidos.
+         */
+        PedidoOrdem: {
+            /** Ids */
+            ids: number[];
         };
         /**
          * PeriodoDoHorario
@@ -453,6 +647,21 @@ export interface components {
             abre: string;
             /** Fecha */
             fecha: string;
+        };
+        /** ProdutoGestao */
+        ProdutoGestao: {
+            /** Categoria Id */
+            categoria_id: number;
+            /** Descricao */
+            descricao: string | null;
+            /** Disponivel */
+            disponivel: boolean;
+            /** Id */
+            id: number;
+            /** Nome */
+            nome: string;
+            /** Preco Cent */
+            preco_cent: number;
         };
         /**
          * ProdutoPublico
@@ -482,12 +691,37 @@ export interface components {
             utilizador: string;
         };
         /**
+         * RespostaDeErro
+         * @description `{"erro", "mensagem"}` da especificação, com dois opcionais.
+         *
+         *     - `campo`: o campo do corpo a que o erro se refere (422 e alguns 409).
+         *     - `segundos_em_falta`: só o `429 conta_bloqueada` do login.
+         */
+        RespostaDeErro: {
+            /** Campo */
+            campo?: string | null;
+            /** Erro */
+            erro: string;
+            /** Mensagem */
+            mensagem: string;
+            /** Segundos Em Falta */
+            segundos_em_falta?: number | null;
+        };
+        /**
          * RespostaEmenta
          * @description Corpo de `GET /ementa`.
          */
         RespostaEmenta: {
             /** Categorias */
             categorias: components["schemas"]["CategoriaPublica"][];
+        };
+        /**
+         * RespostaEmentaGestao
+         * @description Corpo de `GET /gestao/categorias`: tudo, incluindo o que está escondido.
+         */
+        RespostaEmentaGestao: {
+            /** Categorias */
+            categorias: components["schemas"]["CategoriaGestao"][];
         };
         /**
          * RespostaEnvioFoto
@@ -587,19 +821,6 @@ export interface components {
             /** Versao */
             versao: string;
         };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
         /**
          * WifiPublico
          * @description Rede e password do WiFi, as duas juntas porque a folha as mostra juntas.
@@ -650,15 +871,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
-            /** @description Validation Error */
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -690,21 +913,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description Falta `utilizador` ou `password`, ou o corpo não é válido (envelope `{erro, mensagem}`). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description Conta bloqueada depois de 5 falhas seguidas: `erro` é `conta_bloqueada`, com `segundos_em_falta` e o cabeçalho `Retry-After`. */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
         };
     };
@@ -726,13 +955,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -810,35 +1039,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description Falta o `Content-Length`, ou não é um número. */
             411: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description O ficheiro, ou o corpo do pedido, é maior do que o limite. */
             413: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description Falta o campo `ficheiro`, ou `descricao`/`enviada_por` é demasiado longo. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
             /** @description Mais de 5 envios na última hora para este IP. */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
             };
         };
     };
@@ -858,6 +1097,325 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RespostaGaleria"];
+                };
+            };
+        };
+    };
+    listar_categorias_gestao_categorias_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaEmentaGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    criar_categoria_gestao_categorias_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoCriarCategoria"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriaGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O slug gerado já existe: `categoria_repetida`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    reordenar_categorias_gestao_categorias_ordem_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoOrdem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A lista já não é o conjunto atual: `lista_desatualizada`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    eliminar_categoria_gestao_categorias__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A categoria não existe: `categoria_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A categoria ainda tem produtos: `categoria_com_produtos`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    alterar_categoria_gestao_categorias__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoAlterarCategoria"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriaGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A categoria não existe: `categoria_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    reordenar_produtos_gestao_categorias__id__produtos_ordem_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoOrdem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A categoria não existe: `categoria_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A lista já não é o conjunto atual: `lista_desatualizada`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -882,13 +1440,22 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaFilaDeModeracao"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -915,13 +1482,40 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaModeracao"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto não existe: `foto_nao_encontrada`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto já foi moderada: `foto_ja_moderada`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -949,13 +1543,31 @@ export interface operations {
                     "image/webp": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto não existe: `foto_nao_encontrada`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };
@@ -982,13 +1594,188 @@ export interface operations {
                     "application/json": components["schemas"]["RespostaModeracao"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto não existe: `foto_nao_encontrada`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto já foi moderada: `foto_ja_moderada`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    criar_produto_gestao_produtos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoCriarProduto"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProdutoGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo inválido (`dados_invalidos`) ou categoria que não existe (`categoria_inexistente`, com `campo` = `categoria_id`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    eliminar_produto_gestao_produtos__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O produto não existe: `produto_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    alterar_produto_gestao_produtos__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoAlterarProduto"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProdutoGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O produto não existe: `produto_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo inválido (`dados_invalidos`) ou categoria que não existe (`categoria_inexistente`, com `campo` = `categoria_id`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
                 };
             };
         };

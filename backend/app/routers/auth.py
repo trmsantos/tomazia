@@ -18,6 +18,7 @@ from fastapi import APIRouter, Cookie, Depends, Response
 from app.dependencias import SessaoDaBD
 from app.models.admins import Admin
 from app.schemas.auth import PedidoLogin, RespostaAdmin
+from app.schemas.erros import RespostaDeErro
 from app.services import auth as servico
 
 #: Nunca em cache: um `Set-Cookie` ou um `401`/`200` de sessão guardados
@@ -32,28 +33,34 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 #: `HTTPValidationError` por omissão.
 _RESPOSTAS_DO_LOGIN: dict[int | str, dict[str, Any]] = {
     400: {
+        "model": RespostaDeErro,
         "description": (
             "Utilizador inexistente ou password errada: `erro` é "
             "`credenciais_invalidas`, sempre a mesma resposta."
-        )
+        ),
     },
     422: {
+        "model": RespostaDeErro,
         "description": (
             "Falta `utilizador` ou `password`, ou o corpo não é válido "
             "(envelope `{erro, mensagem}`)."
-        )
+        ),
     },
     429: {
+        "model": RespostaDeErro,
         "description": (
             "Conta bloqueada depois de 5 falhas seguidas: `erro` é "
             "`conta_bloqueada`, com `segundos_em_falta` e o cabeçalho "
             "`Retry-After`."
-        )
+        ),
     },
 }
 
 _RESPOSTAS_DO_EU: dict[int | str, dict[str, Any]] = {
-    401: {"description": "Sem sessão válida: `erro` é `sessao_em_falta`."},
+    401: {
+        "model": RespostaDeErro,
+        "description": "Sem sessão válida: `erro` é `sessao_em_falta`.",
+    },
 }
 
 

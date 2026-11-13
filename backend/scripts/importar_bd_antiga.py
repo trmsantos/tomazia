@@ -85,7 +85,6 @@ import re
 import shutil
 import sqlite3
 import sys
-import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -110,6 +109,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.config import Definicoes, obter_definicoes  # noqa: E402
 from app.db import criar_engine  # noqa: E402
 from app.models import Categoria, Evento, Produto  # noqa: E402
+from app.slug import normalizar_slug  # noqa: E402
 from app.tempo import FUSO_DO_BAR, inicio_do_dia_do_bar  # noqa: E402
 
 # --- As onze categorias, decididas pelo Tomás em 2026-10-29 --------------
@@ -259,18 +259,6 @@ def residuo_de_entidade(texto: str) -> str | None:
     """A primeira entidade que sobrou depois de uma passagem, ou `None`."""
     achado = PADRAO_ENTIDADE.search(texto)
     return achado.group(0) if achado else None
-
-
-def normalizar_slug(valor: str) -> str:
-    """O `slug` de um `tipo` antigo: minúsculas, sem acentos, com hífenes.
-
-    É isto — e não um caso especial `{"Bebidas": "bebidas"}` — que junta
-    `Bebidas` e `bebidas` na mesma categoria, e que junta o `Gin` que o
-    dono escreva com maiúscula ao `gin` que lá está.
-    """
-    decomposto = unicodedata.normalize("NFKD", valor)
-    sem_acentos = "".join(c for c in decomposto if not unicodedata.combining(c))
-    return "-".join(re.findall(r"[a-z0-9]+", sem_acentos.lower()))
 
 
 def texto_limpo(rotulo: str, bruto: str) -> str:
