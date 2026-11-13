@@ -86,7 +86,7 @@ def test_toda_a_operacao_de_gestao_documenta_o_401() -> None:
         for metodo, caminho, operacao in _operacoes()
         if caminho.startswith("/gestao")
     ]
-    assert len(de_gestao) >= 13, "as 4 de fotos e as 9 novas têm de estar todas"
+    assert len(de_gestao) >= 19, "as 4 de fotos, as 9 da F2-05a e as 6 da F2-05b"
     for metodo, caminho, operacao in de_gestao:
         respostas = operacao["responses"]
         assert "401" in respostas, f"{metodo.upper()} {caminho} não documenta 401"
@@ -104,6 +104,13 @@ CODIGOS_DOCUMENTADOS: dict[tuple[str, str], set[str]] = {
     ("patch", "/gestao/produtos/{id}"): {"200", "404", "422"},
     ("delete", "/gestao/produtos/{id}"): {"204", "404", "422"},
     ("put", "/gestao/categorias/{id}/produtos/ordem"): {"204", "404", "409", "422"},
+    # F2-05b
+    ("get", "/gestao/eventos"): {"200"},
+    ("post", "/gestao/eventos"): {"201", "422"},
+    ("patch", "/gestao/eventos/{id}"): {"200", "404", "422"},
+    ("delete", "/gestao/eventos/{id}"): {"204", "404", "422"},
+    ("post", "/gestao/eventos/{id}/duplicar"): {"201", "404", "422"},
+    ("get", "/gestao/resumo"): {"200"},
 }
 
 
@@ -124,6 +131,12 @@ NOMES_DOS_ESQUEMAS = {
     "PedidoCriarProduto",
     "PedidoAlterarProduto",
     "PedidoOrdem",
+    # F2-05b
+    "EventoGestao",
+    "RespostaEventosGestao",
+    "PedidoCriarEvento",
+    "PedidoAlterarEvento",
+    "RespostaResumo",
 }
 PEDIDOS = sorted(n for n in NOMES_DOS_ESQUEMAS if n.startswith("Pedido"))
 
@@ -178,13 +191,15 @@ def _admite_null(propriedade: dict[str, Any]) -> bool:
     )
 
 
-@pytest.mark.parametrize("nome", ["PedidoAlterarCategoria", "PedidoAlterarProduto"])
+@pytest.mark.parametrize(
+    "nome", ["PedidoAlterarCategoria", "PedidoAlterarProduto", "PedidoAlterarEvento"]
+)
 def test_nos_patch_so_a_descricao_admite_null(nome: str) -> None:
     """A API responde 422 a `null` nos outros campos: o esquema não o promete."""
     propriedades = _esquema()["components"]["schemas"][nome]["properties"]
     com_null = {campo for campo, p in propriedades.items() if _admite_null(p)}
     assert com_null <= {"descricao"}, com_null
-    if nome == "PedidoAlterarProduto":
+    if nome in ("PedidoAlterarProduto", "PedidoAlterarEvento"):
         assert com_null == {"descricao"}
 
 
@@ -196,3 +211,62 @@ def test_o_422_mantem_a_descricao_propria_da_rota() -> None:
     login = caminhos["/auth/login"]["post"]["responses"]["422"]
     assert "utilizador" in login["description"]
     assert _ref_do_corpo(login) == REF_ERRO
+
+
+def test_os_campos_dos_esquemas_de_eventos_e_resumo() -> None:
+    esquemas = _esquema()["components"]["schemas"]
+    assert set(esquemas["EventoGestao"]["properties"]) == {
+        "id",
+        "titulo",
+        "inicio",
+        "descricao",
+        "imagem",
+        "publicado",
+    }
+    assert set(esquemas["RespostaEventosGestao"]["properties"]) == {
+        "proximos",
+        "rascunhos",
+        "arquivo",
+    }
+    assert set(esquemas["PedidoCriarEvento"]["properties"]) == {
+        "titulo",
+        "inicio",
+        "descricao",
+        "publicado",
+    }
+    assert set(esquemas["PedidoAlterarEvento"]["properties"]) == {
+        "titulo",
+        "inicio",
+        "descricao",
+        "publicado",
+    }
+    assert set(esquemas["RespostaResumo"]["properties"]) == {
+        "fotos_pendentes",
+        "proximos_eventos",
+        "novos_registos",
+    }
+
+
+def test_a_data_e_obrigatoria_ao_criar_e_nao_anulavel_ao_alterar() -> None:
+    """ADR 0009: criar sem data é 422; o PATCH não apaga uma data."""
+    esquemas = _esquema()["components"]["schemas"]
+    assert "inicio" in esquemas["PedidoCriarEvento"]["required"]
+    assert "titulo" in esquemas["PedidoCriarEvento"]["required"]
+    assert not _admite_null(esquemas["PedidoCriarEvento"]["properties"]["inicio"])
+    assert not _admite_null(esquemas["PedidoAlterarEvento"]["properties"]["inicio"])
+    assert esquemas["PedidoAlterarEvento"].get("required", []) == []
+
+
+def test_a_janela_dos_novos_registos_esta_documentada() -> None:
+    """Decisão do Tomás: sete dias deslizantes a partir de agora, escritos no esquema."""
+    propriedade = _esquema()["components"]["schemas"]["RespostaResumo"]["properties"][
+        "novos_registos"
+    ]
+    descricao = propriedade.get("description", "")
+    assert "7" in descricao or "sete" in descricao.lower(), descricao
+
+
+def test_o_evento_de_gestao_admite_data_nula() -> None:
+    """Um rascunho importado pode não ter data."""
+    inicio = _esquema()["components"]["schemas"]["EventoGestao"]["properties"]["inicio"]
+    assert _admite_null(inicio)

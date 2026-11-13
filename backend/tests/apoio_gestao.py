@@ -33,8 +33,11 @@ coincidência:
 
 from __future__ import annotations
 
+import importlib
 import re
+import sys
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -62,11 +65,20 @@ ID_PROD_AZEITONAS = 102
 ID_PROD_PICA_PAU = 103
 ID_PROD_TARTE = 201  # indisponível, na categoria invisível
 
+#: Os eventos do cenário (F2-05b), semeados por `semear_ementa` para que as
+#: fixtures `gestao*` e `cliente_sem_sessao_com_ementa` cubram também as rotas
+#: de eventos. Datas em 2099 de propósito: com o relógio real, o publicado
+#: está sempre em "próximos".
+ID_EVT_PUBLICADO = 301  # publicado, 2099-06-04 21:00Z, com imagem
+ID_EVT_RASCUNHO_SEM_DATA = 302  # rascunho sem data
+INICIO_DO_EVT_PUBLICADO = datetime(2099, 6, 4, 21, 0, tzinfo=UTC)
+
 #: A ordem em que a gestão lê o cenário.
 ORDEM_DAS_CATEGORIAS = [ID_CAT_SOBREMESAS, ID_CAT_PETISCOS, ID_CAT_BEBIDAS]
 ORDEM_DOS_PETISCOS = [ID_PROD_AZEITONAS, ID_PROD_PICA_PAU, ID_PROD_TREMOCOS]
 
 CAMPOS_DA_CATEGORIA = {"id", "nome", "slug", "visivel", "produtos"}
+CAMPOS_DO_EVENTO = {"id", "titulo", "inicio", "descricao", "imagem", "publicado"}
 CAMPOS_DO_PRODUTO = {
     "id",
     "categoria_id",
@@ -95,6 +107,12 @@ CORPOS_VALIDOS: dict[tuple[str, str], dict[str, Any]] = {
     ("PUT", "/gestao/categorias/{id}/produtos/ordem"): {
         "ids": [ID_PROD_PICA_PAU, ID_PROD_AZEITONAS, ID_PROD_TREMOCOS]
     },
+    # F2-05b
+    ("POST", "/gestao/eventos"): {
+        "titulo": "Noite de fados",
+        "inicio": "2099-07-02T21:00:00Z",
+    },
+    ("PATCH", "/gestao/eventos/{id}"): {"titulo": "Novo título"},
 }
 
 #: Mutações que não levam corpo. Uma mutação de `/gestao` que não esteja nem
@@ -104,6 +122,8 @@ MUTACOES_SEM_CORPO: frozenset[tuple[str, str]] = frozenset(
     {
         ("DELETE", "/gestao/categorias/{id}"),
         ("DELETE", "/gestao/produtos/{id}"),
+        ("DELETE", "/gestao/eventos/{id}"),
+        ("POST", "/gestao/eventos/{id}/duplicar"),
         ("POST", "/gestao/fotos/{id}/aprovar"),
         ("POST", "/gestao/fotos/{id}/rejeitar"),
     }
@@ -114,6 +134,7 @@ MUTACOES_SEM_CORPO: frozenset[tuple[str, str]] = frozenset(
 _ID_CONCRETO: dict[tuple[str, str], int] = {
     ("DELETE", "/gestao/categorias/{id}"): ID_CAT_BEBIDAS,
     ("DELETE", "/gestao/produtos/{id}"): ID_PROD_TREMOCOS,
+    ("DELETE", "/gestao/eventos/{id}"): ID_EVT_RASCUNHO_SEM_DATA,
 }
 
 
@@ -137,7 +158,9 @@ def caminho_concreto(metodo: str, caminho: str) -> str:
     chave = (metodo.upper(), caminho)
     if chave in _ID_CONCRETO:
         return caminho.replace("{id}", str(_ID_CONCRETO[chave]))
-    if caminho.startswith("/gestao/produtos"):
+    if caminho.startswith("/gestao/eventos"):
+        identificador = ID_EVT_PUBLICADO
+    elif caminho.startswith("/gestao/produtos"):
         identificador = ID_PROD_TREMOCOS
     elif caminho.startswith("/gestao/categorias"):
         identificador = ID_CAT_PETISCOS
@@ -217,17 +240,132 @@ def semear_ementa(sessao: Session) -> None:
         ]
     )
     sessao.commit()
+    semear_eventos_do_cenario(sessao)
+
+
+def semear_eventos_do_cenario(sessao: Session) -> None:
+    """Um evento publicado (com imagem) e um rascunho sem data."""
+    from app.models.eventos import Evento
+
+    sessao.add_all(
+        [
+            Evento(
+                id=ID_EVT_PUBLICADO,
+                titulo="Noite de jazz",
+                inicio=INICIO_DO_EVT_PUBLICADO,
+                descricao="Entrada livre",
+                imagem="cartaz.webp",
+                publicado=True,
+            ),
+            Evento(
+                id=ID_EVT_RASCUNHO_SEM_DATA,
+                titulo="Festa por marcar",
+                inicio=None,
+                descricao=None,
+                imagem=None,
+                publicado=False,
+            ),
+        ]
+    )
+    sessao.commit()
+
+
+def semear_evento(
+    sessao: Session,
+    identificador: int,
+    *,
+    inicio: datetime | None,
+    publicado: bool,
+    titulo: str | None = None,
+    descricao: str | None = None,
+    imagem: str | None = None,
+) -> None:
+    """Um evento à medida (para os testes das listas e do duplicar)."""
+    from app.models.eventos import Evento
+
+    sessao.add(
+        Evento(
+            id=identificador,
+            titulo=titulo or f"Evento {identificador} de exemplo",
+            inicio=inicio,
+            descricao=descricao,
+            imagem=imagem,
+            publicado=publicado,
+        )
+    )
+    sessao.commit()
+
+
+def semear_cliente(sessao: Session, identificador: int, *, criado_em: datetime) -> None:
+    """Um cliente falso; só o `criado_em` importa para o resumo."""
+    from app.models.clientes import Cliente
+
+    sessao.add(
+        Cliente(
+            id=identificador,
+            nome=f"Cliente {identificador}",
+            email=f"cliente{identificador}@exemplo.test",
+            telemovel="912345678",
+            consentimento_em=criado_em,
+            versao_termos="1",
+            token_cancelar=f"{identificador:0>40}",
+            criado_em=criado_em,
+        )
+    )
+    sessao.commit()
+
+
+#: Módulos onde o relógio **não** se substitui: a validade da sessão. O login
+#: faz-se com o relógio real; se o relógio de um teste de eventos andasse para
+#: julho, o cookie ficava "do futuro" e o pedido dava 401 em vez de testar o
+#: que queria.
+_SEM_RELOGIO_FIXO = ("app.services.auth", "app.routers.auth")
+
+
+def fixar_relogio_gestao(monkeypatch: pytest.MonkeyPatch, instante: datetime) -> Any:
+    """Fixa `agora_utc` em **todos** os módulos de serviço e de router.
+
+    **Ponto de extensão, para quem implementar:** o serviço de eventos e o do
+    resumo têm de chamar `agora_utc()` pelo nome do módulo (`from
+    app.models.tipos import agora_utc`), vivam onde viverem, dentro de
+    `app.services.*` ou `app.routers.*` — nunca `datetime.now(UTC)` inline. O
+    nome do módulo novo não se fixa aqui: varre-se `sys.modules`. Os
+    modelos (o `default=` da coluna) e a autenticação ficam de fora.
+
+    Rebenta se nada for substituído e, nos testes, `exigir_relogio_lido`
+    rebenta se o relógio nunca foi lido (regra 10).
+    """
+    from tests.apoio_publico import RelogioFixo
+
+    importlib.import_module("app.main")
+    relogio = RelogioFixo(instante)
+    encontrados: list[str] = []
+    for nome, modulo in sorted(sys.modules.items()):
+        if modulo is None or not nome.startswith(("app.services.", "app.routers.")):
+            continue
+        if nome in _SEM_RELOGIO_FIXO or not hasattr(modulo, "agora_utc"):
+            continue
+        monkeypatch.setattr(modulo, "agora_utc", relogio)
+        encontrados.append(nome)
+    if not encontrados:
+        raise AssertionError(
+            "nenhum módulo de `app.services` ou `app.routers` tem o nome "
+            "`agora_utc` para substituir: sem relógio injetável, um teste de "
+            "fronteira de dia não distingue um corte errado de um relógio "
+            "que nunca foi lido."
+        )
+    return relogio
 
 
 def fotografia(motor: Engine) -> dict[str, list[tuple[Any, ...]]]:
-    """Todas as linhas de `categorias` e `produtos`, lidas por uma ligação nova.
+    """Todas as linhas de `categorias`, `produtos` e `eventos`, lidas por uma ligação nova.
 
     Ligação nova de propósito: a `sessao` de semear fica com uma transação de
     leitura aberta e, em WAL, não veria o que a app escreveu depois.
     """
     instantaneo: dict[str, list[tuple[Any, ...]]] = {}
     with motor.connect() as ligacao:
-        for tabela in ("categorias", "produtos"):
+        for tabela in ("categorias", "produtos", "eventos"):
             linhas = ligacao.execute(text(f"SELECT * FROM {tabela} ORDER BY id")).all()
             instantaneo[tabela] = [tuple(linha) for linha in linhas]
     return instantaneo

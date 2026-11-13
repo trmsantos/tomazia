@@ -274,6 +274,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gestao/eventos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Eventos
+         * @description `proximos`, `rascunhos` e `arquivo`, divididos no servidor (ADR 0010).
+         */
+        get: operations["listar_eventos_gestao_eventos_get"];
+        put?: never;
+        /**
+         * Criar Evento
+         * @description Cria um evento. A data (com fuso) é obrigatória (ADR 0009).
+         */
+        post: operations["criar_evento_gestao_eventos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/eventos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Eliminar Evento */
+        delete: operations["eliminar_evento_gestao_eventos__id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Alterar Evento
+         * @description Só muda o que vem no corpo. `inicio` nunca é `null`; `{}` não muda nada.
+         */
+        patch: operations["alterar_evento_gestao_eventos__id__patch"];
+        trace?: never;
+    };
+    "/gestao/eventos/{id}/duplicar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicar Evento
+         * @description Cria um rascunho na próxima semana livre, à mesma hora de Lisboa.
+         */
+        post: operations["duplicar_evento_gestao_eventos__id__duplicar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gestao/fotos": {
         parameters: {
             query?: never;
@@ -395,6 +460,26 @@ export interface paths {
         patch: operations["alterar_produto_gestao_produtos__id__patch"];
         trace?: never;
     };
+    "/gestao/resumo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Obter Resumo
+         * @description Fotos pendentes, próximos eventos (até 3) e novos registos (7 dias).
+         */
+        get: operations["obter_resumo_gestao_resumo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -504,6 +589,21 @@ export interface components {
          * @enum {string}
          */
         EstadoFoto: "pendente" | "aprovada" | "rejeitada";
+        /** EventoGestao */
+        EventoGestao: {
+            /** Descricao */
+            descricao: string | null;
+            /** Id */
+            id: number;
+            /** Imagem */
+            imagem: string | null;
+            /** Inicio */
+            inicio: string | null;
+            /** Publicado */
+            publicado: boolean;
+            /** Titulo */
+            titulo: string;
+        };
         /**
          * EventoPublico
          * @description Um evento publicado, a partir de hoje.
@@ -573,6 +673,26 @@ export interface components {
             visivel?: boolean;
         };
         /**
+         * PedidoAlterarEvento
+         * @description Só se altera o que vem no corpo. `null` só vale para a `descricao`.
+         *
+         *     Não se apaga uma data: um `inicio: null` é um `422`. Publicar um evento
+         *     sem data é um `422 evento_sem_data`.
+         */
+        PedidoAlterarEvento: {
+            /** Descricao */
+            descricao?: string | null;
+            /**
+             * Inicio
+             * Format: date-time
+             */
+            inicio?: string;
+            /** Publicado */
+            publicado?: boolean;
+            /** Titulo */
+            titulo?: string;
+        };
+        /**
          * PedidoAlterarProduto
          * @description `PATCH` com valores absolutos: preço e disponibilidade nunca alternam.
          */
@@ -597,6 +717,23 @@ export interface components {
              * @default true
              */
             visivel: boolean;
+        };
+        /** PedidoCriarEvento */
+        PedidoCriarEvento: {
+            /** Descricao */
+            descricao?: string | null;
+            /**
+             * Inicio
+             * Format: date-time
+             */
+            inicio: string;
+            /**
+             * Publicado
+             * @default false
+             */
+            publicado: boolean;
+            /** Titulo */
+            titulo: string;
         };
         /** PedidoCriarProduto */
         PedidoCriarProduto: {
@@ -749,6 +886,21 @@ export interface components {
             eventos: components["schemas"]["EventoPublico"][];
         };
         /**
+         * RespostaEventosGestao
+         * @description Corpo de `GET /gestao/eventos`.
+         *
+         *     As três listas calculam-se no servidor com o corte do dia do bar
+         *     (meia-noite de Lisboa, ADR 0010), o mesmo do `/eventos` público.
+         */
+        RespostaEventosGestao: {
+            /** Arquivo */
+            arquivo: components["schemas"]["EventoGestao"][];
+            /** Proximos */
+            proximos: components["schemas"]["EventoGestao"][];
+            /** Rascunhos */
+            rascunhos: components["schemas"]["EventoGestao"][];
+        };
+        /**
          * RespostaFilaDeModeracao
          * @description Corpo de `GET /gestao/fotos`.
          */
@@ -802,6 +954,21 @@ export interface components {
             estado: components["schemas"]["EstadoFoto"];
             /** Id */
             id: number;
+        };
+        /**
+         * RespostaResumo
+         * @description Corpo de `GET /gestao/resumo`: o ecrã de início da gestão.
+         */
+        RespostaResumo: {
+            /** Fotos Pendentes */
+            fotos_pendentes: number;
+            /**
+             * Novos Registos
+             * @description Clientes registados nos últimos 7 dias: `criado_em` a partir de agora menos 7 x 24 horas (janela deslizante, limite inclusivo).
+             */
+            novos_registos: number;
+            /** Proximos Eventos */
+            proximos_eventos: components["schemas"]["EventoGestao"][];
         };
         /**
          * RespostaSaude
@@ -1420,6 +1587,245 @@ export interface operations {
             };
         };
     };
+    listar_eventos_gestao_eventos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaEventosGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    criar_evento_gestao_eventos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoCriarEvento"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventoGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    eliminar_evento_gestao_eventos__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O evento não existe: `evento_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    alterar_evento_gestao_eventos__id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PedidoAlterarEvento"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventoGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O evento não existe: `evento_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo inválido (`dados_invalidos`) ou publicar sem data (`evento_sem_data`, com `campo` = `inicio`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    duplicar_evento_gestao_eventos__id__duplicar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventoGestao"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description O evento não existe: `evento_inexistente`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
     listar_fotos_pendentes_gestao_fotos_get: {
         parameters: {
             query?: never;
@@ -1770,6 +2176,46 @@ export interface operations {
                 };
             };
             /** @description Corpo inválido (`dados_invalidos`) ou categoria que não existe (`categoria_inexistente`, com `campo` = `categoria_id`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    obter_resumo_gestao_resumo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaResumo"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -55,6 +55,7 @@ def test_a_tabela_cobre_todas_as_rotas_de_gestao_com_parametro() -> None:
     assert da_app == set(COM_ID)
     assert any("fotos" in caminho for _, caminho in COM_ID)
     assert any("produtos" in caminho for _, caminho in COM_ID)
+    assert any("eventos" in caminho for _, caminho in COM_ID)
 
 
 def _pedir(cliente: TestClient, metodo: str, caminho: str, valor: int) -> Any:
@@ -84,11 +85,12 @@ def test_o_maior_id_valido_e_404_e_nao_500(
     resposta = _pedir(gestao_sem_excecoes, metodo, caminho, MAIOR_ID_DO_SQLITE)
     assert resposta.status_code == 404, resposta.text
     if "fotos" not in caminho:
-        esperado = (
-            "produto_inexistente"
-            if caminho.startswith("/gestao/produtos/")
-            else "categoria_inexistente"
-        )
+        if caminho.startswith("/gestao/eventos/"):
+            esperado = "evento_inexistente"
+        elif caminho.startswith("/gestao/produtos/"):
+            esperado = "produto_inexistente"
+        else:
+            esperado = "categoria_inexistente"
         assert resposta.json()["erro"] == esperado
 
 

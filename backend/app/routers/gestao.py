@@ -27,14 +27,20 @@ from app.schemas.erros import RespostaDeErro
 from app.schemas.fotos import RespostaFilaDeModeracao, RespostaModeracao
 from app.schemas.gestao import (
     CategoriaGestao,
+    EventoGestao,
     PedidoAlterarCategoria,
+    PedidoAlterarEvento,
     PedidoAlterarProduto,
     PedidoCriarCategoria,
+    PedidoCriarEvento,
     PedidoCriarProduto,
     PedidoOrdem,
     ProdutoGestao,
     RespostaEmentaGestao,
+    RespostaEventosGestao,
+    RespostaResumo,
 )
+from app.services import eventos as servico_eventos
 from app.services import fotos as servico
 from app.services import gestao as ementa
 from app.services.auth import exigir_admin
@@ -254,3 +260,72 @@ def alterar_produto(
 )
 def eliminar_produto(id_produto: IdDaBD, sessao: SessaoDaBD) -> None:
     ementa.eliminar_produto(sessao, id_produto)
+
+
+# --------------------------------------------------------------------------
+# Eventos e resumo
+# --------------------------------------------------------------------------
+
+_404_EVENTO = (404, "O evento não existe: `evento_inexistente`.")
+
+
+@router.get("/eventos", response_model=RespostaEventosGestao)
+def listar_eventos(sessao: SessaoDaBD) -> RespostaEventosGestao:
+    """`proximos`, `rascunhos` e `arquivo`, divididos no servidor (ADR 0010)."""
+    return servico_eventos.obter_eventos(sessao)
+
+
+@router.post(
+    "/eventos",
+    status_code=201,
+    response_model=EventoGestao,
+    responses=_respostas(_422),
+)
+def criar_evento(sessao: SessaoDaBD, corpo: PedidoCriarEvento) -> EventoGestao:
+    """Cria um evento. A data (com fuso) é obrigatória (ADR 0009)."""
+    return servico_eventos.criar_evento(sessao, corpo)
+
+
+@router.patch(
+    "/eventos/{id}",
+    response_model=EventoGestao,
+    responses=_respostas(
+        _404_EVENTO,
+        (
+            422,
+            "Corpo inválido (`dados_invalidos`) ou publicar sem data "
+            "(`evento_sem_data`, com `campo` = `inicio`).",
+        ),
+    ),
+)
+def alterar_evento(
+    id_evento: IdDaBD, sessao: SessaoDaBD, corpo: PedidoAlterarEvento
+) -> EventoGestao:
+    """Só muda o que vem no corpo. `inicio` nunca é `null`; `{}` não muda nada."""
+    return servico_eventos.alterar_evento(sessao, id_evento, corpo)
+
+
+@router.delete(
+    "/eventos/{id}",
+    status_code=204,
+    responses=_respostas(_404_EVENTO, _422),
+)
+def eliminar_evento(id_evento: IdDaBD, sessao: SessaoDaBD) -> None:
+    servico_eventos.eliminar_evento(sessao, id_evento)
+
+
+@router.post(
+    "/eventos/{id}/duplicar",
+    status_code=201,
+    response_model=EventoGestao,
+    responses=_respostas(_404_EVENTO, _422),
+)
+def duplicar_evento(id_evento: IdDaBD, sessao: SessaoDaBD) -> EventoGestao:
+    """Cria um rascunho na próxima semana livre, à mesma hora de Lisboa."""
+    return servico_eventos.duplicar_evento(sessao, id_evento)
+
+
+@router.get("/resumo", response_model=RespostaResumo)
+def obter_resumo(sessao: SessaoDaBD) -> RespostaResumo:
+    """Fotos pendentes, próximos eventos (até 3) e novos registos (7 dias)."""
+    return servico_eventos.obter_resumo(sessao)
