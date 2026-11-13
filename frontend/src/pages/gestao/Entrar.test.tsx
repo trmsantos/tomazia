@@ -44,6 +44,7 @@ import {
   erroSemResposta,
 } from "../../testes/gestao";
 import { Entrar } from "./Entrar";
+import { PRAZO_DO_PEDIDO_MS } from "./prazo";
 
 vi.mock("../../lib/api/auth", () => ({ entrar: vi.fn(), quemSouEu: vi.fn(), sair: vi.fn() }));
 
@@ -527,13 +528,23 @@ describe("429 — conta bloqueada (3.6)", () => {
   ])(
     "%s (um setTimeout acima de ~24,8 dias dispara logo): é inválido, só a primeira linha",
     async (_nome, extra, cabecalhos) => {
+      // Conta-se o que se arma, não o que está pendente: o `vi.getTimerCount()`
+      // apanha também temporizadores do ambiente, e no CI (Node 22) dava 1
+      // onde localmente (Node 24) dava 0, com o mesmo código. O defeito que
+      // este teste guarda é um `setTimeout` do bloqueio com um atraso enorme;
+      // o único legítimo aqui é o prazo do pedido, de `PRAZO_DO_PEDIDO_MS`.
       vi.useFakeTimers(SO_OS_TEMPORIZADORES);
+      const armar = vi.spyOn(globalThis, "setTimeout");
       render(<Entrar />);
       await falharCom(erro429(extra, cabecalhos));
 
       expect(mensagem()?.textContent?.trim()).toBe(FRASE_429);
       expect(botao()).not.toHaveAttribute("aria-disabled");
-      expect(vi.getTimerCount(), "nenhum temporizador de bloqueio").toBe(0);
+      const atrasos = armar.mock.calls.map(([, atraso]) => Number(atraso ?? 0));
+      expect(
+        atrasos.filter((atraso) => atraso > PRAZO_DO_PEDIDO_MS),
+        "nenhum temporizador de bloqueio",
+      ).toEqual([]);
     },
   );
 
