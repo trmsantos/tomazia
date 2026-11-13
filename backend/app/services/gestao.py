@@ -19,9 +19,9 @@ Nada aqui faz escape de texto: guarda-se o que foi escrito.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
-from sqlalchemy import CursorResult, case, delete, func, insert, select, update
+from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,7 @@ from app.schemas.gestao import (
     ProdutoGestao,
     RespostaEmentaGestao,
 )
+from app.services.sql import id_inserido, linhas_afetadas
 from app.slug import normalizar_slug
 
 MENSAGEM_CATEGORIA_INEXISTENTE = (
@@ -97,17 +98,6 @@ def _categoria_de_gestao(sessao: Session, categoria: Categoria) -> CategoriaGest
         visivel=categoria.visivel,
         produtos=_produtos_da_categoria(sessao, categoria.id),
     )
-
-
-def _rowcount(resultado: Any) -> int:
-    return int(cast("CursorResult[Any]", resultado).rowcount)
-
-
-def _id_inserido(resultado: Any) -> int:
-    chave = cast("CursorResult[Any]", resultado).inserted_primary_key
-    if chave is None:
-        raise RuntimeError("o INSERT não devolveu a chave primária")
-    return int(chave[0])
 
 
 def _categoria_existe(sessao: Session, categoria_id: int) -> bool:
@@ -186,7 +176,7 @@ def criar_categoria(sessao: Session, pedido: PedidoCriarCategoria) -> CategoriaG
     try:
         # `inserted_primary_key` e não `.returning()`: este só existe a partir
         # do SQLite 3.35, e a versão do servidor não é conhecida.
-        novo_id = _id_inserido(
+        novo_id = id_inserido(
             sessao.execute(
                 insert(Categoria).values(
                     nome=pedido.nome, slug=slug, visivel=pedido.visivel, ordem=proxima
@@ -226,7 +216,7 @@ def alterar_categoria(
 
 def eliminar_categoria(sessao: Session, id_categoria: int) -> None:
     try:
-        apagadas = _rowcount(
+        apagadas = linhas_afetadas(
             sessao.execute(delete(Categoria).where(Categoria.id == id_categoria))
         )
     except IntegrityError as erro:
@@ -258,7 +248,7 @@ def criar_produto(sessao: Session, pedido: PedidoCriarProduto) -> ProdutoGestao:
     if not _categoria_existe(sessao, pedido.categoria_id):
         raise _categoria_inexistente_no_corpo()
     try:
-        novo_id = _id_inserido(
+        novo_id = id_inserido(
             sessao.execute(
                 insert(Produto).values(
                     categoria_id=pedido.categoria_id,
@@ -308,7 +298,7 @@ def alterar_produto(
 
     if valores:
         try:
-            alterados = _rowcount(
+            alterados = linhas_afetadas(
                 sessao.execute(
                     update(Produto).where(Produto.id == id_produto).values(**valores)
                 )
@@ -330,7 +320,7 @@ def alterar_produto(
 
 
 def eliminar_produto(sessao: Session, id_produto: int) -> None:
-    apagados = _rowcount(
+    apagados = linhas_afetadas(
         sessao.execute(delete(Produto).where(Produto.id == id_produto))
     )
     if apagados == 0:
@@ -363,7 +353,7 @@ def _reordenar(
         posicoes = case(
             {id_: posicao for posicao, id_ in enumerate(ids)}, value=modelo.id
         )
-        alterados = _rowcount(
+        alterados = linhas_afetadas(
             sessao.execute(
                 update(modelo)
                 .where(modelo.id.in_(ids), *filtro)

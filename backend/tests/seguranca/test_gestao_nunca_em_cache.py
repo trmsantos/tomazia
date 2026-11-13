@@ -37,6 +37,22 @@ CASOS: tuple[tuple[str, str, object, int], ...] = (
     ("DELETE", "/gestao/produtos/101", None, 204),
     ("DELETE", "/gestao/categorias/30", None, 204),
     ("GET", "/gestao/fotos", None, 200),
+    # F2-05b
+    ("GET", "/gestao/eventos", None, 200),
+    (
+        "POST",
+        "/gestao/eventos",
+        {"titulo": "Fados", "inicio": "2099-07-02T21:00:00Z"},
+        201,
+    ),
+    ("PATCH", "/gestao/eventos/301", {"titulo": "Jazz"}, 200),
+    ("POST", "/gestao/eventos/301/duplicar", None, 201),
+    ("DELETE", "/gestao/eventos/302", None, 204),
+    ("GET", "/gestao/resumo", None, 200),
+    ("PATCH", "/gestao/eventos/999", {"titulo": "X"}, 404),
+    ("DELETE", "/gestao/eventos/999", None, 404),
+    ("POST", "/gestao/eventos/999/duplicar", None, 404),
+    ("PATCH", "/gestao/eventos/302", {"publicado": True}, 422),
     # erros levantados pelo nosso código
     ("PATCH", "/gestao/categorias/999", {"nome": "X"}, 404),
     ("DELETE", "/gestao/produtos/999", None, 404),

@@ -149,7 +149,7 @@ Pensada para o telemóvel do dono. Navegação inferior: Início, Ementa, Evento
 
 | Ecrã | Mostra | Ações |
 | --- | --- | --- |
-| Início | Fotos à espera, próximos eventos, últimas alterações | Ir para a fila de fotos |
+| Início | Fotos à espera, próximos eventos, novos registos nos últimos 7 dias | Ir para a fila de fotos |
 | Ementa | Categorias e produtos, pesquisa | Preço editável na linha, interruptor "Disponível", arrastar para reordenar, adicionar |
 | Eventos | Próximos e rascunhos; "Arquivo" com os passados | Criar (data obrigatória), publicar, duplicar |
 | Galeria | Pendentes primeiro, uma a uma | Aprovar, rejeitar, enviar foto própria |

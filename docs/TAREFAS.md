@@ -128,6 +128,12 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
   - reordenar com `ids: []` dá 204 só se o conjunto estiver mesmo vazio, senão 409 `lista_desatualizada`; no máximo 300 ids por pedido, para ficar abaixo do limite antigo de 999 variáveis do SQLite, cuja versão no servidor não está documentada;
   - o envelope de erro é `{erro, mensagem, campo?, segundos_em_falta?}` — o `campo` diz que campo corrigir e nunca repete o valor enviado;
   - a `descricao` também apara as pontas; inteiros e booleanos do corpo são estritos (`"12"` ou `12.5` dão 422).
+- **Decidido na F2-05b (eventos e resumo), para a F4-03 não o redescobrir:**
+  - **duplicar** soma 7 dias à hora de parede de `Europe/Lisbon`, sempre a partir do original, até a cópia ficar **estritamente depois do instante atual** (não do corte do dia do bar: uma cópia nunca nasce com uma hora que já passou). Horas inexistentes ou ambíguas seguem `fold=0`: as 01:30 do salto de março passam a 02:30 (a hora pedida mais uma), as 01:30 do recuo de outubro ficam na primeira ocorrência. A cópia é sempre rascunho;
+  - o `inicio` de um evento é texto ISO 8601 com fuso, com ano entre 1970 e 9000; um número, mesmo em texto, é recusado (não se lê como timestamp);
+  - **publicar sem data** dá 422 `evento_sem_data` com `campo="inicio"`, verificado na fronteira e, se uma corrida o deixar passar, pelo `CHECK ck_eventos_publicado_exige_inicio` mapeado para o mesmo 422;
+  - `GET /gestao/eventos` divide em `proximos`, `rascunhos` (os sem data no fim) e `arquivo` com o mesmo corte do `/eventos` público;
+  - o resumo conta os novos registos com `criado_em >= agora - 7 dias`, limite inclusivo.
 - **Medido no plano da F2-05:** um id acima de `2**63-1` no caminho dá **500** (`OverflowError` do SQLite), também nas rotas de fotos de hoje. Os ids de caminho e de corpo passam a ser limitados na fronteira.
 
 ### F2-06 Fotos

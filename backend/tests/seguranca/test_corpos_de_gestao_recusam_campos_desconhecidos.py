@@ -24,11 +24,11 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
 ROTAS = tuple(sorted(CORPOS_VALIDOS))
-EXTRAS = ("id", "ordem", "slug", "inventado", "preco")
+EXTRAS = ("id", "ordem", "slug", "inventado", "preco", "imagem")
 
 
 def test_ha_rotas_com_corpo_para_provar() -> None:
-    assert len(ROTAS) == 6
+    assert len(ROTAS) == 8
 
 
 @pytest.mark.parametrize("metodo,caminho", ROTAS, ids=[f"{m} {c}" for m, c in ROTAS])
