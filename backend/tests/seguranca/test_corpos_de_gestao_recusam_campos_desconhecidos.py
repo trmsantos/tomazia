@@ -28,7 +28,7 @@ EXTRAS = ("id", "ordem", "slug", "inventado", "preco", "imagem")
 
 
 def test_ha_rotas_com_corpo_para_provar() -> None:
-    assert len(ROTAS) == 8
+    assert len(ROTAS) == 10
 
 
 @pytest.mark.parametrize("metodo,caminho", ROTAS, ids=[f"{m} {c}" for m, c in ROTAS])

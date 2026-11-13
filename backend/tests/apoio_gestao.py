@@ -43,6 +43,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from sqlalchemy import text
 
+from tests.apoio_auth import PASSWORD_FALSA
+
 if TYPE_CHECKING:  # pragma: no cover - só para anotações
     from fastapi.testclient import TestClient
     from sqlalchemy import Engine
@@ -72,6 +74,22 @@ ID_PROD_TARTE = 201  # indisponível, na categoria invisível
 ID_EVT_PUBLICADO = 301  # publicado, 2099-06-04 21:00Z, com imagem
 ID_EVT_RASCUNHO_SEM_DATA = 302  # rascunho sem data
 INICIO_DO_EVT_PUBLICADO = datetime(2099, 6, 4, 21, 0, tzinfo=UTC)
+
+#: Os clientes do cenário (F2-05c), semeados por `semear_ementa` para que as
+#: tabelas de segurança (S-04, S-06, `no-store`, ids) tenham o que apagar e o
+#: que comparar. Datas **antigas** de propósito (2020): ficam fora da janela
+#: de 7 dias do resumo, que os testes do resumo contam à mão.
+ID_CLI_ANA = 401  # com telemóvel
+ID_CLI_RUI = 402  # sem telemóvel
+#: Um token que nenhum teste pode ver em lado nenhum da resposta.
+TOKEN_DA_ANA = "token-secreto-da-ana-nunca-sai-0000000001"
+TOKEN_DO_RUI = "token-secreto-do-rui-nunca-sai-0000000002"
+CRIADO_EM_DA_ANA = datetime(2020, 3, 10, 12, 0, tzinfo=UTC)
+CRIADO_EM_DO_RUI = datetime(2020, 5, 20, 12, 0, tzinfo=UTC)
+
+#: A password nova que os testes da mudança de password usam. Diferente de
+#: `PASSWORD_FALSA` e de `PASSWORD_ERRADA_DE_EXEMPLO`.
+PASSWORD_NOVA_FALSA = "palavra-passe-nova-de-exemplo-0002"
 
 #: A ordem em que a gestão lê o cenário.
 ORDEM_DAS_CATEGORIAS = [ID_CAT_SOBREMESAS, ID_CAT_PETISCOS, ID_CAT_BEBIDAS]
@@ -113,6 +131,28 @@ CORPOS_VALIDOS: dict[tuple[str, str], dict[str, Any]] = {
         "inicio": "2099-07-02T21:00:00Z",
     },
     ("PATCH", "/gestao/eventos/{id}"): {"titulo": "Novo título"},
+    # F2-05c
+    ("PUT", "/gestao/definicoes"): {
+        "wifi_rede": "Tomazia-Clientes",
+        "wifi_password": "wifi-de-exemplo-123",
+        "morada": "Rua de Exemplo 1, Estarreja",
+        "telefone": "234000000",
+        "instagram": "https://www.instagram.com/exemplo.test",
+        "maps_url": "https://maps.example.test/place/tomazia",
+        "horario": [
+            {"dia": "segunda", "periodos": []},
+            {"dia": "terca", "periodos": [{"abre": "17:00", "fecha": "02:00"}]},
+            {"dia": "quarta", "periodos": [{"abre": "17:00", "fecha": "02:00"}]},
+            {"dia": "quinta", "periodos": [{"abre": "17:00", "fecha": "02:00"}]},
+            {"dia": "sexta", "periodos": [{"abre": "17:00", "fecha": "04:00"}]},
+            {"dia": "sabado", "periodos": [{"abre": "17:00", "fecha": "04:00"}]},
+            {"dia": "domingo", "periodos": []},
+        ],
+    },
+    ("POST", "/gestao/conta/password"): {
+        "password_atual": PASSWORD_FALSA,
+        "password_nova": PASSWORD_NOVA_FALSA,
+    },
 }
 
 #: Mutações que não levam corpo. Uma mutação de `/gestao` que não esteja nem
@@ -123,6 +163,7 @@ MUTACOES_SEM_CORPO: frozenset[tuple[str, str]] = frozenset(
         ("DELETE", "/gestao/categorias/{id}"),
         ("DELETE", "/gestao/produtos/{id}"),
         ("DELETE", "/gestao/eventos/{id}"),
+        ("DELETE", "/gestao/clientes/{id}"),
         ("POST", "/gestao/eventos/{id}/duplicar"),
         ("POST", "/gestao/fotos/{id}/aprovar"),
         ("POST", "/gestao/fotos/{id}/rejeitar"),
@@ -135,6 +176,7 @@ _ID_CONCRETO: dict[tuple[str, str], int] = {
     ("DELETE", "/gestao/categorias/{id}"): ID_CAT_BEBIDAS,
     ("DELETE", "/gestao/produtos/{id}"): ID_PROD_TREMOCOS,
     ("DELETE", "/gestao/eventos/{id}"): ID_EVT_RASCUNHO_SEM_DATA,
+    ("DELETE", "/gestao/clientes/{id}"): ID_CLI_ANA,
 }
 
 
@@ -160,6 +202,8 @@ def caminho_concreto(metodo: str, caminho: str) -> str:
         return caminho.replace("{id}", str(_ID_CONCRETO[chave]))
     if caminho.startswith("/gestao/eventos"):
         identificador = ID_EVT_PUBLICADO
+    elif caminho.startswith("/gestao/clientes"):
+        identificador = ID_CLI_ANA
     elif caminho.startswith("/gestao/produtos"):
         identificador = ID_PROD_TREMOCOS
     elif caminho.startswith("/gestao/categorias"):
@@ -241,6 +285,38 @@ def semear_ementa(sessao: Session) -> None:
     )
     sessao.commit()
     semear_eventos_do_cenario(sessao)
+    semear_clientes_do_cenario(sessao)
+
+
+def semear_clientes_do_cenario(sessao: Session) -> None:
+    """Dois clientes de 2020, com `token_cancelar` reconhecíveis (F2-05c)."""
+    from app.models.clientes import Cliente
+
+    sessao.add_all(
+        [
+            Cliente(
+                id=ID_CLI_ANA,
+                nome="Ana Exemplo",
+                email="ana@exemplo.test",
+                telemovel="912345678",
+                consentimento_em=CRIADO_EM_DA_ANA,
+                versao_termos="1",
+                token_cancelar=TOKEN_DA_ANA,
+                criado_em=CRIADO_EM_DA_ANA,
+            ),
+            Cliente(
+                id=ID_CLI_RUI,
+                nome="Rui Exemplo",
+                email="rui@exemplo.test",
+                telemovel=None,
+                consentimento_em=CRIADO_EM_DO_RUI,
+                versao_termos="1",
+                token_cancelar=TOKEN_DO_RUI,
+                criado_em=CRIADO_EM_DO_RUI,
+            ),
+        ]
+    )
+    sessao.commit()
 
 
 def semear_eventos_do_cenario(sessao: Session) -> None:
@@ -315,6 +391,107 @@ def semear_cliente(sessao: Session, identificador: int, *, criado_em: datetime) 
     sessao.commit()
 
 
+# --------------------------------------------------------------------------
+# F2-05c: definições, clientes e CSV
+# --------------------------------------------------------------------------
+
+#: O cabeçalho do CSV de clientes, na ordem das colunas.
+CABECALHO_DO_CSV = [
+    "Nome",
+    "Email",
+    "Telemóvel",
+    "Data do consentimento",
+    "Versão dos termos",
+    "Data de inscrição",
+]
+
+#: Os campos da resposta de `GET /gestao/definicoes`.
+CAMPOS_DAS_DEFINICOES = {
+    "wifi_rede",
+    "wifi_password",
+    "morada",
+    "telefone",
+    "instagram",
+    "maps_url",
+    "horario",
+    "horario_estado",
+}
+CAMPOS_DO_PEDIDO_DE_DEFINICOES = CAMPOS_DAS_DEFINICOES - {"horario_estado"}
+CAMPOS_DO_CLIENTE = {
+    "id",
+    "nome",
+    "email",
+    "telemovel",
+    "consentimento_em",
+    "versao_termos",
+    "criado_em",
+}
+
+DIAS_DA_SEMANA = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
+
+
+def semana(**periodos: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Os sete dias, por ordem, com os períodos dados (`terca=[("17:00", "02:00")]`)."""
+    return [
+        {
+            "dia": dia,
+            "periodos": [
+                {"abre": abre, "fecha": fecha} for abre, fecha in periodos.get(dia, [])
+            ],
+        }
+        for dia in DIAS_DA_SEMANA
+    ]
+
+
+def semear_cliente_com(sessao: Session, identificador: int, **campos: Any) -> None:
+    """Um cliente falso com os campos dados (nome, email, telemovel, ...).
+
+    Para os testes do CSV, que precisam de texto hostil em cada coluna.
+    """
+    from app.models.clientes import Cliente
+
+    base: dict[str, Any] = {
+        "id": identificador,
+        "nome": f"Cliente {identificador}",
+        "email": f"cliente{identificador}@exemplo.test",
+        "telemovel": "912345678",
+        "consentimento_em": CRIADO_EM_DA_ANA,
+        "versao_termos": "1",
+        "token_cancelar": f"{identificador:0>40}",
+        "criado_em": CRIADO_EM_DA_ANA,
+    }
+    sessao.add(Cliente(**{**base, **campos}))
+    sessao.commit()
+
+
+def semear_definicoes(sessao: Session, valores: dict[str, str]) -> None:
+    """Escreve linhas de `definicoes` tal e qual, sem passar pela API."""
+    from app.models.definicoes import Definicao
+
+    sessao.add_all([Definicao(chave=k, valor=v) for k, v in valores.items()])
+    sessao.commit()
+
+
+def definicoes_na_bd(motor: Engine) -> dict[str, str]:
+    """Todas as linhas de `definicoes`, lidas por uma ligação nova."""
+    with motor.connect() as ligacao:
+        linhas = ligacao.execute(text("SELECT chave, valor FROM definicoes")).all()
+    return {linha[0]: linha[1] for linha in linhas}
+
+
+def linhas_do_csv(resposta: Any) -> list[list[str]]:
+    """Lê o corpo de uma resposta CSV como o Excel em português o leria.
+
+    `utf-8-sig` (tira a BOM) e `;`, com `newline=""` para o módulo `csv`
+    ver as quebras de linha **dentro** de uma célula tal como vieram.
+    """
+    import csv
+    import io
+
+    texto = resposta.content.decode("utf-8-sig")
+    return list(csv.reader(io.StringIO(texto, newline=""), delimiter=";"))
+
+
 #: Módulos onde o relógio **não** se substitui: a validade da sessão. O login
 #: faz-se com o relógio real; se o relógio de um teste de eventos andasse para
 #: julho, o cookie ficava "do futuro" e o pedido dava 401 em vez de testar o
@@ -358,15 +535,28 @@ def fixar_relogio_gestao(monkeypatch: pytest.MonkeyPatch, instante: datetime) ->
 
 
 def fotografia(motor: Engine) -> dict[str, list[tuple[Any, ...]]]:
-    """Todas as linhas de `categorias`, `produtos` e `eventos`, lidas por uma ligação nova.
+    """Todas as linhas das tabelas que a gestão escreve, lidas por uma ligação nova.
+
+    `categorias`, `produtos`, `eventos` e, desde a F2-05c, `clientes`,
+    `definicoes` e `admins` (o hash e o bloqueio: é o que prova que uma
+    mudança de password recusada não mudou nada).
 
     Ligação nova de propósito: a `sessao` de semear fica com uma transação de
     leitura aberta e, em WAL, não veria o que a app escreveu depois.
     """
     instantaneo: dict[str, list[tuple[Any, ...]]] = {}
     with motor.connect() as ligacao:
-        for tabela in ("categorias", "produtos", "eventos"):
-            linhas = ligacao.execute(text(f"SELECT * FROM {tabela} ORDER BY id")).all()
+        for tabela, chave in (
+            ("categorias", "id"),
+            ("produtos", "id"),
+            ("eventos", "id"),
+            ("clientes", "id"),
+            ("admins", "id"),
+            ("definicoes", "chave"),
+        ):
+            linhas = ligacao.execute(
+                text(f"SELECT * FROM {tabela} ORDER BY {chave}")  # noqa: S608
+            ).all()
             instantaneo[tabela] = [tuple(linha) for linha in linhas]
     return instantaneo
 
@@ -413,7 +603,7 @@ def exigir_erro(
     assert corpo.get("erro") == codigo, f"esperava erro={codigo!r}: {corpo}"
     assert isinstance(corpo.get("mensagem"), str)
     assert corpo["mensagem"].strip(), f"mensagem vazia: {corpo}"
-    assert set(corpo) <= {"erro", "mensagem", "campo"}, (
+    assert set(corpo) <= {"erro", "mensagem", "campo", "segundos_em_falta"}, (
         f"chaves a mais no envelope: {sorted(corpo)}"
     )
     if campo is not None:

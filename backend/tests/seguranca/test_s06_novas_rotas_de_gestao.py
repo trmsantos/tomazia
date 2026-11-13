@@ -1,4 +1,4 @@
-"""S-06 sobre as rotas da F2-05a e da F2-05b (eventos): `PUT`, `PATCH` e `DELETE` sem `X-Tomazia` são 403.
+"""S-06 sobre as rotas da F2-05a, b e c: `POST`, `PUT`, `PATCH` e `DELETE` sem `X-Tomazia` são 403.
 
 O guarda é um middleware sobre o método (ver `test_s06_mutacao_exige_x_tomazia.py`),
 por isso um 403 também sai em caminhos que não existem — daí o primeiro teste,
@@ -36,6 +36,10 @@ NOVAS: tuple[tuple[str, str], ...] = (
     ("PATCH", "/gestao/eventos/{id}"),
     ("DELETE", "/gestao/eventos/{id}"),
     ("POST", "/gestao/eventos/{id}/duplicar"),
+    # F2-05c
+    ("PUT", "/gestao/definicoes"),
+    ("DELETE", "/gestao/clientes/{id}"),
+    ("POST", "/gestao/conta/password"),
 )
 
 

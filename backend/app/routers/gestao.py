@@ -17,16 +17,19 @@ Sem lógica aqui: o trabalho é de `app/services/gestao.py` e
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.routing import APIRoute
 
 from app.dependencias import IdDaBD, SessaoDaBD
+from app.models.admins import Admin
+from app.schemas.auth import RespostaAdmin
 from app.schemas.erros import RespostaDeErro
 from app.schemas.fotos import RespostaFilaDeModeracao, RespostaModeracao
 from app.schemas.gestao import (
     CategoriaGestao,
+    DefinicoesGestao,
     EventoGestao,
     PedidoAlterarCategoria,
     PedidoAlterarEvento,
@@ -34,12 +37,18 @@ from app.schemas.gestao import (
     PedidoCriarCategoria,
     PedidoCriarEvento,
     PedidoCriarProduto,
+    PedidoDefinicoes,
+    PedidoMudarPassword,
     PedidoOrdem,
     ProdutoGestao,
+    RespostaClientes,
     RespostaEmentaGestao,
     RespostaEventosGestao,
     RespostaResumo,
 )
+from app.services import auth as servico_auth
+from app.services import clientes as servico_clientes
+from app.services import definicoes as servico_definicoes
 from app.services import eventos as servico_eventos
 from app.services import fotos as servico
 from app.services import gestao as ementa
@@ -329,3 +338,103 @@ def duplicar_evento(id_evento: IdDaBD, sessao: SessaoDaBD) -> EventoGestao:
 def obter_resumo(sessao: SessaoDaBD) -> RespostaResumo:
     """Fotos pendentes, próximos eventos (até 3) e novos registos (7 dias)."""
     return servico_eventos.obter_resumo(sessao)
+
+
+# --------------------------------------------------------------------------
+# Definições, clientes e conta
+# --------------------------------------------------------------------------
+
+_404_CLIENTE = (404, "O cliente não existe: `cliente_inexistente`.")
+
+_RESPOSTA_CSV: dict[int | str, dict[str, Any]] = {
+    200: {"content": {"text/csv": {}}, "description": "O ficheiro CSV (UTF-8 com BOM)."}
+}
+
+
+@router.get("/definicoes", response_model=DefinicoesGestao)
+def obter_definicoes(sessao: SessaoDaBD) -> DefinicoesGestao:
+    """As sete definições; texto vazio como `""`, e o estado do horário."""
+    return servico_definicoes.obter_definicoes(sessao)
+
+
+@router.put(
+    "/definicoes",
+    response_model=DefinicoesGestao,
+    responses=_respostas(
+        (
+            422,
+            "Corpo inválido: `dados_invalidos`, com `campo`. O `maps_url` e o "
+            "`instagram` só aceitam `https://`; o horário tem os sete dias, "
+            "sem períodos sobrepostos.",
+        )
+    ),
+)
+def substituir_definicoes(
+    sessao: SessaoDaBD, corpo: PedidoDefinicoes
+) -> DefinicoesGestao:
+    """Substitui os sete campos numa só transação. `horario: null` apaga-o."""
+    return servico_definicoes.substituir_definicoes(sessao, corpo)
+
+
+@router.get("/clientes", response_model=RespostaClientes)
+def listar_clientes(sessao: SessaoDaBD) -> RespostaClientes:
+    """Do mais recente para o mais antigo, sem nenhuma credencial."""
+    return servico_clientes.obter_clientes(sessao)
+
+
+@router.get(
+    "/clientes.csv",
+    response_class=Response,
+    responses={**_RESPOSTA_CSV, **_respostas()},
+)
+def descarregar_clientes_csv(sessao: SessaoDaBD) -> Response:
+    """O CSV dos clientes, a abrir bem no Excel em português."""
+    corpo, nome = servico_clientes.gerar_csv(sessao)
+    return Response(
+        content=corpo,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )
+
+
+@router.delete(
+    "/clientes/{id}",
+    status_code=204,
+    responses=_respostas(_404_CLIENTE, _422),
+)
+def eliminar_cliente(id_cliente: IdDaBD, sessao: SessaoDaBD) -> None:
+    """Apaga mesmo (eliminação a pedido, RGPD)."""
+    servico_clientes.eliminar_cliente(sessao, id_cliente)
+
+
+@router.post(
+    "/conta/password",
+    response_model=RespostaAdmin,
+    responses=_respostas(
+        (400, "A password atual não confere: `password_atual_errada`, com `campo`."),
+        (
+            429,
+            "Conta bloqueada depois de 5 falhas: `conta_bloqueada`, com "
+            "`segundos_em_falta` e `Retry-After`.",
+        ),
+        _422,
+    ),
+)
+def mudar_password(
+    resposta: Response,
+    sessao: SessaoDaBD,
+    admin: Annotated[Admin, Depends(exigir_admin)],
+    corpo: PedidoMudarPassword,
+) -> RespostaAdmin:
+    """Muda a password de quem tem a sessão e reemite a sessão desta pessoa.
+
+    Pede a atual, que conta para o mesmo bloqueio do login. As outras
+    sessões terminam (`sessao_versao`); a de quem muda continua, com o
+    cookie novo desta resposta.
+    """
+    admin_id, utilizador = admin.id, admin.utilizador
+    versao = servico_auth.mudar_password_da_sessao(
+        sessao, admin, corpo.password_atual, corpo.password_nova
+    )
+    servico_auth.definir_cookie_de_sessao(resposta, admin_id, versao)
+    return RespostaAdmin(id=admin_id, utilizador=utilizador)

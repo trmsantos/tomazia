@@ -14,9 +14,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
+    AfterValidator,
     AwareDatetime,
     BaseModel,
     ConfigDict,
@@ -28,6 +30,7 @@ from pydantic import (
 from pydantic.json_schema import SkipJsonSchema
 
 from app.dependencias import MAIOR_INTEIRO_DO_SQLITE
+from app.schemas.publico import DIAS_DA_SEMANA, DiaDoHorario
 
 NomeDaCategoria = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)
@@ -302,3 +305,192 @@ class RespostaResumo(BaseModel):
             "agora menos 7 x 24 horas (janela deslizante, limite inclusivo)."
         )
     )
+
+
+# --------------------------------------------------------------------------
+# Definições do bar (ADR 0011)
+# --------------------------------------------------------------------------
+
+#: Texto de uma linha (a coluna `valor` é `Text`: o limite é da fronteira).
+LIMITE_DO_TEXTO_DE_UMA_LINHA = 200
+LIMITE_DO_ENDERECO = 500
+MAXIMO_DE_PERIODOS_POR_DIA = 6
+
+ANFITRIOES_DO_INSTAGRAM = frozenset({"instagram.com", "www.instagram.com"})
+
+#: Valores que `GET /gestao/definicoes` dá ao horário (ADR 0011): a gestão
+#: distingue o que o `/info` público junta em `null`.
+EstadoDoHorario = Literal["configurado", "nao_configurado", "invalido"]
+
+
+def _anfitriao_de_https(valor: str, so_estes: frozenset[str] | None) -> str:
+    """`https://` ou vazio; nada à frente; sem caracteres de controlo.
+
+    O F3-06 põe estes valores num `href` público, e o React **não** bloqueia
+    `javascript:` num `href`: a defesa é recusar tudo o que não seja
+    `https://` na escrita (a leitura devolve o texto tal como está, S-09).
+    O esquema compara-se sem distinguir maiúsculas, mas o valor tem de
+    **começar** por ele: um espaço ou uma tabulação à frente é recusado.
+    """
+    if valor == "":
+        return valor
+    if any(ord(c) <= 32 or ord(c) == 127 for c in valor):
+        raise ValueError("o endereço não pode ter espaços nem caracteres de controlo")
+    if not valor[:8].lower() == "https://":
+        raise ValueError("o endereço tem de começar por https://")
+    try:
+        partes = urlsplit(valor)
+        anfitriao = (partes.hostname or "").lower()
+    except ValueError as erro:
+        raise ValueError("o endereço não é válido") from erro
+    if not anfitriao or "@" in partes.netloc:
+        raise ValueError("o endereço tem de ter um anfitrião, sem utilizador")
+    if so_estes is not None and partes.netloc.lower() not in so_estes:
+        raise ValueError("o anfitrião não é um dos permitidos")
+    return valor
+
+
+def _maps_url(valor: str) -> str:
+    return _anfitriao_de_https(valor, None)
+
+
+def _instagram(valor: str) -> str:
+    return _anfitriao_de_https(valor, ANFITRIOES_DO_INSTAGRAM)
+
+
+def _sem_quebras_de_linha(valor: str) -> str:
+    if "\r" in valor or "\n" in valor:
+        raise ValueError("este campo é de uma só linha")
+    return valor
+
+
+#: Não se apara (ao contrário do `nome` ou do `titulo`): uma rede ou uma
+#: password de WiFi pode ter espaços nas pontas, e aparar guardava uma
+#: password que já não condiz com a rede.
+TextoDeUmaLinha = Annotated[
+    str,
+    StringConstraints(max_length=LIMITE_DO_TEXTO_DE_UMA_LINHA),
+    AfterValidator(_sem_quebras_de_linha),
+]
+EnderecoMaps = Annotated[
+    str, StringConstraints(max_length=LIMITE_DO_ENDERECO), AfterValidator(_maps_url)
+]
+EnderecoInstagram = Annotated[
+    str, StringConstraints(max_length=LIMITE_DO_ENDERECO), AfterValidator(_instagram)
+]
+
+
+def _minutos(hora: str) -> int:
+    return int(hora[:2]) * 60 + int(hora[3:])
+
+
+def _validar_horario_na_escrita(dias: list[DiaDoHorario]) -> list[DiaDoHorario]:
+    """Mais estrito que a leitura: sete dias, uma vez cada, sem períodos sobrepostos.
+
+    Reutiliza `DiaDoHorario` (ADR 0011: um só validador para o formato). Os
+    períodos medem-se na linha do dia: `fecha < abre` soma 24 horas.
+    """
+    nomes = [d.dia for d in dias]
+    if len(dias) != len(DIAS_DA_SEMANA) or set(nomes) != set(DIAS_DA_SEMANA):
+        raise ValueError("o horário tem de ter os sete dias, cada um uma vez")
+    for dia in dias:
+        if len(dia.periodos) > MAXIMO_DE_PERIODOS_POR_DIA:
+            raise ValueError("demasiados períodos num dia")
+        intervalos = sorted(
+            (
+                _minutos(p.abre),
+                _minutos(p.fecha)
+                + (1440 if _minutos(p.fecha) < _minutos(p.abre) else 0),
+            )
+            for p in dia.periodos
+        )
+        for (_, fim), (inicio_seguinte, _) in zip(
+            intervalos, intervalos[1:], strict=False
+        ):
+            if inicio_seguinte < fim:
+                raise ValueError("há períodos sobrepostos no mesmo dia")
+    return sorted(dias, key=lambda d: DIAS_DA_SEMANA.index(d.dia))
+
+
+class DefinicoesGestao(BaseModel):
+    """Corpo de `GET` e `PUT /gestao/definicoes`.
+
+    Texto vazio sai como `""` (como a BD diz "não há"); o `/info` público
+    dá-lhe `null`.
+    """
+
+    wifi_rede: str
+    wifi_password: str
+    morada: str
+    telefone: str
+    instagram: str
+    maps_url: str
+    horario: list[DiaDoHorario] | None
+    horario_estado: EstadoDoHorario
+
+
+class PedidoDefinicoes(_Corpo):
+    """`PUT` substitui os sete campos numa só transação.
+
+    `horario: null` = "não configurado" e apaga a chave. Os sete são
+    obrigatórios: um campo em falta não pode apagar o que lá estava.
+    """
+
+    wifi_rede: TextoDeUmaLinha
+    wifi_password: TextoDeUmaLinha
+    morada: TextoDeUmaLinha
+    telefone: TextoDeUmaLinha
+    instagram: EnderecoInstagram
+    maps_url: EnderecoMaps
+    horario: list[DiaDoHorario] | None
+
+    @field_validator("horario")
+    @classmethod
+    def _horario_completo(
+        cls, valor: list[DiaDoHorario] | None
+    ) -> list[DiaDoHorario] | None:
+        if valor is None:
+            return None
+        return _validar_horario_na_escrita(valor)
+
+
+# --------------------------------------------------------------------------
+# Clientes
+# --------------------------------------------------------------------------
+
+
+class ClienteGestao(BaseModel):
+    """Um cliente inscrito. **Nunca** o `token_cancelar`: é uma credencial."""
+
+    id: int
+    nome: str
+    email: str
+    telemovel: str | None
+    consentimento_em: datetime
+    versao_termos: str
+    criado_em: datetime
+
+
+class RespostaClientes(BaseModel):
+    """Corpo de `GET /gestao/clientes`, do mais recente para o mais antigo."""
+
+    clientes: list[ClienteGestao]
+
+
+# --------------------------------------------------------------------------
+# Mudar a password
+# --------------------------------------------------------------------------
+
+#: O teto limita o custo do argon2 que um pedido pode obrigar a pagar.
+MAXIMO_DA_PASSWORD = 1024
+
+
+class PedidoMudarPassword(_Corpo):
+    """Muda a password de **quem tem a sessão**: nunca leva `utilizador`."""
+
+    password_atual: Annotated[
+        str, StringConstraints(min_length=1, max_length=MAXIMO_DA_PASSWORD)
+    ]
+    password_nova: Annotated[
+        str, StringConstraints(min_length=1, max_length=MAXIMO_DA_PASSWORD)
+    ]
