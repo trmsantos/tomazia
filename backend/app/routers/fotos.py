@@ -36,6 +36,7 @@ from app.erros import MENSAGEM_CORPO_INVALIDO, ErroDaApi
 from app.models.admins import Admin
 from app.models.tipos import agora_utc
 from app.rede import ip_do_cliente
+from app.schemas.erros import RespostaDeErro
 from app.schemas.fotos import RespostaEnvioFoto
 from app.services import auth as auth_servico
 from app.services import fotos as servico
@@ -264,19 +265,30 @@ _ESQUEMA_DO_CORPO = {
 #: códigos de erro possíveis, e o esquema gerado prometia só o `202`.
 _RESPOSTAS_DE_ERRO: dict[int | str, dict[str, Any]] = {
     400: {
+        "model": RespostaDeErro,
         "description": (
             "A imagem é inválida (formato fora de JPEG/PNG/WebP, dados "
             "corrompidos) ou tem mais píxeis do que o limite."
-        )
+        ),
     },
-    411: {"description": "Falta o `Content-Length`, ou não é um número."},
-    413: {"description": "O ficheiro, ou o corpo do pedido, é maior do que o limite."},
+    411: {
+        "model": RespostaDeErro,
+        "description": "Falta o `Content-Length`, ou não é um número.",
+    },
+    413: {
+        "model": RespostaDeErro,
+        "description": "O ficheiro, ou o corpo do pedido, é maior do que o limite.",
+    },
     422: {
+        "model": RespostaDeErro,
         "description": (
             "Falta o campo `ficheiro`, ou `descricao`/`enviada_por` é demasiado longo."
-        )
+        ),
     },
-    429: {"description": "Mais de 5 envios na última hora para este IP."},
+    429: {
+        "model": RespostaDeErro,
+        "description": "Mais de 5 envios na última hora para este IP.",
+    },
 }
 
 

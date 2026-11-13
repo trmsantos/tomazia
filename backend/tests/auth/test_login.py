@@ -80,7 +80,16 @@ class TestCorpoInvalido:
 
         assert resposta.status_code == 422
         corpo_da_resposta = resposta.json()
-        assert set(corpo_da_resposta) == {"erro", "mensagem"}, (
+        # `campo` é aditivo (F2-05a): o primeiro campo do corpo que falhou.
+        assert (
+            {"erro", "mensagem"}
+            <= set(corpo_da_resposta)
+            <= {
+                "erro",
+                "mensagem",
+                "campo",
+            }
+        ), (
             f"o corpo de um 422 tem de ser o envelope `{{'erro', 'mensagem'}}` "
             f"de `docs/ESPECIFICACAO.md`, não {corpo_da_resposta!r} — o "
             "`{'detail': [...]}` por omissão do FastAPI tem de ser "

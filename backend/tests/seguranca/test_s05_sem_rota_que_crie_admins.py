@@ -204,19 +204,21 @@ def _nomes_de_propriedades(
 
 
 class TestCamada3OpenAPI:
-    def test_so_o_login_pede_password_no_corpo_do_pedido(self) -> None:
-        """O conjunto de caminhos com `password` no corpo é exatamente `/auth/login`.
+    def test_so_o_login_tem_propriedades_com_password_no_corpo_do_pedido(
+        self,
+    ) -> None:
+        """Mapa exato, por caminho, de todas as propriedades cujo nome **contém** "password".
 
-        Uma rota nova que pedisse uma password no corpo — para criar ou
-        mudar uma conta, por exemplo — alargaria este conjunto, e é
-        precisamente isso que o S-05 proíbe.
+        Antes comparava-se `"password" in nomes`, e um `nova_password` ou
+        `password_nova` (da mudança de password da F2-05c) passava a
+        olhar-se como "não é password". Agora: contém, e por caminho.
         """
         from app.main import criar_app
 
         esquema = criar_app().openapi()
         componentes = esquema.get("components", {}).get("schemas", {})
 
-        com_password: set[str] = set()
+        encontrados: dict[str, set[str]] = {}
         for caminho, item in esquema.get("paths", {}).items():
             for operacao in item.values():
                 if not isinstance(operacao, dict):
@@ -228,12 +230,16 @@ class TestCamada3OpenAPI:
                     sub_esquema = conteudo.get("schema")
                     if not isinstance(sub_esquema, dict):
                         continue
-                    if "password" in _nomes_de_propriedades(sub_esquema, componentes):
-                        com_password.add(caminho)
+                    nomes = {
+                        nome
+                        for nome in _nomes_de_propriedades(sub_esquema, componentes)
+                        if "password" in nome.lower()
+                    }
+                    if nomes:
+                        encontrados.setdefault(caminho, set()).update(nomes)
 
-        assert com_password == {"/auth/login"}, (
-            f"caminhos com `password` no corpo do pedido: {sorted(com_password)}, "
-            "esperava só {'/auth/login'}"
+        assert encontrados == {"/auth/login": {"password"}}, (
+            f"propriedades com `password` por caminho: {encontrados}"
         )
 
     def test_hash_password_nunca_aparece_num_esquema(self) -> None:

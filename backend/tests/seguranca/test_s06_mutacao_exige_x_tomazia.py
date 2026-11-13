@@ -25,7 +25,8 @@ continua a aplicar-se aqui.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -148,3 +149,76 @@ class TestLoginIncluidoSemExcecao:
         cliente = TestClient(criar_app(), base_url="https://testserver")
         resposta = cliente.post("/auth/login", json=CREDENCIAIS_FALSAS)
         assert resposta.status_code == 403
+
+
+# --- Casos de borda do guarda, direto sobre o ASGI (F2-05a) -----------------
+
+
+async def _app_final(escopo: Any, receber: Any, enviar: Any) -> None:
+    if escopo["type"] == "http":
+        await enviar({"type": "http.response.start", "status": 200, "headers": []})
+        await enviar({"type": "http.response.body", "body": b"ok"})
+    else:
+        await enviar({"type": escopo["type"] + ".passou"})
+
+
+def _correr_guarda(escopo: dict[str, Any]) -> Any:
+    from app.marca import GuardaXTomazia
+
+    enviados: list[dict[str, Any]] = []
+
+    async def receber() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def enviar(mensagem: dict[str, Any]) -> None:
+        enviados.append(mensagem)
+
+    asyncio.run(GuardaXTomazia(_app_final)(escopo, receber, enviar))
+    inicio = [m for m in enviados if m["type"] == "http.response.start"]
+    return inicio[0]["status"] if inicio else [m["type"] for m in enviados]
+
+
+def _escopo_http(metodo: str, cabecalhos: list[tuple[bytes, bytes]]) -> dict[str, Any]:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": metodo,
+        "scheme": "https",
+        "path": "/x",
+        "raw_path": b"/x",
+        "root_path": "",
+        "query_string": b"",
+        "headers": cabecalhos,
+        "server": ("t", 443),
+        "client": ("c", 1),
+    }
+
+
+def test_cabecalho_repetido_le_se_o_primeiro() -> None:
+    dois_e_um = [(b"x-tomazia", b"2"), (b"x-tomazia", b"1")]
+    um_e_dois = [(b"x-tomazia", b"1"), (b"x-tomazia", b"2")]
+    assert _correr_guarda(_escopo_http("POST", dois_e_um)) == 403
+    assert _correr_guarda(_escopo_http("POST", um_e_dois)) == 200
+
+
+def test_valor_com_espaco_e_403() -> None:
+    assert _correr_guarda(_escopo_http("POST", [(b"x-tomazia", b" 1")])) == 403
+
+
+@pytest.mark.parametrize(
+    "escopo",
+    [
+        {
+            "type": "websocket",
+            "path": "/x",
+            "headers": [],
+            "query_string": b"",
+            "root_path": "",
+        },
+        {"type": "lifespan"},
+    ],
+    ids=["websocket", "lifespan"],
+)
+def test_websocket_e_lifespan_passam_sem_serem_tocados(escopo: dict[str, Any]) -> None:
+    assert _correr_guarda(escopo) == [escopo["type"] + ".passou"]

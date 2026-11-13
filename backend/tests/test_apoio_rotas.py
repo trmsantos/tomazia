@@ -113,3 +113,60 @@ def test_contexto_com_os_dois_atributos_continua_a_funcionar() -> None:
     encontradas = rotas_declaradas(app)
 
     assert "/gestao/categorias" in encontradas
+
+
+# --- F2-05a: o `getattr(atual, "routes", [])` deixou de ser silencioso ------
+
+
+def test_mount_de_uma_app_asgi_opaca_rebenta_em_vez_de_dar_zero_rotas() -> None:
+    """`Mount.routes` faz `getattr(self.app, "routes", [])` por dentro: o
+    silêncio é duplo. Uma app ASGI sem `.routes` não se pode enumerar, e
+    "não tem rotas" não pode dar o mesmo resultado que "não consegui ver".
+    """
+    from fastapi import FastAPI
+    from starlette.routing import Mount
+
+    async def opaca(scope: Any, receive: Any, send: Any) -> None:  # pragma: no cover
+        return None
+
+    app = FastAPI()
+    app.router.routes.append(Mount("/legado", app=opaca))
+
+    with pytest.raises(AssertionError, match=r"Mount"):
+        rotas_declaradas(app)
+
+
+def test_no_sem_routes_rebenta_em_vez_de_ser_saltado() -> None:
+    class _NoSemRoutes:
+        pass
+
+    app_falsa = _AppFalsa(_RouterFalso(routes=[_NoSemRoutes()]))
+    with pytest.raises(AssertionError):
+        rotas_declaradas(app_falsa)
+
+
+def test_router_sem_routes_rebenta() -> None:
+    class _RouterSemRoutes:
+        pass
+
+    class _AppComRouterSemRoutes:
+        router = _RouterSemRoutes()
+
+    with pytest.raises(AssertionError, match=r"\.routes"):
+        rotas_declaradas(_AppComRouterSemRoutes())
+
+
+def test_mount_de_uma_app_fastapi_continua_a_ser_percorrido() -> None:
+    from fastapi import FastAPI
+    from starlette.routing import Mount
+
+    interna = FastAPI()
+
+    @interna.get("/ping")
+    def ping() -> dict[str, bool]:  # pragma: no cover - nunca é chamada
+        return {"ok": True}
+
+    externa = FastAPI()
+    externa.router.routes.append(Mount("/sub", app=interna))
+
+    assert "/sub/ping" in rotas_declaradas(externa)

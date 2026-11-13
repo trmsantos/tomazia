@@ -86,7 +86,17 @@ def rotas_declaradas(aplicacao: Any) -> dict[str, frozenset[str]]:
 
     while por_visitar:
         prefixo, atual = por_visitar.pop()
-        for rota in list(getattr(atual, "routes", [])):
+        # Acesso direto, nunca `getattr(atual, "routes", [])`: um nó sem
+        # `.routes` não é "um nó sem rotas", é um nó que a travessia não
+        # sabe ler, e os dois não podem dar o mesmo resultado (regra 10).
+        if not hasattr(atual, "routes"):
+            raise AssertionError(
+                f"{type(atual).__module__}.{type(atual).__name__} não tem "
+                "`.routes`: a travessia não sabe enumerar as suas rotas, e "
+                "saltá-lo daria o mesmo resultado a 'não tem rotas' e a 'não "
+                "consegui ver'. Atualiza `tests/apoio_rotas.py`."
+            )
+        for rota in list(atual.routes):
             if isinstance(rota, APIRoute | Route):
                 caminho = prefixo + rota.path
                 encontradas[caminho] = encontradas.get(caminho, frozenset()) | _metodos(
@@ -129,7 +139,17 @@ def rotas_declaradas(aplicacao: Any) -> dict[str, frozenset[str]]:
                     (prefixo + contexto.prefix, contexto.included_router)
                 )
             elif isinstance(rota, Mount):
-                por_visitar.append((prefixo + rota.path, rota))
+                # `Mount.routes` faz `getattr(self.app, "routes", [])` por
+                # dentro, e esse silêncio é o mesmo que acima: inspeciona-se
+                # a app montada diretamente.
+                if not hasattr(rota.app, "routes"):
+                    desconhecidas.append(
+                        f"Mount({rota.path!r}) com a app ASGI opaca "
+                        f"{type(rota.app).__module__}.{type(rota.app).__name__} "
+                        "(sem `.routes`)"
+                    )
+                else:
+                    por_visitar.append((prefixo + rota.path, rota.app))
             elif hasattr(rota, "routes"):
                 por_visitar.append((prefixo, rota))
             else:

@@ -18,6 +18,11 @@ from tests.apoio_auth import (  # noqa: F401 - o import é o registo da fixture
     cliente_seguro,
     sessao_de_admin,
 )
+from tests.apoio_gestao import (  # noqa: F401 - o import é o registo da fixture
+    cliente_sem_sessao_com_ementa,
+    gestao,
+    gestao_sem_excecoes,
+)
 from tests.apoio_http import (  # noqa: F401 - o import é o registo da fixture
     _bd_modelo_em_head,
     cliente,
