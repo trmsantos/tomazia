@@ -8,7 +8,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
-1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b (acrescentada pelo PR #63 da F4-02).
+1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto.
 2. **Depois, o público:** F3-06a Visita-nos → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
