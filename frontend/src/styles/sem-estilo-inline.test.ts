@@ -28,7 +28,7 @@ import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "../testes/componentes";
-import { FICHEIROS_DA_F3_05 } from "../testes/ecras";
+import { FICHEIROS_DA_F3_05, FICHEIROS_DA_F4_02 } from "../testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -96,7 +96,9 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
     }).filter((ficheiro) => {
       const relativo = caminhoRelativo(ficheiro);
       return (
-        !relativo.startsWith("src/lib/api/") &&
+        // O cliente e os módulos de API escritos à mão entram (F4-02: `gestao-ementa.ts` é
+        // sentinela); só o `gerado/`, que se escreve com `npm run gerar-api`, fica de fora.
+        !relativo.startsWith("src/lib/api/gerado/") &&
         !relativo.endsWith("sem-estilo-inline.test.ts") &&
         !/\.test\.tsx?$/.test(relativo)
       );
@@ -104,7 +106,7 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
 
     exigirSentinelas(
       ficheiros,
-      [...COMPONENTES_DA_F3_01, "src/App.tsx", ...FICHEIROS_DA_F3_05],
+      [...COMPONENTES_DA_F3_01, "src/App.tsx", ...FICHEIROS_DA_F3_05, ...FICHEIROS_DA_F4_02],
       "style inline",
     );
 

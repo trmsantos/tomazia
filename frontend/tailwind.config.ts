@@ -238,6 +238,8 @@ export default {
         // mínimo, um nome longo come-o todo e a linha deixa de se ler como uma
         // linha de ementa (F3-02, secção 6.3).
         fio: "var(--espaco-6)",
+        // O botão do preço na linha da gestão (F4-02, 4): ver o token.
+        "preco-gestao": "var(--largura-preco-gestao)",
       },
       maxWidth: {
         coluna: "var(--coluna-publica)",

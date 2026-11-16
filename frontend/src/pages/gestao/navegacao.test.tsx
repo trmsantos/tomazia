@@ -7,7 +7,8 @@
  *
  * ```ts
  * export const DESTINOS: readonly { rotulo: string; caminho: string; icone: ReactElement }[];
- * export function navegar(caminho: string, opcoes?: { substituir?: boolean }): void;
+ * export function navegar(caminho: string, opcoes?: { substituir?: boolean; estado?: unknown }): void;
+ * export const ROTAS_DOS_DESTINOS: ReadonlySet<string> | readonly string[];  // F4-02: saiu do AppGestao
  * export function useCaminho(): string;   // o `location.pathname` atual, reativo
  * ```
  *
@@ -23,7 +24,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DESTINOS_ESPERADOS, abrirEm } from "../../testes/gestao";
-import { DESTINOS, navegar, useCaminho } from "./navegacao";
+import { DESTINOS, ROTAS_DOS_DESTINOS, navegar, useCaminho } from "./navegacao";
 
 beforeEach(() => {
   abrirEm("/gestao");
@@ -117,5 +118,54 @@ describe("navegar e useCaminho", () => {
     unmount();
 
     expect(retirar.mock.calls.filter(([tipo]) => tipo === "popstate").length).toBe(popstates);
+  });
+});
+
+describe("ROTAS_DOS_DESTINOS (F4-02: saiu do AppGestao para aqui)", () => {
+  it("são os caminhos dos cinco destinos, e só esses (o login não é um destino)", () => {
+    expect(Array.from(ROTAS_DOS_DESTINOS).sort()).toEqual(
+      DESTINOS_ESPERADOS.map((destino) => destino.caminho).sort(),
+    );
+    expect(Array.from(ROTAS_DOS_DESTINOS)).not.toContain("/gestao/entrar");
+  });
+});
+
+describe("navegar com estado (F4-02, D4: o destino e o aviso viajam no history.state)", () => {
+  it("com substituir, o estado fica no histórico e o endereço não o leva", () => {
+    const estado = { voltar: "/gestao/ementa?categoria=garrafeira", sessaoTerminou: true };
+
+    act(() => {
+      navegar("/gestao/entrar", { substituir: true, estado });
+    });
+
+    expect(window.history.state).toEqual(estado);
+    expect(window.location.pathname).toBe("/gestao/entrar");
+    expect(window.location.search).toBe("");
+    expect(window.location.href).not.toContain("voltar");
+  });
+
+  it("sem substituir, o estado também vai", () => {
+    act(() => {
+      navegar("/gestao/eventos", { estado: { x: 1 } });
+    });
+    expect(window.history.state).toEqual({ x: 1 });
+  });
+
+  it("sem estado continua null (nada de estado herdado da entrada anterior)", () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+
+    act(() => {
+      navegar("/gestao", { substituir: true });
+    });
+
+    expect(window.history.state).toBeNull();
+  });
+
+  it("o histórico não cresce com substituir + estado", () => {
+    const antes = window.history.length;
+    act(() => {
+      navegar("/gestao/entrar", { substituir: true, estado: { voltar: "/gestao/mais" } });
+    });
+    expect(window.history.length).toBe(antes);
   });
 });

@@ -25,24 +25,37 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { entrar, quemSouEu, sair } from "../../lib/api/auth";
+import { obterEmentaGestao } from "../../lib/api/gestao-ementa";
 import {
   DESTINOS_ESPERADOS,
   SESSAO_DE_TESTE,
+  TEXTOS_DA_EMENTA_GESTAO,
   TEXTOS_DA_GESTAO as T,
   abrirEm,
   erro401,
   erroDoServidor,
   erroSemResposta,
+  ementaDeGestaoDeTeste,
 } from "../../testes/gestao";
 import AppGestao from "./AppGestao";
 
 vi.mock("../../lib/api/auth", () => ({ entrar: vi.fn(), quemSouEu: vi.fn(), sair: vi.fn() }));
+// F4-02: o destino Ementa pede `GET /gestao/categorias`; aqui responde sempre a fixture.
+vi.mock("../../lib/api/gestao-ementa", () => ({
+  obterEmentaGestao: vi.fn(),
+  criarProduto: vi.fn(),
+  alterarProduto: vi.fn(),
+  reordenarProdutos: vi.fn(),
+}));
 
 const entrarFalso = vi.mocked(entrar);
 const quemSouEuFalso = vi.mocked(quemSouEu);
 const sairFalso = vi.mocked(sair);
+const obterEmentaFalso = vi.mocked(obterEmentaGestao);
 
 beforeEach(() => {
+  obterEmentaFalso.mockReset();
+  obterEmentaFalso.mockResolvedValue(ementaDeGestaoDeTeste());
   entrarFalso.mockReset();
   quemSouEuFalso.mockReset();
   sairFalso.mockReset();
@@ -136,6 +149,99 @@ describe("a guarda: o 401 leva ao login", () => {
     expect(empurrar).not.toHaveBeenCalled();
     expect(await screen.findByRole("heading", { level: 1, name: T.tituloDoLogin })).toBeVisible();
     expect(screen.queryByRole("navigation")).toBeNull();
+  });
+});
+
+describe("o 401 lembra o destino de origem, no history.state (F4-02, D4)", () => {
+  function estadoDoHistorico(): { voltar?: unknown; sessaoTerminou?: unknown } {
+    const estado: unknown = window.history.state;
+    return typeof estado === "object" && estado !== null ? estado : {};
+  }
+
+  it("a guarda à chegada, em /gestao/eventos: voltar sim, sessaoTerminou não", async () => {
+    quemSouEuFalso.mockRejectedValue(erro401());
+
+    await abrir("/gestao/eventos");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect(estadoDoHistorico().voltar).toBe("/gestao/eventos");
+    expect(estadoDoHistorico().sessaoTerminou).not.toBe(true);
+    expect(window.location.search).toBe("");
+  });
+
+  it("a guarda à chegada, em /gestao: sem destino e sem aviso", async () => {
+    quemSouEuFalso.mockRejectedValue(erro401());
+
+    await abrir("/gestao");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect(estadoDoHistorico().voltar).toBeUndefined();
+    expect(estadoDoHistorico().sessaoTerminou).not.toBe(true);
+  });
+
+  it("a guarda leva também a query da ementa", async () => {
+    quemSouEuFalso.mockRejectedValue(erro401());
+
+    await abrir("/gestao/ementa?categoria=garrafeira");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect(estadoDoHistorico().voltar).toBe("/gestao/ementa?categoria=garrafeira");
+  });
+
+  it("um 401 de um destino com a sessão confirmada: voltar E sessaoTerminou, a substituir", async () => {
+    // A guarda recebe 200; depois o servidor «esquece» a sessão (o /auth/eu do login dá 401).
+    quemSouEuFalso.mockReset();
+    quemSouEuFalso.mockResolvedValueOnce(SESSAO_DE_TESTE);
+    quemSouEuFalso.mockRejectedValue(erro401());
+    obterEmentaFalso.mockRejectedValue(erro401());
+    const empurrar = vi.spyOn(window.history, "pushState");
+    const antes = window.history.length;
+
+    await abrir("/gestao/ementa?categoria=garrafeira");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect(estadoDoHistorico().voltar).toBe("/gestao/ementa?categoria=garrafeira");
+    expect(estadoDoHistorico().sessaoTerminou).toBe(true);
+    expect(window.location.search, "o destino nunca vai no endereço").toBe("");
+    expect(empurrar).not.toHaveBeenCalled();
+    expect(window.history.length).toBe(antes);
+    expect(quemSouEuFalso).toHaveBeenCalledTimes(1);
+  });
+
+  it("o fluxo inteiro: 401 -> login com «A sessão terminou» -> entrar -> de volta ao destino, com o <h1> focado", async () => {
+    quemSouEuFalso.mockReset();
+    quemSouEuFalso.mockResolvedValueOnce(SESSAO_DE_TESTE);
+    quemSouEuFalso.mockRejectedValue(erro401());
+    obterEmentaFalso.mockRejectedValueOnce(erro401());
+    await abrir("/gestao/ementa?categoria=garrafeira");
+
+    expect(await screen.findByText(TEXTOS_DA_EMENTA_GESTAO.sessaoTerminou)).toBeVisible();
+
+    entrarFalso.mockResolvedValue(SESSAO_DE_TESTE);
+    fireEvent.change(screen.getByLabelText(T.etiquetaUtilizador), { target: { value: "dono" } });
+    fireEvent.change(screen.getByLabelText(T.etiquetaPassword), { target: { value: "segredo" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: T.botaoEntrar }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/ementa");
+    });
+    expect(window.location.search).toBe("?categoria=garrafeira");
+    await waitFor(() => {
+      expect(h1()).toHaveTextContent("Ementa");
+    });
+    expect(document.activeElement).toBe(h1());
+    expect(screen.queryByText(TEXTOS_DA_EMENTA_GESTAO.sessaoTerminou)).toBeNull();
   });
 });
 
@@ -334,10 +440,9 @@ describe("mudar de destino (5.5)", () => {
   });
 });
 
-describe("os quatro destinos vazios (7.1)", () => {
+describe("os três destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02)", () => {
   it.each([
     ["/gestao", T.vazioInicio],
-    ["/gestao/ementa", T.vazioEmenta],
     ["/gestao/eventos", T.vazioEventos],
     ["/gestao/galeria", T.vazioGaleria],
   ])("%s: o título comum, a linha própria e nenhum botão", async (caminho, linha) => {
@@ -350,10 +455,10 @@ describe("os quatro destinos vazios (7.1)", () => {
   });
 
   it("nenhum promete datas nem funcionalidades: não dizem «em breve»", async () => {
-    for (const caminho of ["/gestao", "/gestao/ementa", "/gestao/eventos", "/gestao/galeria"]) {
+    for (const caminho of ["/gestao", "/gestao/eventos", "/gestao/galeria"]) {
       abrirEm(caminho);
     }
-    await abrir("/gestao/ementa");
+    await abrir("/gestao/eventos");
     expect(screen.getByRole("main").textContent).not.toMatch(/em breve|brevemente|vai/i);
   });
 });

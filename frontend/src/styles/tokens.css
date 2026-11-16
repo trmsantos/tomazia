@@ -138,6 +138,13 @@
   --coluna-publica: 640px;
   --largura-folha: 480px; /* a Folha a partir de 1024 px, centrada */
   --largura-vazio: 320px; /* a coluna estreita do Estado vazio */
+  /* A largura mínima do botão do preço na linha da ementa da gestão (F4-02,
+     4): três algarismos, vírgula e dois decimais mais o símbolo, a 17 px
+     semi-negrito e `px-3`. Com a mesma largura mínima, os preços de uma lista
+     de produtos acabam todos no mesmo sítio e o botão não salta quando o preço
+     passa de "6,50 €" a "Oferta". Um token e não um literal: o campo da edição
+     usa-o para não ser mais estreito que o botão que substitui. */
+  --largura-preco-gestao: 96px;
   --altura-folha: 85dvh; /* dvh e não vh: com a barra do Safari, 85vh corta o botão de baixo */
 
   /*

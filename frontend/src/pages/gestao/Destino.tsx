@@ -5,9 +5,9 @@ import { Botao } from "../../components/ui/Botao";
 import { EstadoVazio } from "../../components/ui/EstadoVazio";
 import { sair } from "../../lib/api/auth";
 import { ErroDaApi } from "../../lib/api/cliente";
-import { DESTINOS } from "./navegacao";
+import { EmentaGestao } from "./ementa/EmentaGestao";
+import { DESTINOS, navegar } from "./navegacao";
 import { armarPrazo } from "./prazo";
-import { useSessaoDaGestao } from "./SessaoDaGestao";
 
 /**
  * O conteúdo de cada destino (F4-01, secções 6 e 7).
@@ -20,7 +20,6 @@ import { useSessaoDaGestao } from "./SessaoDaGestao";
 const TEXTOS = {
   vazioTitulo: "Ainda não há nada aqui.",
   vazioInicio: "Esta página não tem conteúdo nesta versão.",
-  vazioEmenta: "A gestão da ementa não está disponível nesta versão.",
   vazioEventos: "A gestão dos eventos não está disponível nesta versão.",
   vazioGaleria: "A moderação das fotos não está disponível nesta versão.",
   sair: "Sair",
@@ -33,7 +32,6 @@ const TEXTOS = {
 
 const LINHA_DO_VAZIO: Record<string, string> = {
   "/gestao": TEXTOS.vazioInicio,
-  "/gestao/ementa": TEXTOS.vazioEmenta,
   "/gestao/eventos": TEXTOS.vazioEventos,
   "/gestao/galeria": TEXTOS.vazioGaleria,
 };
@@ -54,7 +52,6 @@ function Titulo({ children }: { children: string }): ReactElement {
  * com a sessão aberta, e a linha diz-lhe isso. O foco fica no botão.
  */
 function Mais(): ReactElement {
-  const { aoPerderSessao } = useSessaoDaGestao();
   const idDaLinha = useId();
   const botao = useRef<HTMLButtonElement>(null);
   const cancelamento = useRef<AbortController | null>(null);
@@ -93,9 +90,10 @@ function Mais(): ReactElement {
       desarmar();
     }
 
-    // 204: apaga o resultado da guarda e navega para o login, a substituir. O
-    // login que aparece é a confirmação; sem Aviso.
-    aoPerderSessao();
+    // 204: navega para o login, a substituir (o `AppGestao` apaga o resultado da
+    // guarda ao chegar lá). Sem destino e sem «A sessão terminou»: saiu de
+    // propósito. O login que aparece é a confirmação; sem Aviso.
+    navegar("/gestao/entrar", { substituir: true });
   }
 
   return (
@@ -126,6 +124,7 @@ function Mais(): ReactElement {
 
 export function Destino({ caminho }: { caminho: string }): ReactElement {
   if (caminho === "/gestao/mais") return <Mais />;
+  if (caminho === "/gestao/ementa") return <EmentaGestao />;
 
   const titulo = DESTINOS.find((destino) => destino.caminho === caminho)?.rotulo ?? "Início";
   return (

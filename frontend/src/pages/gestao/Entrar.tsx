@@ -6,6 +6,7 @@ import { Campo } from "../../components/ui/Campo";
 import { entrar, quemSouEu } from "../../lib/api/auth";
 import { ErroDaApi } from "../../lib/api/cliente";
 import { tempoComposto } from "../../lib/formato/tempo-em-falta";
+import { destinoDepoisDeEntrar } from "./destino-depois-de-entrar";
 import { navegar } from "./navegacao";
 import { armarPrazo } from "./prazo";
 import { useSessaoOpcional } from "./SessaoDaGestao";
@@ -31,6 +32,13 @@ import { useSessaoOpcional } from "./SessaoDaGestao";
  *
  * Os valores vivem só no estado deste componente: nunca em `localStorage` nem em
  * estado global, e deixam de existir quando o formulário desmonta.
+ *
+ * **O destino e o aviso vêm do `history.state`** (F4-02, D4), lido uma vez ao
+ * montar, com verificação de forma: nunca do endereço, que um link de fora
+ * controla. Com `sessaoTerminou === true` (exatamente o booleano) mostra «A sessão
+ * terminou. Entra outra vez.»; depois de entrar — e no «já com sessão» — vai ao
+ * destino lembrado, por `destinoDepoisDeEntrar`, que o valida outra vez, ou ao
+ * Início. A substituir: o «Voltar» não regressa ao login.
  */
 const TEXTOS = {
   nomeDoBar: "Bar da Tomazia",
@@ -44,12 +52,13 @@ const TEXTOS = {
   semResposta: "Não consegui entrar. Verifica a ligação e tenta outra vez.",
   servidor:
     "Não consegui entrar. O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
+  sessaoTerminou: "A sessão terminou. Entra outra vez.",
 } as const;
 
 const ID_DA_MENSAGEM = "login-mensagem";
 
 type Mensagem = {
-  tipo: "credenciais" | "bloqueada" | "sem-resposta" | "servidor";
+  tipo: "sessao" | "credenciais" | "bloqueada" | "sem-resposta" | "servidor";
   texto: string;
   /** A segunda linha do 429, só quando há um prazo válido. */
   tempo?: string;
@@ -88,15 +97,31 @@ function prazoDoBloqueio(erro: ErroDaApi): number | null {
   return candidatos.length === 0 ? null : Math.max(...candidatos);
 }
 
+/** `history.state?.sessaoTerminou === true`, sem confiar na forma do que lá está. */
+function sessaoTerminou(estado: unknown): boolean {
+  if (typeof estado !== "object" || estado === null) return false;
+  try {
+    return (estado as { sessaoTerminou?: unknown }).sessaoTerminou === true;
+  } catch {
+    return false;
+  }
+}
+
 export function Entrar(): ReactElement {
   const sessao = useSessaoOpcional();
+
+  // O `history.state` desta entrada, lido uma vez: uma tentativa falhada tira a
+  // mensagem mas não o destino.
+  const [estadoDoHistorico] = useState<unknown>(() => window.history.state as unknown);
 
   const [utilizador, setUtilizador] = useState("");
   const [password, setPassword] = useState("");
   const [erroUtilizador, setErroUtilizador] = useState<string | undefined>(undefined);
   const [erroPassword, setErroPassword] = useState<string | undefined>(undefined);
   const [aEntrar, setAEntrar] = useState(false);
-  const [mensagem, setMensagem] = useState<Mensagem | null>(null);
+  const [mensagem, setMensagem] = useState<Mensagem | null>(() =>
+    sessaoTerminou(estadoDoHistorico) ? { tipo: "sessao", texto: TEXTOS.sessaoTerminou } : null,
+  );
   // O instante (ms) em que o 429 acaba; `null` quando não há bloqueio com prazo.
   const [bloqueadoAte, setBloqueadoAte] = useState<number | null>(null);
 
@@ -107,13 +132,19 @@ export function Entrar(): ReactElement {
 
   // Já com sessão: o formulário aparece de imediato e a pergunta corre em
   // segundo plano. 200 segue para a gestão; 401 ou falha não mudam nada.
+  //
+  // Não se pergunta a quem acabou de ser mandado para aqui por um 401 («A sessão
+  // terminou»): o servidor acabou de dizer que não há sessão, e perguntar outra
+  // vez era um pedido a mais — e, com uma resposta atrasada de uma sessão que
+  // entretanto se abriu noutro separador, um salto que ninguém pediu.
   useEffect(() => {
+    if (sessaoTerminou(estadoDoHistorico)) return;
     const controlador = new AbortController();
     quemSouEu({ sinal: controlador.signal }).then(
       () => {
         if (controlador.signal.aborted) return;
         sessao?.aoConfirmarSessao();
-        navegar("/gestao", { substituir: true });
+        navegar(destinoDepoisDeEntrar(estadoDoHistorico), { substituir: true });
       },
       () => undefined,
     );
@@ -200,10 +231,11 @@ export function Entrar(): ReactElement {
     }
 
     desarmar();
-    // 200: a sessão está confirmada; vai-se sempre para o Início, a substituir
-    // a entrada do histórico (o «Voltar» não regressa ao login).
+    // 200: a sessão está confirmada; vai-se ao destino de onde se foi mandado
+    // (validado à leitura) ou ao Início, a substituir a entrada do histórico
+    // (o «Voltar» não regressa ao login).
     sessao?.aoConfirmarSessao();
-    navegar("/gestao", { substituir: true });
+    navegar(destinoDepoisDeEntrar(estadoDoHistorico), { substituir: true });
   }
 
   function aoSubmeter(evento: FormEvent<HTMLFormElement>): void {
@@ -232,10 +264,30 @@ export function Entrar(): ReactElement {
   const bloqueado = bloqueadoAte !== null;
   const comMensagem = mensagem !== null;
 
+  const caixaDaMensagem =
+    mensagem === null ? null : (
+      <div
+        id={ID_DA_MENSAGEM}
+        ref={divDaMensagem}
+        tabIndex={-1}
+        className={
+          mensagem.tipo === "sessao"
+            ? "flex flex-col gap-1 text-corpo text-texto"
+            : "flex flex-col gap-1 text-corpo text-erro"
+        }
+      >
+        <p>{mensagem.texto}</p>
+        {mensagem.tempo !== undefined && <p className="text-texto">{mensagem.tempo}</p>}
+      </div>
+    );
+  const avisoDaSessao = mensagem?.tipo === "sessao";
+
   return (
     <main className="mx-auto flex max-w-folha flex-col gap-4 px-4 pt-12">
       <p className="text-corpo text-texto-suave">{TEXTOS.nomeDoBar}</p>
       <h1 className="font-titulo text-titulo text-texto">{TEXTOS.titulo}</h1>
+
+      {avisoDaSessao && caixaDaMensagem}
 
       <form method="post" noValidate onSubmit={aoSubmeter} className="flex flex-col gap-4">
         <div className="flex flex-col gap-3">
@@ -276,17 +328,7 @@ export function Entrar(): ReactElement {
             />
           </div>
 
-          {mensagem !== null && (
-            <div
-              id={ID_DA_MENSAGEM}
-              ref={divDaMensagem}
-              tabIndex={-1}
-              className="flex flex-col gap-1 text-corpo text-erro"
-            >
-              <p>{mensagem.texto}</p>
-              {mensagem.tempo !== undefined && <p className="text-texto">{mensagem.tempo}</p>}
-            </div>
-          )}
+          {!avisoDaSessao && caixaDaMensagem}
         </div>
 
         <Botao

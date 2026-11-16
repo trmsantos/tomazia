@@ -1,6 +1,11 @@
 import type { Page, Route } from "@playwright/test";
 
-import { FRASE_400, FRASE_429, SESSAO_DE_TESTE } from "../../src/testes/gestao";
+import {
+  FRASE_400,
+  FRASE_429,
+  SESSAO_DE_TESTE,
+  ementaDeGestaoDeTeste,
+} from "../../src/testes/gestao";
 
 /**
  * A API de sessão fingida (F4-01): `page.route`, sem backend. O que se testa
@@ -73,6 +78,16 @@ export async function fingirApiDeSessao(
   await pagina.route("**/api/auth/logout", async (rota) => {
     servidor.sessaoAberta = false;
     await rota.fulfill({ status: 204 });
+  });
+
+  // F4-02: o destino Ementa pede a ementa de gestão. Quem precisa de a controlar
+  // usa `fingirApiDeEmenta` (que regista depois, e por isso ganha a esta rota).
+  await pagina.route("**/api/gestao/categorias", async (rota) => {
+    if (!servidor.sessaoAberta) {
+      await responder(rota, 401, { erro: "sessao_em_falta", mensagem: "Precisas de entrar." });
+      return;
+    }
+    await responder(rota, 200, ementaDeGestaoDeTeste());
   });
 
   // Os ficheiros da gestão, para provar que o público nunca os pede. No servidor

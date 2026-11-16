@@ -45,6 +45,7 @@ import {
   FICHEIROS_DA_F3_04,
   FICHEIROS_DA_F3_05,
   FICHEIROS_DA_F4_01,
+  FICHEIROS_DA_F4_02,
 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
@@ -78,6 +79,10 @@ const SIGLAS_PERMITIDAS = new Set([
   "ARIA",
   "DOM",
   "SVG",
+  // F4-02: «Preço, em euros, com IVA» (a etiqueta da folha) e a mensagem do cliente
+  // sobre um corpo que não era JSON, agora que `src/lib/api/` também se varre.
+  "IVA",
+  "JSON",
 ]);
 
 /**
@@ -112,6 +117,12 @@ function ficheirosDaInterface(): string[] {
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "formato"), {
       extensoes: [".ts", ".tsx"],
     }),
+    // `src/lib/api/` entra na F4-02: `gestao-ementa.ts` é sentinela (as frases dos
+    // erros vivem nos ecrãs, mas um texto escrito ali por engano não pode passar
+    // por «não encontrei nada»). O `gerado/` é do `npm run gerar-api` e fica de fora.
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "api"), {
+      extensoes: [".ts", ".tsx"],
+    }).filter((ficheiro) => !caminhoRelativo(ficheiro).startsWith("src/lib/api/gerado/")),
     // `src/lib/imagens/` entra na F3-05: a redução no browser (`reduzir.ts`)
     // e a deteção de formato (`formato.ts`) não deviam ter texto visível
     // nenhum — devolvem discriminantes para o ecrã traduzir — mas uma
@@ -144,6 +155,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F3_04,
   ...FICHEIROS_DA_F3_05,
   ...FICHEIROS_DA_F4_01,
+  ...FICHEIROS_DA_F4_02,
 ];
 
 describe("texto visível em português de Portugal", () => {
