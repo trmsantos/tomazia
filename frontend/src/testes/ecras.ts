@@ -84,3 +84,23 @@ export const FICHEIROS_DA_F4_01 = [
   "src/pages/gestao/Destino.tsx",
   "src/lib/formato/tempo-em-falta.ts",
 ];
+
+/**
+ * A ementa na gestão (F4-02). Sentinelas: uma varredura de pasta que ainda não
+ * existe devolve zero ficheiros e passa (regra 10 do `CLAUDE.md`). Entra nas
+ * varreduras de textos PT-PT, de build de produção e de `sem-estilo-inline`.
+ */
+export const FICHEIROS_DA_F4_02 = [
+  "src/pages/gestao/destino-depois-de-entrar.ts",
+  "src/pages/gestao/ementa/EmentaGestao.tsx",
+  "src/pages/gestao/ementa/CartaoDaCategoria.tsx",
+  "src/pages/gestao/ementa/LinhaDoProdutoGestao.tsx",
+  "src/pages/gestao/ementa/PrecoNaLinha.tsx",
+  "src/pages/gestao/ementa/ListaOrdenavel.tsx",
+  "src/pages/gestao/ementa/FolhaDoProduto.tsx",
+  "src/pages/gestao/ementa/estado-da-ementa.ts",
+  "src/pages/gestao/ementa/aviso-do-preco.ts",
+  "src/pages/gestao/ementa/pesquisa-gestao.ts",
+  "src/lib/api/gestao-ementa.ts",
+  "src/lib/formato/ler-preco.ts",
+];

@@ -221,6 +221,23 @@
   }
 
   /*
+   * O Aviso temporário da ementa na gestão assenta **por cima** da barra de
+   * navegação inferior (F4-02, 11; entrega pedida pela F4-01, 5.2): o `bottom` do
+   * Aviso (fixo, `bottom-0`) passa a ser a altura da barra. Em CSS com âmbito e
+   * não em JavaScript, e nunca num `style`, que a CSP bloqueia. A partir de
+   * 1024 px a barra é a coluna lateral e o Aviso volta a assentar em baixo.
+   */
+  .aviso-sobre-a-barra-da-gestao > div {
+    bottom: var(--altura-barra-gestao);
+  }
+
+  @screen lg {
+    .aviso-sobre-a-barra-da-gestao > div {
+      bottom: 0;
+    }
+  }
+
+  /*
    * O destino ativo na coluna lateral da gestão (F4-01, 5.3): um degrau abaixo
    * do painel, sem dourado nem borda. Só a partir de 1024 px; abaixo, o ativo
    * distingue-se pelo peso e pela barra de 2 px, sem preenchimento. Uma classe

@@ -307,6 +307,19 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Faz:** preço editável na linha, interruptor "Disponível" com "Desfazer" durante 5 s, arrastar para reordenar, adicionar produto, pesquisa.
 - **Feito quando:** mudar um preço leva no máximo dois toques (e2e); aviso "Preço atualizado".
 - **Entrega da F3-02:** um `preco_cent` a **0** aparece na ementa pública como **"Oferta"**, não como "0,00 €". A entrega para aqui, tal como a secção 14 da `docs/ecras/F3-02.md` a escreve, é **avisar** ao guardar: "Este produto fica como oferta na ementa." A razão é que um engano de digitação (escrever `0` e sair do campo) publica "Oferta" sem ninguém dar por isso, e a base de dados aceita-o de bom grado (o `CHECK` é `>= 0`) — é o único valor em que o erro produz uma frase com sentido em vez de um número errado, e por isso o único que passa despercebido. **Decidido pelo Tomás em 2026-10-28:** um aviso chega — não é confirmação, para não pôr atrito no dono a cada produto gratuito. Quem implementar escolhe o aviso que já existe (`AvisoTemporario`) e não um diálogo.
+- **Decidido pelo Tomás em 2026-11-16:**
+  1. **Âmbito.** A F4-02 faz o "Faz" acima **e** editar produto numa folha (nome, descrição, categoria, preço). Categorias (criar, renomear, reordenar, mostrar/esconder) e eliminar produto ficam para a **F4-02b**.
+  2. **Reordenar.** Modo "Ordenar" por categoria, só para **produtos**. Cada linha tem uma pega de arrastar (Pointer Events, sem biblioteca, sem `style` inline — ADR 0008) e os botões "Subir", "Descer", "Para o início" e "Para o fim". Os movimentos são locais; "Guardar ordem" grava **uma vez** com a lista completa; "Cancelar" descarta sem pedido. O aviso de sucesso tem "Desfazer", que é um segundo `PUT` com a ordem anterior — e um `409` nesse desfazer é tratado (recarrega a lista e diz que a ordem não foi reposta).
+  3. **Preço.** Ao guardar, aviso "Preço atualizado para 6,50 €." (com o valor guardado). Se o novo preço for **10 vezes ou mais** o anterior (com o anterior > 0), o aviso tem "Desfazer". O 0 mantém o aviso "Este produto fica como oferta na ementa.", também com "Desfazer". Desfazer é um `PATCH` com o preço anterior.
+  4. **Sessão.** Um 401 em qualquer pedido da gestão leva ao login com "A sessão terminou. Entra outra vez." e, depois de entrar, volta ao destino de origem. Só se aceitam como destino caminhos internos começados por `/gestao/` — sem `//`, sem esquema, sem `\`; qualquer outro valor vai para o Início. A falha a evitar é o redirecionamento aberto, e cada regra tem teste em `frontend/src/pages/gestao/`. Muda ficheiros da F4-01 (`AppGestao.tsx`, `Entrar.tsx`).
+
+### F4-02b Categorias e eliminar produto
+
+- **Agentes:** ui-ux, dominio-bar, frontend, qa.
+- **Depende de:** F4-02.
+- **Faz:** criar, renomear, reordenar e mostrar/esconder categorias; eliminar produto com confirmação numa folha ("Tem a certeza?").
+- **Feito quando:** com a ementa vazia, o dono cria uma categoria e adiciona-lhe um produto sem sair da gestão (e2e); esconder uma categoria tira-a da ementa pública sem deploy; eliminar um produto pede confirmação numa folha e, cancelada, não faz pedido nenhum; um `409` ao reordenar categorias mostra a lista atual.
+- **Vem antes da F5-02:** o dono não pode lançar sem conseguir corrigir as categorias nem retirar um produto.
 
 ### F4-03 Eventos na gestão
 
@@ -341,6 +354,6 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 ### F5-02 Corte (manual)
 
 - **Quem:** Tomás, manual.
-- **Depende de:** todas as anteriores.
+- **Depende de:** todas as anteriores (incluindo a F4-02b).
 - **Faz:** congelar o admin antigo; importação final; guardar cópia do PHP; apontar `WEB` para o `public_html`; atualizar o `.htaccess`; apagar os ficheiros PHP.
 - **Feito quando:** os QR codes impressos abrem a ementa nova; `/api/health` responde no domínio principal.
