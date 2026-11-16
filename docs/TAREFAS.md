@@ -9,7 +9,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
 1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto.
-2. **Depois, o público:** F3-06a Visita-nos → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
+2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
 Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografia real do bar, sem vídeo (ADR 0020); a galeria é um slide passado com o dedo, sem avanço automático (ADR 0021); a localização é um link "Abrir no Google Maps", sem mapa embutido.
@@ -421,6 +421,15 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Faz:** clientes com exportar CSV e eliminar; "Mais › Conta" com mudar password (ADR 0019) e sair; ecrã Início com o resumo (fotos à espera, próximos eventos, novos registos dos últimos 7 dias).
 - **Feito quando:** eliminar um cliente pede confirmação numa folha; mudar a password termina as outras sessões e mantém esta; o Início leva à fila de fotos.
 - **Nota:** sem a F2-07 não há inscritos, por isso a lista de clientes e os "novos registos" estão vazios até lá. O estado vazio tem de o dizer sem parecer avaria.
+
+### F4-06 Exceções ao horário
+
+- **Agentes:** arquiteto, ui-ux, dominio-bar, backend, frontend, qa; revisor-seguranca obrigatório.
+- **Depende de:** F4-05a, F3-06a.
+- **Porquê, decidido pelo Tomás em 2026-11-16:** o horário é uma semana fixa (ADR 0011). Para um feriado, férias ou obras, o dono hoje tem de mudar o dia da semana e lembrar-se de o repor — e o site mostra o horário errado entretanto. Saiu da validação da F4-05a pelo dominio-bar.
+- **Faz:** na gestão, "Exceções ao horário" dentro das Definições: uma data ou um intervalo de datas, "Fechado" ou outro horário nesse dia, e uma nota curta opcional ("Férias", "Feriado"). Exceções passadas desaparecem sozinhas. No público, o `/info` e o Visita-nos usam a exceção em vez do dia da semana quando ela cobre a data (de Lisboa, com o corte do dia do bar — ADR 0010), e mostram a próxima exceção dos próximos 14 dias ("Fechado de 24 a 26 de dezembro").
+- **Antes de começar:** precisa de um ADR (onde se guarda — a tabela `definicoes` é chave/valor —, o formato, o limite de exceções, e como interage com um fecho depois da meia-noite) e da linha na tabela de endpoints da especificação.
+- **Feito quando:** uma exceção "Fechado" para hoje faz o Visita-nos dizer fechado sem tocar no horário da semana, e no dia a seguir volta sozinho ao horário normal (teste com relógio fixo); uma exceção inválida nunca aparece como "Fechado" (regra 10, como no ADR 0011).
 
 ## Fase 5: lançamento
 
