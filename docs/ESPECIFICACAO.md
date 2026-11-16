@@ -64,6 +64,7 @@ Caminhos relativos a `/api`. Erros em JSON: `{"erro": "codigo", "mensagem": "Tex
 | `GET /gestao/resumo` | Pendentes, próximos eventos, novos registos | Admin |
 | `/gestao/categorias`, `/gestao/produtos`, `/gestao/eventos` | CRUD e reordenação | Admin |
 | `GET /gestao/fotos`, `GET /gestao/fotos/{id}/imagem`, `POST .../aprovar`, `POST .../rejeitar` | Moderação | Admin |
+| `GET /gestao/fotos/aprovadas`, `DELETE /gestao/fotos/{id}` | Retirar da galeria uma foto já aprovada (apaga a linha e o ficheiro de `media/`); tarefa F4-04b | Admin |
 | `GET`, `PUT /gestao/definicoes` | WiFi, horário, morada, redes | Admin |
 | `GET /gestao/clientes`, `GET /gestao/clientes.csv`, `DELETE /gestao/clientes/{id}` | Lista de novidades | Admin |
 | `POST /gestao/conta/password` | Mudar a password (pede a atual; ADR 0019) | Admin |
@@ -127,7 +128,7 @@ ou uma tabela de tentativas por IP.
 - Tipografia: Playfair Display 700 em títulos (nunca abaixo de 22 px); Source Sans 3 no resto; preços com algarismos tabulares. Escala em telemóvel: 14, 17, 21, 27, 34 px; corpo 17 px, entrelinha 1,5. Fontes servidas pelo site.
 - Espaçamento: 4, 8, 12, 16, 24, 32, 48 px. Cantos: 4 px em chips e campos, 12 px em cartões. Sem sombras no escuro; o cartão creme tem borda de 1 px em creme-sombra.
 - Coluna pública até 640 px. Gestão: uma coluna no telemóvel, duas a partir de 1024 px.
-- Movimento só em resposta a ações; `prefers-reduced-motion` respeitado. Sem vídeo de fundo.
+- Movimento só em resposta a ações; `prefers-reduced-motion` respeitado. Sem vídeo de fundo: a abertura é uma fotografia estática (ADR 0020).
 - Componentes: Botão (principal, secundário, discreto, perigo), Campo, Chip de categoria, Linha de produto (nome, pontilhado, preço), Cartão de evento, Folha, Aviso temporário, Interruptor, Estado vazio, Linha de lista editável.
 - Fica de fora: bordas douradas em tudo, desfoque de vidro, cartões que sobem no hover, carrossel automático, etiquetas em maiúsculas, emojis em títulos, setas nos botões.
 - Texto: PT-PT, maiúscula só no início da frase, botões com a ação ("Copiar password", "Enviar foto", "Guardar alterações"), erros que dizem o que fazer.
@@ -136,13 +137,16 @@ ou uma tabela de tentativas por IP.
 
 Uma página, de cima para baixo. O QR code da mesa abre diretamente aqui, sem formulário.
 
-1. Cabeçalho fixo: logótipo e botão "WiFi", que abre uma folha com rede, password grande e "Copiar password".
-2. Chips de categoria fixos, que acompanham o scroll; lupa que filtra por nome de produto ou de categoria (ADR 0013).
-3. Ementa: um cartão creme por categoria; linhas com nome, pontilhado e preço; descrição opcional por baixo; indisponíveis escondidos.
-4. Próximos eventos: até três, data grande em Playfair; a secção some sem eventos (ADR 0015).
-5. Galeria: grelha de duas colunas com as seis últimas fotos; ecrã inteiro com deslizar; "Enviar uma foto" numa folha.
-6. Visita-nos: horário com estado atual ("Aberto até às 02:00"), morada com "Abrir no Maps", telefone, Instagram. Sem mapa embutido.
-7. Rodapé: "Receber novidades" (folha com consentimento por marcar), política de privacidade, Livro de Reclamações Eletrónico.
+1. Cabeçalho fixo: logótipo (a imagem do bar, tarefa F3-08) e botão "WiFi", que abre uma folha com rede, password grande e "Copiar password".
+2. Abertura: o logótipo e uma fotografia real do bar, em WebP leve, sem vídeo nem animação (ADR 0020).
+3. Chips de categoria fixos, que acompanham o scroll; lupa que filtra por nome de produto ou de categoria (ADR 0013).
+4. Ementa: um cartão creme por categoria; linhas com nome, pontilhado e preço; descrição opcional por baixo; indisponíveis escondidos.
+5. Próximos eventos: até três, data grande em Playfair; a secção some sem eventos (ADR 0015).
+6. Galeria: slide que se passa com o dedo, uma foto de cada vez, sem avanço automático, com botões e teclado como alternativa (ADR 0021); "Enviar uma foto" numa folha.
+7. Visita-nos: horário com estado atual ("Aberto até às 02:00"), morada com "Abrir no Google Maps", telefone, Instagram. Sem mapa embutido (a CSP não tem `frame-src`).
+8. Rodapé: "Receber novidades" (folha com consentimento por marcar), política de privacidade, Livro de Reclamações Eletrónico.
+
+Há atalhos para os Eventos, a Galeria e o Visita-nos que não obrigam a passar pela ementa inteira (tarefa F3-09). Onde ficam decide-se no desenho dessa tarefa; se mexerem no cabeçalho, este ponto 1 atualiza-se no mesmo PR.
 
 ## Área de gestão
 
@@ -152,10 +156,10 @@ Pensada para o telemóvel do dono. Navegação inferior: Início, Ementa, Evento
 | --- | --- | --- |
 | Início | Fotos à espera, próximos eventos, novos registos nos últimos 7 dias | Ir para a fila de fotos |
 | Ementa | Categorias e produtos, pesquisa | Preço editável na linha, interruptor "Disponível", arrastar para reordenar, adicionar |
-| Eventos | Próximos e rascunhos; "Arquivo" com os passados | Criar (data obrigatória), publicar, duplicar |
-| Galeria | Pendentes primeiro, uma a uma | Aprovar, rejeitar, enviar foto própria |
+| Eventos | Próximos e rascunhos; "Arquivo" com os passados | Criar (data obrigatória), editar, publicar e despublicar, duplicar, eliminar |
+| Galeria | Pendentes primeiro, uma a uma; depois as aprovadas | Aprovar, rejeitar, enviar foto própria; retirar uma aprovada da galeria |
 | Mais › Clientes | Inscritos com data de consentimento | Exportar CSV, eliminar a pedido |
-| Mais › Definições | WiFi, horário por dia, morada, contactos | Guardar |
+| Mais › Definições | WiFi, horário por dia, morada, telefone, Instagram, link do Google Maps | Guardar |
 | Mais › Conta | Utilizador e sessão | Mudar password, sair |
 
 Regras: aviso com o verbo da ação ("Preço atualizado"); ações reversíveis com "Desfazer" durante 5 s em vez de confirmação; apagar pede confirmação numa folha; erros junto do campo; login em `/gestao/entrar`.
