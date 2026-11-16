@@ -4,6 +4,16 @@ Cada tarefa é um PR, feito com `/tarefa <ID>`. As tarefas marcadas **manual** s
 
 O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste ficheiro.
 
+## Ordem a partir de 16 de novembro de 2026
+
+**Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
+
+1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto.
+2. **Depois, o público:** F3-06a Visita-nos → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
+3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
+
+Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografia real do bar, sem vídeo (ADR 0020); a galeria é um slide passado com o dedo, sem avanço automático (ADR 0021); a localização é um link "Abrir no Google Maps", sem mapa embutido.
+
 ## Fase 0: segurança no site atual (manual)
 
 ### F0-01 Fechar as falhas do site PHP
@@ -271,13 +281,25 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **O `429` leva `segundos_em_falta` no corpo e `Retry-After` no cabeçalho.** A frase diz "daqui a pouco" de propósito, porque é fixa; **é o ecrã que tem de compor o tempo real** se quiser mostrá-lo. Decidir aqui se mostra um contador, se desativa o botão, ou as duas coisas.
 - **Um aviso do dominio-bar que não é sobre código:** numa noite de samba, o grupo de amigos partilha o IP do WiFi do bar, logo **o limite pode ser atingido por pessoas diferentes daquela que está a tentar enviar**. A frase diz "já chegaste ao limite" porque é o que o site vê — um IP, um pedido. Se o ecrã quiser suavizar essa leitura, é decisão de desenho desta tarefa; não se inventa nada sobre a rede do bar.
 - **A foto só aparece depois de aprovada**, e não há forma de o visitante saber quando. O "Feito quando" fixa a frase; o ecrã tem de deixar isso claro **antes** de ele enviar, não só depois.
+- **A grelha foi substituída pelo ADR 0021** (decidido pelo Tomás em 2026-11-16): a galeria passa a slide por toque na F3-10. O envio, o Visualizador e os estados desta tarefa ficam.
 
-### F3-06 Visita-nos, novidades e rodapé
+### F3-06 Visita-nos, novidades e rodapé — partida em F3-06a e F3-06b
+
+**Decidido pelo Tomás em 2026-11-16.** A F3-06 dependia toda da F2-07, que não tem PR, mas o Visita-nos só precisa do `GET /info`, que existe desde a F2-03. Partida em duas para a localização não ficar presa às novidades.
+
+### F3-06a Visita-nos
+
+- **Agentes:** ui-ux, dominio-bar, frontend, qa.
+- **Depende de:** F2-03, F3-01. Não depende da F2-07. Os dados só existem depois da F4-05a, que vem antes na ordem; até lá o ecrã tem de ter um estado "por configurar" que não seja confundido com erro (regra 10).
+- **Faz:** secção "Visita-nos" com horário e estado atual ("Aberto até às 02:00"), morada com o botão "Abrir no Google Maps" (o `maps_url` das definições, numa ligação normal), telefone e Instagram. **Sem mapa embutido**: a CSP de produção não tem `frame-src`, e o Tomás decidiu o link.
+- **Feito quando:** o estado "Aberto até às…" tem testes com relógio fixo em `Europe/Lisbon` (ADR 0010), incluindo um período que passa da meia-noite; um horário `invalido` (ADR 0011) não se mostra como "Fechado"; cada campo vazio esconde a sua linha; Q-04, Q-05 validado pelo dominio-bar.
+
+### F3-06b Novidades e rodapé
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa.
 - **Depende de:** F2-07, F3-01.
-- **Faz:** horário com estado atual, "Abrir no Maps", telefone, Instagram; folha de novidades com consentimento por marcar; política de privacidade; link do Livro de Reclamações Eletrónico.
-- **Feito quando:** Q-05 validado pelo dominio-bar; o estado "Aberto até às…" tem testes com relógio fixo.
+- **Faz:** rodapé com "Receber novidades" (folha com consentimento por marcar), política de privacidade e link do Livro de Reclamações Eletrónico.
+- **Feito quando:** Q-05 validado pelo dominio-bar; enviar sem consentimento é impossível no ecrã e o 422 do backend tem frase própria.
 
 ### F3-07 Qualidade ponta a ponta
 
@@ -289,6 +311,42 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Depende de:** F3-02.
 - **Faz:** `e2e/capturas.spec.ts` (capturas 390×844 de cada ecrã), axe em todas as páginas, Lighthouse CI no CI.
 - **Feito quando:** Q-01, Q-02 e Q-03 a correr no CI.
+- **Recomendada antes da F3-11** (abertura com fotografia): hoje o Q-01 não é medido em lado nenhum, e a F3-11 acrescenta a imagem que ele vai medir.
+
+### F3-08 Logótipo e ícones do site
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** F3-03.
+- **Porquê, da análise de lacunas de 2026-11-16:** a `docs/ecras/F3-03.md` (na árvore do cabeçalho, ~linha 75) decidiu que o logótipo é a palavra em Playfair porque "não há ficheiro de logótipo neste projeto". A premissa é falsa: o site antigo tem `img/tomazia.png` (224×225, 75 785 bytes, PNG com transparência — círculo bordô com "TOMAZIA Bar" em dourado), no repositório `trmsantos/projetotomazia`, e as cores dele já são os tokens `bordo-tomazia` e `dourado-latao`. O `frontend/index.html` não tem favicon nem `apple-touch-icon`, e o `frontend/public/` só tem fontes.
+- **Entrada:** o `img/tomazia.png` do repositório antigo, ou o original vetorial se o dono o tiver (224 px fica curto acima de ~75 px de largura em ecrãs 3×). Os duplicados (`pngico.png`, `tomazia.jpg`) não entram.
+- **Faz:** favicon, `apple-touch-icon`, `og:image` e `meta description` no `index.html`; o logótipo no cabeçalho, em formato leve (WebP ou SVG, poucos KB à medida de 44 px a 2×); corrige a decisão da `docs/ecras/F3-03.md`.
+- **Para o ui-ux decidir no plano:** a 360 px sobram 232,81 px para o nome; um círculo de 44 px com 8 de folga deixa ~180, e o nome a 27 px pede 192,03. Ou o nome desce para 22 px (~157 px, o mínimo da especificação), ou o logótipo substitui o texto e o `<h1>` fica com o nome acessível. O botão "WiFi" não sai.
+- **Atenção:** o `og:image` tem de ser um endereço absoluto, e o domínio muda no corte (de `novo.<domínio>` para o principal, F5-02). Decidir aqui como se resolve, sem pôr o domínio errado no HTML.
+- **Feito quando:** o favicon e o `apple-touch-icon` aparecem (teste ao `index.html` compilado); o logótipo tem texto alternativo e o `<h1>` continua a ser um só com o nome do bar; nada transborda a 360 px; Q-02 e Q-04; capturas 390×844.
+
+### F3-09 Atalhos para Eventos, Galeria e Visita-nos
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** F3-06a (o Visita-nos tem de existir para ter atalho), F3-03.
+- **Porquê:** a página é Ementa → Eventos → Galeria (`App.tsx`), e para chegar aos eventos ou à galeria é preciso passar pelos ~140 produtos de 11 categorias. O site antigo tinha navegação entre secções.
+- **Faz:** atalhos que levam à secção dos eventos, da galeria e do Visita-nos. **Decidido pelo Tomás em 2026-11-16:** os atalhos existem. **Por decidir no plano do ui-ux, e aprovado pelo Tomás:** onde ficam — no cabeçalho, no fim da barra de chips ou noutro sítio. Se for no cabeçalho, mexe na regra da F3-03 ("duas coisas e não cinco") e na linha 1 dos "Ecrãs públicos" da especificação, no mesmo PR.
+- **Feito quando:** um atalho para uma secção escondida (eventos sem eventos) não aparece; o salto deixa a secção à vista por baixo do cabeçalho fixo e da barra de chips; funciona por teclado e o foco vai para a secção; Q-03, Q-04; e2e que salta para a galeria.
+
+### F3-10 Galeria em slide por toque
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** F3-05. **ADR 0021.**
+- **Faz:** a secção "Galeria" passa de grelha a slide horizontal, uma foto de cada vez, que se passa com o dedo, **sem avanço automático e sem ciclo**. Alternativa ao gesto: botões "Foto anterior" e "Foto seguinte" (44×44, `aria-disabled` nos extremos) e as setas do teclado; posição "Foto n de m". Feito com scroll nativo e `scroll-snap` em classes — **sem `style` inline** (CSP `style-src 'self'`, ADR 0008; o ESLint e o `src/styles/sem-estilo-inline.test.ts` já o recusam). Só a primeira foto carrega logo.
+- **Para o ui-ux decidir no plano:** quantas fotos entram, se tocar continua a abrir o Visualizador da F3-05, e onde fica o "Enviar uma foto".
+- **Feito quando:** passar com o dedo, com os botões e com as setas leva à mesma foto (testes nas três vias); nenhum temporizador mexe no slide; estado vazio e erro distintos (como na F3-05); Q-03, Q-04; capturas 390×844.
+
+### F3-11 Abertura com logótipo e fotografia
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** F3-08, e de a fotografia existir (o Tomás arranja-a). **Recomendada depois da F3-07**, para o Q-01 ser medido e não estimado. **ADR 0020.**
+- **Faz:** abertura no topo da página com o logótipo e uma fotografia real do bar, em WebP de ~100 KB, com `width` e `height` reservados e sem `loading="lazy"` (vai ser o elemento que o Q-01 mede). Sem vídeo e sem animação. O vídeo do site antigo não entra: 4,9 MB, ~24 s no 4G simulado, bloqueado pela CSP (sem `media-src`) e de banco de imagens.
+- **Para o ui-ux decidir no plano, e o Tomás aprovar nas capturas:** a altura da abertura, e quanto da ementa ou da barra de chips se vê no 390×844 sem deslizar.
+- **Feito quando:** Q-01 cumprido (pela F3-07, se já existir); a fotografia tem texto alternativo; nada muda de lugar ao carregar a imagem; Q-02, Q-03; capturas 390×844.
 
 ## Fase 4: área de gestão
 
@@ -325,8 +383,9 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa.
 - **Depende de:** F2-05, F4-01.
-- **Faz:** lista de próximos e rascunhos, arquivo, criar com data obrigatória, publicar, duplicar.
-- **Feito quando:** duplicar um evento semanal cria um rascunho com a data da semana seguinte.
+- **Faz:** lista de próximos e rascunhos, arquivo, criar com data obrigatória, **editar**, publicar e despublicar, duplicar, **eliminar** com confirmação numa folha.
+- **Feito quando:** duplicar um evento semanal cria um rascunho com a data da semana seguinte; editar um evento publicado muda o site sem deploy; eliminar pede confirmação numa folha e o evento sai da lista e do site.
+- **Decidido pelo Tomás em 2026-11-16:** editar e eliminar entram nesta tarefa. O site antigo fazia as duas coisas e o backend já as tem (`PATCH` e `DELETE /gestao/eventos/{id}`, F2-05b); o "Faz" original não as dizia. O upload do cartaz continua fora — a imagem só se lê (F2-05).
 
 ### F4-04 Moderação de fotos
 
@@ -335,12 +394,32 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 - **Faz:** fila de pendentes, uma foto de cada vez, botões grandes para aprovar e rejeitar; envio de foto própria.
 - **Feito quando:** aprovar mostra "Foto aprovada" e passa à seguinte; fila vazia com estado vazio.
 
-### F4-05 Definições, clientes, conta e início
+### F4-04b Retirar foto da galeria
+
+- **Agentes:** qa, backend, ui-ux, frontend; revisor-seguranca obrigatório.
+- **Depende de:** F2-06, F4-04.
+- **Porquê, da análise de lacunas de 2026-11-16:** aprovar e rejeitar só atuam sobre fotos `pendente` (`services/fotos.py`; o resto dá `409 foto_ja_moderada`), e não há `DELETE` nem rota para ocultar. Uma foto aprovada por engano, ou que um cliente peça para tirar (RGPD), fica na galeria pública para sempre, salvo por SSH. O site antigo deixava eliminar qualquer foto. **Decidido pelo Tomás em 2026-11-16:** a foto aprovada pode ser retirada, e retirar é eliminar.
+- **Faz, backend primeiro (contrato novo):** `GET /gestao/fotos/aprovadas` (id, ficheiro, descricao, enviada_por, criada_em, moderada_em; nunca `ip_hash`) e `DELETE /gestao/fotos/{id}`, que só aceita fotos `aprovada` (204), apaga o ficheiro de `MEDIA_DIR` e a linha. Pendente dá 409 (rejeita-se pela moderação); inexistente dá 404. A linha pode ir embora porque o limite de envios conta `tentativas_de_envio` e não `fotos` (ADR 0018). Depois, o ecrã: na Galeria da gestão, as aprovadas a seguir à fila, e "Eliminar" com confirmação numa folha ("Tem a certeza?"), aviso "Foto eliminada".
+- **Feito quando:** teste novo em `backend/tests/seguranca/` — sem sessão 401 (o conjunto do S-04 atualiza-se, não se apaga), sem `X-Tomazia` 403, e o ficheiro deixa de existir em `media/` (o `/media/<ficheiro>` deixa de servir). Um ficheiro que já não está no disco não pode dar o mesmo resultado que um que não se conseguiu apagar (regra 10): o primeiro elimina a linha, o segundo responde erro e mantém-na. A foto sai do `GET /galeria`; Q-04.
+
+### F4-05 Definições, clientes, conta e início — partida em F4-05a e F4-05b
+
+**Decidido pelo Tomás em 2026-11-16**, como se partiu a F2-05: as definições são pré-requisito do WiFi e do Visita-nos públicos (sem elas a tabela `definicoes` está vazia), e vão à frente de toda a gestão. Clientes, conta e Início ficam para a F4-05b.
+
+### F4-05a Definições na gestão
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa; revisor-seguranca obrigatório.
-- **Depende de:** F2-05, F4-01.
-- **Faz:** definições (WiFi, horário por dia, morada, contactos); clientes com exportar e eliminar; mudar password; ecrã Início com o resumo.
-- **Feito quando:** eliminar um cliente pede confirmação numa folha; mudar o WiFi aparece no site público sem deploy.
+- **Depende de:** F2-05 (F2-05c), F4-01.
+- **Faz:** "Mais › Definições": rede e password do WiFi, horário por dia, morada, telefone, Instagram e link do Google Maps, com "Guardar alterações". Herda o contrato escrito na F2-05c (`PUT` com os sete campos numa só transação, `horario_estado`, `https://` no Maps e no Instagram, WiFi sem aparar as pontas).
+- **Feito quando:** mudar o WiFi aparece no site público sem deploy (e2e); um horário `invalido` (ADR 0011) é mostrado como tal e não como vazio; os erros aparecem junto do campo (`campo` do envelope); Q-04, Q-05.
+
+### F4-05b Clientes, conta e Início
+
+- **Agentes:** ui-ux, dominio-bar, frontend, qa; revisor-seguranca obrigatório.
+- **Depende de:** F2-05 (F2-05b e F2-05c), F4-01.
+- **Faz:** clientes com exportar CSV e eliminar; "Mais › Conta" com mudar password (ADR 0019) e sair; ecrã Início com o resumo (fotos à espera, próximos eventos, novos registos dos últimos 7 dias).
+- **Feito quando:** eliminar um cliente pede confirmação numa folha; mudar a password termina as outras sessões e mantém esta; o Início leva à fila de fotos.
+- **Nota:** sem a F2-07 não há inscritos, por isso a lista de clientes e os "novos registos" estão vazios até lá. O estado vazio tem de o dizer sem parecer avaria.
 
 ## Fase 5: lançamento
 
@@ -348,8 +427,9 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 - **Agentes:** infra.
 - **Depende de:** F1-04.
-- **Faz:** regras em `htaccess.exemplo` que levam `/index.php`, `/bemvindo.php`, `/cardapio.php`, `/fotos.php` e `/termos.php` para os sítios novos, com 301.
-- **Feito quando:** um teste verifica as regras com um Apache em contentor no CI.
+- **Faz:** regras em `htaccess.exemplo` que levam `/index.php`, `/bemvindo.php`, `/cardapio.php`, `/fotos.php` e `/termos.php` para os sítios novos, com 301. **E os mesmos sem `.php`**, que são os que a produção usa: `/bemvindo`, `/cardapio`, `/fotos`, `/termos` e `/register`, com e sem barra no fim (o `.htaccess` antigo reescrevia `^(.+?)/?$` para `$1.php`).
+- **Feito quando:** um teste verifica as regras com um Apache em contentor no CI, para as duas formas de cada endereço; nenhuma regra apanha um caminho da app nova (`/gestao`, `/api`, `/media`).
+- **Decidido pelo Tomás em 2026-11-16:** os endereços sem `.php` entram nesta tarefa. Antes de fixar o destino de `/fotos`, confirmar para onde aponta o código QR do `img/fotos.png` do site antigo — é provavelmente o QR impresso para enviar fotos.
 
 ### F5-02 Corte (manual)
 
