@@ -91,18 +91,31 @@ export const DESTINOS: readonly Destino[] = [
   },
 ];
 
+/** Os caminhos dos destinos da barra (o login não é um destino). */
+export const ROTAS_DOS_DESTINOS: ReadonlySet<string> = new Set(
+  DESTINOS.map((destino) => destino.caminho),
+);
+
 /**
  * Vai para `caminho`: empurra uma entrada no histórico, ou **substitui** a atual
  * com `{ substituir: true }` (login com sucesso, 401, sair: o «Voltar» não
  * regressa). Quem depende do endereço atualiza-se, porque o `pushState` não
  * dispara `popstate` e aqui o disparamos nós, para um único mecanismo servir o
  * `navegar` e o botão Recuar.
+ *
+ * `estado` vai para o `history.state` da entrada (F4-02, D4: o destino depois do
+ * login e o aviso «A sessão terminou» viajam aí, nunca no endereço). Sem
+ * `estado`, a entrada fica com `null`: nada se herda da anterior.
  */
-export function navegar(caminho: string, opcoes?: { substituir?: boolean }): void {
+export function navegar(
+  caminho: string,
+  opcoes?: { substituir?: boolean; estado?: unknown },
+): void {
+  const estado = opcoes?.estado ?? null;
   if (opcoes?.substituir === true) {
-    window.history.replaceState(null, "", caminho);
+    window.history.replaceState(estado, "", caminho);
   } else {
-    window.history.pushState(null, "", caminho);
+    window.history.pushState(estado, "", caminho);
   }
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
@@ -121,6 +134,18 @@ function caminhoAtual(): string {
 /** O `location.pathname` atual, reativo ao `navegar` e ao Recuar. */
 export function useCaminho(): string {
   return useSyncExternalStore(ouvir, caminhoAtual);
+}
+
+function pesquisaAtual(): string {
+  return window.location.search;
+}
+
+/**
+ * O `location.search` atual (`?categoria=garrafeira`), reativo ao `navegar` e ao
+ * Recuar. Para o que vive na pesquisa do endereço — hoje, a categoria da ementa.
+ */
+export function usePesquisa(): string {
+  return useSyncExternalStore(ouvir, pesquisaAtual);
 }
 
 /**

@@ -34,7 +34,9 @@ import { entrar, quemSouEu } from "../../lib/api/auth";
 import {
   FRASE_400,
   FRASE_429,
+  DESTINOS_MALICIOSOS,
   SESSAO_DE_TESTE,
+  TEXTOS_DA_EMENTA_GESTAO,
   TEXTOS_DA_GESTAO as T,
   abrirEm,
   erro400,
@@ -117,8 +119,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.useRealTimers();
+  // Por esta ordem: um `vi.spyOn(globalThis, "setTimeout")` feito com o relógio
+  // falso, restaurado **depois** de `useRealTimers`, volta a instalar o
+  // `setTimeout` falso para sempre e deixa o `waitFor` seguinte pendurado.
   vi.restoreAllMocks();
+  vi.useRealTimers();
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -687,5 +692,238 @@ describe("rede e 5xx (3.7): nunca a mensagem genérica do cliente, nunca «crede
     expect(campoUtilizador()).toHaveValue("dono");
     expect(campoPassword()).toHaveValue("password-de-teste");
     expect(botao()).not.toHaveAttribute("aria-disabled");
+  });
+});
+
+/**
+ * F4-02, decisão D4 — o login lembra o destino de onde se foi mandado e diz
+ * porquê. Tudo vem do `history.state` (`{ voltar, sessaoTerminou }`), lido pelo
+ * `Entrar` ao montar; **nunca** do endereço (`?voltar=` é ignorado).
+ *
+ *  - com `sessaoTerminou === true` (exatamente o booleano), a `login-mensagem`
+ *    mostra «A sessão terminou. Entra outra vez.» com foco; qualquer outra
+ *    forma de estado é «sem aviso». A mensagem some ao submeter;
+ *  - login 200, e «já com sessão», navegam a `destinoDepoisDeEntrar(estado)`,
+ *    a substituir (o «Voltar» não regressa ao login).
+ */
+const AVISO_DA_SESSAO = TEXTOS_DA_EMENTA_GESTAO.sessaoTerminou;
+
+describe("«A sessão terminou. Entra outra vez.» (F4-02, D4)", () => {
+  it("com sessaoTerminou no estado: a frase aparece na login-mensagem, com foco", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+    render(<Entrar />);
+
+    const caixa = mensagem();
+    expect(caixa).not.toBeNull();
+    expect(caixa).toHaveTextContent(AVISO_DA_SESSAO);
+    expect(caixa).toHaveAttribute("tabindex", "-1");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(caixa);
+    });
+  });
+
+  it("a frase fica por baixo do <h1> e antes do campo «Utilizador», por cima do formulário", () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+    render(<Entrar />);
+
+    const caixa = mensagem();
+    const titulo = screen.getByRole("heading", { level: 1 });
+    if (caixa === null) throw new Error("falta a mensagem");
+    expect(titulo.compareDocumentPosition(caixa) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      caixa.compareDocumentPosition(campoUtilizador()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(caixa.closest("form")).toBeNull();
+  });
+
+  it("não é um erro: sem role=alert, e os campos não ficam aria-invalid", () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+    render(<Entrar />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(campoUtilizador()).not.toHaveAttribute("aria-invalid", "true");
+    expect(campoPassword()).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it.each([
+    ["sem estado", null],
+    ["estado que é uma string", "x"],
+    ["sessaoTerminou como texto", { sessaoTerminou: "true" }],
+    ["sessaoTerminou como número", { sessaoTerminou: 1 }],
+    ["sessaoTerminou false", { sessaoTerminou: false }],
+    ["só o destino (a guarda à chegada)", { voltar: "/gestao/eventos" }],
+    ["uma lista", [true]],
+  ])("%s: nenhum aviso", (_nome, estado) => {
+    abrirEm("/gestao/entrar", estado);
+    render(<Entrar />);
+
+    expect(mensagem()).toBeNull();
+    expect(screen.queryByText(AVISO_DA_SESSAO)).toBeNull();
+  });
+
+  it("não se fabrica com um link: o endereço não acende o aviso", () => {
+    abrirEm("/gestao/entrar?voltar=%2Fgestao%2Fementa&sessaoTerminou=true&motivo=sessao-terminou");
+    render(<Entrar />);
+
+    expect(screen.queryByText(AVISO_DA_SESSAO)).toBeNull();
+    expect(mensagem()).toBeNull();
+  });
+
+  it("desaparece ao submeter", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+    entrarPendente();
+    render(<Entrar />);
+    expect(screen.getByText(AVISO_DA_SESSAO)).toBeInTheDocument();
+
+    preencher();
+    await submeter();
+
+    expect(screen.queryByText(AVISO_DA_SESSAO)).toBeNull();
+  });
+
+  it("um 400 depois do aviso troca a frase pela das credenciais (uma mensagem só)", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/ementa", sessaoTerminou: true });
+    render(<Entrar />);
+
+    await falharCom(erro400());
+
+    expect(screen.queryByText(AVISO_DA_SESSAO)).toBeNull();
+    expect(mensagem()).toHaveTextContent(FRASE_400);
+    expect(document.querySelectorAll("#login-mensagem")).toHaveLength(1);
+  });
+});
+
+describe("depois de entrar, volta ao destino (F4-02, D4)", () => {
+  async function entrarComSucesso(): Promise<void> {
+    const pedidos = entrarPendente();
+    preencher();
+    await submeter();
+    await act(async () => {
+      pedidos[0]?.resolver(SESSAO_DE_TESTE);
+      await Promise.resolve();
+    });
+  }
+
+  it("login 200 com um destino válido: vai a ele, a substituir", async () => {
+    abrirEm("/gestao/entrar", {
+      voltar: "/gestao/ementa?categoria=garrafeira",
+      sessaoTerminou: true,
+    });
+    const substituir = vi.spyOn(window.history, "replaceState");
+    const empurrar = vi.spyOn(window.history, "pushState");
+    const antes = window.history.length;
+    render(<Entrar />);
+    substituir.mockClear();
+
+    await entrarComSucesso();
+
+    expect(window.location.pathname).toBe("/gestao/ementa");
+    expect(window.location.search).toBe("?categoria=garrafeira");
+    expect(substituir).toHaveBeenCalledTimes(1);
+    expect(substituir.mock.calls[0]?.[2]).toBe("/gestao/ementa?categoria=garrafeira");
+    expect(empurrar).not.toHaveBeenCalled();
+    expect(window.history.length).toBe(antes);
+  });
+
+  it("a guarda à chegada (só `voltar`, sem aviso) também volta ao destino", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/galeria" });
+    render(<Entrar />);
+
+    await entrarComSucesso();
+
+    expect(window.location.pathname).toBe("/gestao/galeria");
+  });
+
+  it("sem destino: o Início, como antes", async () => {
+    render(<Entrar />);
+    await entrarComSucesso();
+    expect(window.location.pathname).toBe("/gestao");
+  });
+
+  it("o destino sobrevive a uma tentativa falhada (a mensagem sai, o destino não)", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/eventos", sessaoTerminou: true });
+    render(<Entrar />);
+    await falharCom(erro400());
+
+    await entrarComSucesso();
+
+    expect(window.location.pathname).toBe("/gestao/eventos");
+  });
+
+  it("«já com sessão» (200 do /auth/eu) com um destino válido: vai a ele, a substituir", async () => {
+    abrirEm("/gestao/entrar", { voltar: "/gestao/eventos" });
+    quemSouEuFalso.mockResolvedValue(SESSAO_DE_TESTE);
+    const empurrar = vi.spyOn(window.history, "pushState");
+
+    render(<Entrar />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(window.location.pathname).toBe("/gestao/eventos");
+    expect(empurrar).not.toHaveBeenCalled();
+  });
+
+  it("o endereço NÃO é lido: ?voltar= válido sem estado vai ao Início", async () => {
+    abrirEm("/gestao/entrar?voltar=%2Fgestao%2Feventos");
+    render(<Entrar />);
+    await entrarComSucesso();
+    expect(window.location.pathname).toBe("/gestao");
+  });
+
+  it("?voltar=//evil.example no endereço é ignorado (Início)", async () => {
+    abrirEm("/gestao/entrar?voltar=//evil.example");
+    render(<Entrar />);
+    await entrarComSucesso();
+    expect(window.location.pathname).toBe("/gestao");
+    expect(window.location.host).not.toContain("evil");
+  });
+});
+
+describe("o Entrar passa mesmo pela validação: a tabela do redirecionamento aberto, pelo componente", () => {
+  it.each(DESTINOS_MALICIOSOS.map(([nome, voltar]) => [nome, voltar] as [string, string]))(
+    "%s: %j → /gestao, e nenhum pushState/replaceState com outro destino",
+    async (_nome, voltar) => {
+      abrirEm("/gestao/entrar", { voltar, sessaoTerminou: true });
+      const origem = window.location.origin;
+      const empurrar = vi.spyOn(window.history, "pushState");
+      const substituir = vi.spyOn(window.history, "replaceState");
+      const pedidos = entrarPendente();
+      render(<Entrar />);
+      preencher();
+      substituir.mockClear();
+      await submeter();
+      await act(async () => {
+        pedidos[0]?.resolver(SESSAO_DE_TESTE);
+        await Promise.resolve();
+      });
+
+      expect(window.location.pathname).toBe("/gestao");
+      expect(window.location.origin).toBe(origem);
+      for (const chamada of [...empurrar.mock.calls, ...substituir.mock.calls]) {
+        const url = chamada[2];
+        expect(typeof url === "string" && url.startsWith("/gestao"), `URL: ${String(url)}`).toBe(
+          true,
+        );
+      }
+    },
+  );
+
+  it("«já com sessão» passa pela mesma validação", async () => {
+    abrirEm("/gestao/entrar", { voltar: "//evil.example" });
+    quemSouEuFalso.mockResolvedValue(SESSAO_DE_TESTE);
+    const empurrar = vi.spyOn(window.history, "pushState");
+    const substituir = vi.spyOn(window.history, "replaceState");
+
+    render(<Entrar />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(window.location.pathname).toBe("/gestao");
+    for (const chamada of [...empurrar.mock.calls, ...substituir.mock.calls]) {
+      const url = chamada[2];
+      expect(typeof url === "string" && url.startsWith("/gestao")).toBe(true);
+    }
   });
 });

@@ -666,3 +666,52 @@ describe("varredura em disco: o multipart não se escreve à mão em lado nenhum
     );
   });
 });
+
+/**
+ * F4-02 — `PUT` e `PATCH`. `OpcoesDePedido.metodo` passa a
+ * `"GET" | "POST" | "PUT" | "PATCH"` (só o tipo: o `fetch` já recebe o `method`
+ * tal e qual). O `DELETE` entra na F4-02b e **não** está aqui.
+ */
+describe("PUT e PATCH com JSON (F4-02)", () => {
+  it.each(["PUT", "PATCH"] as const)(
+    "%s leva o método, o corpo em JSON, X-Tomazia, credenciais e URL relativa",
+    async (metodo) => {
+      const pedidos = comFetch(() => respostaJson({ ok: true }));
+
+      await pedir("/gestao/produtos/7", { metodo, corpo: { preco_cent: 750 } });
+
+      expect(pedidos).toHaveLength(1);
+      expect(pedidos[0]?.url).toBe(`${CAMINHO_BASE}/gestao/produtos/7`);
+      expect(pedidos[0]?.opcoes?.method).toBe(metodo);
+      expect(pedidos[0]?.opcoes?.body).toBe(JSON.stringify({ preco_cent: 750 }));
+      expect(pedidos[0]?.cabecalhos["content-type"]).toBe("application/json");
+      expect(pedidos[0]?.cabecalhos["x-tomazia"]).toBe("1");
+      expect(pedidos[0]?.opcoes?.credentials).toBe("include");
+    },
+  );
+
+  it("um PUT com 204 e `semCorpo` resolve sem valor", async () => {
+    comFetch(() => respostaDe(204, ""));
+    await expect(
+      pedir("/gestao/categorias/1/produtos/ordem", {
+        metodo: "PUT",
+        corpo: { ids: [2, 1] },
+        semCorpo: true,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each(["PUT", "PATCH"] as const)(
+    "%s sem resposta: ErroDaApi com estado null",
+    async (metodo) => {
+      comFetch(() => {
+        throw new TypeError("Failed to fetch");
+      });
+      const erro: unknown = await pedir("/gestao/x", { metodo, corpo: {} }).catch(
+        (e: unknown) => e,
+      );
+      expect(erro).toBeInstanceOf(ErroDaApi);
+      expect((erro as ErroDaApi).estado).toBeNull();
+    },
+  );
+});

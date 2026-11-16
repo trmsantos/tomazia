@@ -5,7 +5,10 @@ import { createContext, useContext } from "react";
  *
  * `aoPerderSessao()` é para as F4-02 a F4-05 usarem quando um pedido da gestão
  * devolve 401 a meio: apaga o resultado da guarda e leva ao login, a substituir,
- * exatamente como o 401 da própria guarda. «Sair» usa-o também, depois do 204.
+ * exatamente como o 401 da própria guarda — e, desde a F4-02, **leva o destino
+ * de origem** (no `history.state`) para o login voltar lá depois de entrar.
+ * «Sair» **não** o usa: sair de propósito não lembra o destino nem diz que a
+ * sessão terminou, por isso «Mais» navega ele próprio para o login.
  *
  * `aoConfirmarSessao()` é do login: depois de um 200 diz à guarda que a sessão
  * já está confirmada, para ela não repetir o `GET /auth/eu` (nem mostrar «A abrir
