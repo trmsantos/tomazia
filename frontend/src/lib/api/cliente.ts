@@ -226,13 +226,22 @@ function lerEnvelopeDeErro(corpo: unknown): EnvelopeDeErro | null {
  * A frase para quando o servidor recusa sem o envelope do backend — uma
  * página de erro do Apache, um 502 do Passenger, um corpo vazio. Nunca
  * inclui o corpo recebido.
+ *
+ * São frases para o dono, não para o cliente: nenhum ecrã público mostra a
+ * `message` de um erro sem envelope (os ecrãs públicos usam frases fixas).
+ * Cada ramo tem a sua frase, e os testes exigem que sejam todas diferentes —
+ * duas iguais diriam que aconteceu a mesma coisa quando não aconteceu
+ * (regra 10, F2-10). Com envelope, chega a frase do backend e não esta.
  */
 function mensagemPorEstado(estado: number): string {
-  if (estado === 404) return "Não encontrei isto no servidor.";
-  if (estado === 401 || estado === 403) return "Não tens acesso a isto. Entra outra vez.";
-  if (estado === 429) return "Pedidos a mais em pouco tempo. Espera um bocado e tenta outra vez.";
-  if (estado >= 500) return "O servidor teve um problema. Tenta outra vez dentro de momentos.";
-  return "O servidor recusou o pedido.";
+  if (estado === 401) return "A tua sessão terminou. Entra outra vez.";
+  if (estado === 403) return "Não tens permissão para isto.";
+  if (estado === 404) return "Não encontrei isto. Atualiza a página.";
+  if (estado === 429)
+    return "Tentaste demasiadas vezes seguidas. Espera um pouco e tenta outra vez.";
+  if (estado >= 500)
+    return "O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.";
+  return "Não consegui fazer isto. Tenta outra vez.";
 }
 
 /**

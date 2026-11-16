@@ -368,7 +368,7 @@ describe("um corpo que não é JSON chega legível", () => {
 
     expect(erro).toBeInstanceOf(ErroDaApi);
     expect((erro as ErroDaApi).estado).toBe(404);
-    expect((erro as ErroDaApi).message).toBe("Não encontrei isto no servidor.");
+    expect((erro as ErroDaApi).message).toBe("Não encontrei isto. Atualiza a página.");
   });
 
   it("não-2xx com JSON que não é o envelope: código a null e frase nossa", async () => {
@@ -377,7 +377,9 @@ describe("um corpo que não é JSON chega legível", () => {
     const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
 
     expect((erro as ErroDaApi).codigo).toBeNull();
-    expect((erro as ErroDaApi).message).toMatch(/servidor/i);
+    expect((erro as ErroDaApi).message).toBe(
+      "O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
+    );
   });
 });
 
@@ -714,4 +716,70 @@ describe("PUT e PATCH com JSON (F4-02)", () => {
       expect((erro as ErroDaApi).estado).toBeNull();
     },
   );
+});
+
+describe("as frases de recurso, quando o servidor recusa sem envelope (F2-10)", () => {
+  const FRASES: ReadonlyArray<readonly [number, string]> = [
+    [401, "A tua sessão terminou. Entra outra vez."],
+    [403, "Não tens permissão para isto."],
+    [404, "Não encontrei isto. Atualiza a página."],
+    [429, "Tentaste demasiadas vezes seguidas. Espera um pouco e tenta outra vez."],
+    [500, "O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco."],
+    [400, "Não consegui fazer isto. Tenta outra vez."],
+  ];
+
+  it.each(FRASES)("%i sem envelope dá a frase própria", async (estado, frase) => {
+    comFetch(() => respostaDe(estado, PAGINA_DE_ERRO_DO_APACHE));
+
+    const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+    expect(erro).toBeInstanceOf(ErroDaApi);
+    expect((erro as ErroDaApi).codigo).toBeNull();
+    expect((erro as ErroDaApi).message).toBe(frase);
+  });
+
+  it.each([502, 503, 504])("%i cai na frase do servidor", async (estado) => {
+    comFetch(() => respostaDe(estado, ""));
+
+    const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+    expect((erro as ErroDaApi).message).toBe(
+      "O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
+    );
+  });
+
+  it.each([409, 413, 422, 499])("%i sem envelope cai no resto", async (estado) => {
+    comFetch(() => respostaDe(estado, ""));
+
+    const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+    expect((erro as ErroDaApi).message).toBe("Não consegui fazer isto. Tenta outra vez.");
+  });
+
+  it("as seis frases são todas diferentes: ramos diferentes nunca dizem o mesmo (regra 10)", () => {
+    const frases = FRASES.map(([, frase]) => frase);
+    expect(new Set(frases).size).toBe(frases.length);
+  });
+
+  it.each(FRASES)(
+    "%i com o envelope do backend: chega a frase do backend, não a de recurso",
+    async (estado) => {
+      comFetch(() =>
+        respostaJson({ erro: "algum_codigo", mensagem: "Frase escrita pelo backend." }, estado),
+      );
+
+      const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+
+      expect((erro as ErroDaApi).codigo).toBe("algum_codigo");
+      expect((erro as ErroDaApi).message).toBe("Frase escrita pelo backend.");
+    },
+  );
+
+  it("nenhuma frase de recurso diz 'dentro de momentos'", async () => {
+    for (const [estado] of FRASES) {
+      comFetch(() => respostaDe(estado, ""));
+      const erro = await pedir("/ementa").catch((capturado: unknown) => capturado);
+      expect((erro as ErroDaApi).message).not.toMatch(/dentro de momentos/);
+    }
+  });
 });
