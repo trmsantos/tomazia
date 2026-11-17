@@ -382,3 +382,94 @@ export const DESTINOS_MALICIOSOS: ReadonlyArray<readonly [string, string]> = [
   ["destino válido com lixo no fim", "/gestao/ementaX"],
   ["destino válido com prefixo", "x/gestao/ementa"],
 ];
+
+// ---------------------------------------------------------------------------
+// F4-05a — as definições na gestão. Dados claramente falsos; tipados com o
+// OpenAPI gerado.
+// ---------------------------------------------------------------------------
+
+export type DefinicoesGestao = components["schemas"]["DefinicoesGestao"];
+export type PedidoDefinicoes = components["schemas"]["PedidoDefinicoes"];
+export type DiaDoHorario = components["schemas"]["DiaDoHorario"];
+export type PeriodoDoHorario = components["schemas"]["PeriodoDoHorario"];
+export type DiaDaSemana = DiaDoHorario["dia"];
+
+/** Os sete dias, de segunda a domingo (a ordem do backend e do editor). */
+export const DIAS_PELA_ORDEM: readonly DiaDaSemana[] = [
+  "segunda",
+  "terca",
+  "quarta",
+  "quinta",
+  "sexta",
+  "sabado",
+  "domingo",
+];
+
+/**
+ * Os sete dias a partir de `{ dia: [[abre, fecha], …] }`; o que não se diz é
+ * fechado (`periodos: []`). Espelha `semana()` de `backend/tests/gestao/test_definicoes.py`.
+ */
+export function semanaDeTeste(
+  periodos: Partial<Record<DiaDaSemana, ReadonlyArray<readonly [string, string]>>> = {},
+): DiaDoHorario[] {
+  return DIAS_PELA_ORDEM.map((dia) => ({
+    dia,
+    periodos: (periodos[dia] ?? []).map(([abre, fecha]) => ({ abre, fecha })),
+  }));
+}
+
+/** O horário de todos os testes: segunda fechada, sexta com almoço e noite, sábado a passar da meia-noite. */
+export function horarioDeTeste(): DiaDoHorario[] {
+  return semanaDeTeste({
+    terca: [["17:00", "02:00"]],
+    quarta: [["17:00", "02:00"]],
+    quinta: [["17:00", "02:00"]],
+    sexta: [
+      ["12:00", "15:00"],
+      ["19:00", "02:00"],
+    ],
+    sabado: [["17:00", "03:00"]],
+    domingo: [["15:00", "23:00"]],
+  });
+}
+
+/** Tudo preenchido, o horário `configurado`. A password leva um espaço no fim, de propósito. */
+export function definicoesConfiguradas(): DefinicoesGestao {
+  return {
+    wifi_rede: "tomazia-exemplo",
+    wifi_password: "cerveja-fresca-2026 ",
+    morada: "Rua de Exemplo, 12, Estarreja",
+    telefone: "912345678",
+    instagram: "https://www.instagram.com/bar.exemplo",
+    maps_url: "https://maps.example.test/tomazia",
+    horario: horarioDeTeste(),
+    horario_estado: "configurado",
+  };
+}
+
+/** Instalação nova: tudo `""`, `horario: null`, `nao_configurado` (um estado normal, não um erro). */
+export function definicoesVazias(): DefinicoesGestao {
+  return {
+    wifi_rede: "",
+    wifi_password: "",
+    morada: "",
+    telefone: "",
+    instagram: "",
+    maps_url: "",
+    horario: null,
+    horario_estado: "nao_configurado",
+  };
+}
+
+/** O horário guardado está estragado: vem `null`, mas o estado diz `invalido`. */
+export function definicoesComHorarioInvalido(): DefinicoesGestao {
+  return { ...definicoesConfiguradas(), horario: null, horario_estado: "invalido" };
+}
+
+/** O que o servidor devolveria a um `PUT` com `pedido` (o estado vem do horário). */
+export function ecoDoPedido(pedido: PedidoDefinicoes): DefinicoesGestao {
+  return {
+    ...pedido,
+    horario_estado: pedido.horario === null ? "nao_configurado" : "configurado",
+  };
+}

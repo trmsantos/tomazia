@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { TEXTOS as TEXTOS_DAS_DEFINICOES } from "../src/pages/gestao/definicoes/textos";
 import { TEXTOS_DA_GESTAO as T } from "../src/testes/gestao";
 import { fingirInfoFixo } from "./apoio/cabecalho";
 import { guardar } from "./apoio/capturas";
@@ -170,6 +171,21 @@ test.describe("a moldura, a 390 × 844", () => {
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await semViolacoesGraves(page, caminho);
     }
+  });
+
+  test("«Mais» é uma lista com «Definições» (para /gestao/mais/definicoes) e, por baixo, «Sair» (F4-05a)", async ({
+    page,
+  }) => {
+    await page.goto("/gestao/mais");
+    const ligacao = page.getByRole("link", {
+      name: new RegExp(`^${TEXTOS_DAS_DEFINICOES.ligacaoNoMais}`),
+    });
+    await expect(ligacao).toBeVisible();
+    await expect(ligacao).toHaveAttribute("href", "/gestao/mais/definicoes");
+    const a = await ligacao.boundingBox();
+    const b = await page.getByRole("button", { name: T.sair }).boundingBox();
+    expect((a?.y ?? 0) + (a?.height ?? 0)).toBeLessThanOrEqual(b?.y ?? 0);
+    await semViolacoesGraves(page, "mais com definições");
   });
 
   test("«Sair» leva ao login e o Voltar não mostra a gestão", async ({ page }) => {

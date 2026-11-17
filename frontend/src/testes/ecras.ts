@@ -104,3 +104,19 @@ export const FICHEIROS_DA_F4_02 = [
   "src/lib/api/gestao-ementa.ts",
   "src/lib/formato/ler-preco.ts",
 ];
+
+/**
+ * As definições na gestão (F4-05a). Sentinelas: uma varredura que olha para
+ * pastas e não encontra os ficheiros novos devolve zero violações e passa
+ * (regra 10 do `CLAUDE.md`). Entra nas varreduras de textos PT-PT, de build de
+ * produção e de `sem-estilo-inline`.
+ */
+export const FICHEIROS_DA_F4_05A = [
+  "src/pages/gestao/definicoes/DefinicoesGestao.tsx",
+  "src/pages/gestao/definicoes/EditorDoHorario.tsx",
+  "src/pages/gestao/definicoes/horario-do-formulario.ts",
+  "src/pages/gestao/definicoes/validar-campos.ts",
+  "src/pages/gestao/definicoes/formulario.ts",
+  "src/pages/gestao/definicoes/textos.ts",
+  "src/lib/api/gestao-definicoes.ts",
+];

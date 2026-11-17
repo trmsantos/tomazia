@@ -1,7 +1,7 @@
-import type { MouseEvent, ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { juntar } from "../../components/ui/juntar";
-import { DESTINOS, estaAtivo, navegar } from "./navegacao";
+import { DESTINOS, eCliqueSimples, estaAtivo, estaExatamente, navegarComGuarda } from "./navegacao";
 
 /**
  * A moldura da gestão (F4-01, secções 5 e 6): a navegação e o `<main>`.
@@ -26,13 +26,6 @@ import { DESTINOS, estaAtivo, navegar } from "./navegacao";
  * o `<h1>`: é cada destino que o faz.
  */
 const TEXTOS = { saltar: "Saltar para o conteúdo", navegacao: "Gestão" } as const;
-
-/** Um clique «normal» (sem Ctrl, Cmd, Shift nem Alt, botão principal) deixa de ser do browser. */
-function ehCliqueSimples(evento: MouseEvent<HTMLAnchorElement>): boolean {
-  return (
-    evento.button === 0 && !evento.metaKey && !evento.ctrlKey && !evento.shiftKey && !evento.altKey
-  );
-}
 
 export function MolduraDaGestao({
   caminho,
@@ -73,17 +66,22 @@ export function MolduraDaGestao({
           <ul className="grid h-full grid-cols-5 lg:flex lg:h-auto lg:flex-col lg:gap-1">
             {DESTINOS.map((destino) => {
               const ativo = estaAtivo(destino, caminho);
+              // Numa subrota (`/gestao/mais/definicoes`) o destino continua ativo,
+              // mas tocar nele volta ao pai.
+              const exato = estaExatamente(destino, caminho);
               return (
                 <li key={destino.caminho} className="lg:w-full">
                   <a
                     href={destino.caminho}
                     aria-current={ativo ? "page" : undefined}
                     onClick={(evento) => {
-                      if (!ehCliqueSimples(evento)) return;
+                      if (!eCliqueSimples(evento)) return;
                       evento.preventDefault();
-                      // Tocar no ativo outra vez não faz nada: nem entrada nova
-                      // no histórico, nem recarregar, nem deslocar.
-                      if (!ativo) navegar(destino.caminho);
+                      // Tocar no destino exato outra vez não faz nada: nem entrada
+                      // nova no histórico, nem recarregar, nem deslocar. Numa
+                      // subrota, volta ao pai. Passa pela guarda de saída: com
+                      // alterações por guardar, pergunta.
+                      if (!exato) navegarComGuarda(destino.caminho);
                     }}
                     className={juntar(
                       "flex h-full flex-col items-center justify-center gap-1 border-t-marca text-nota",

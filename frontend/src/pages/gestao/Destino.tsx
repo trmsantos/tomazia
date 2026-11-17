@@ -5,14 +5,16 @@ import { Botao } from "../../components/ui/Botao";
 import { EstadoVazio } from "../../components/ui/EstadoVazio";
 import { sair } from "../../lib/api/auth";
 import { ErroDaApi } from "../../lib/api/cliente";
+import { DefinicoesGestao } from "./definicoes/DefinicoesGestao";
+import { TEXTOS as TEXTOS_DAS_DEFINICOES } from "./definicoes/textos";
 import { EmentaGestao } from "./ementa/EmentaGestao";
-import { DESTINOS, navegar } from "./navegacao";
+import { DESTINOS, eCliqueSimples, navegar } from "./navegacao";
 import { armarPrazo } from "./prazo";
 
 /**
  * O conteúdo de cada destino (F4-01, secções 6 e 7).
  *
- * Nesta tarefa quatro destinos são vazios e «Mais» só tem «Sair». Quando uma
+ * Nesta tarefa quatro destinos são vazios e «Mais» tem «Definições» e «Sair». Quando uma
  * das F4-02 a F4-05 preencher um destino, esse destino perde o `EstadoVazio` e
  * fica só o `<h1>`. O `<h1>` é de cada destino (`tabindex="-1"`, para receber o
  * foco ao mudar de destino — quem o move é o `AppGestao`).
@@ -99,7 +101,29 @@ function Mais(): ReactElement {
   return (
     <>
       <Titulo>Mais</Titulo>
-      <div className="flex flex-col items-start gap-3">
+      <div className="flex flex-col items-start gap-4">
+        {/* A lista de «Mais» (F4-05a): a F4-05b junta-lhe «Clientes» e «Conta», e o
+            «Sair» passa então para «Conta». Uma linha inteira é a ligação. */}
+        <ul className="superficie-painel w-full divide-y divide-fio-interno rounded-cartao border border-contorno-superficie">
+          <li>
+            <a
+              href="/gestao/mais/definicoes"
+              onClick={(evento) => {
+                if (!eCliqueSimples(evento)) return;
+                evento.preventDefault();
+                navegar("/gestao/mais/definicoes");
+              }}
+              className="flex min-h-toque flex-col justify-center px-4 py-3"
+            >
+              <span className="text-corpo font-forte text-texto">
+                {TEXTOS_DAS_DEFINICOES.ligacaoNoMais}
+              </span>
+              <span className="text-nota text-texto-suave">
+                {TEXTOS_DAS_DEFINICOES.linhaDaLigacaoNoMais}
+              </span>
+            </a>
+          </li>
+        </ul>
         <Botao
           ref={botao}
           desativado={aSair}
@@ -124,6 +148,7 @@ function Mais(): ReactElement {
 
 export function Destino({ caminho }: { caminho: string }): ReactElement {
   if (caminho === "/gestao/mais") return <Mais />;
+  if (caminho === "/gestao/mais/definicoes") return <DefinicoesGestao />;
   if (caminho === "/gestao/ementa") return <EmentaGestao />;
 
   const titulo = DESTINOS.find((destino) => destino.caminho === caminho)?.rotulo ?? "Início";

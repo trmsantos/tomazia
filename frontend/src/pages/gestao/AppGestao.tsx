@@ -8,7 +8,7 @@ import { Destino } from "./Destino";
 import { Entrar } from "./Entrar";
 import { MolduraDaGestao } from "./MolduraDaGestao";
 import { destinoParaLembrar } from "./destino-depois-de-entrar";
-import { DESTINOS, ROTAS_DOS_DESTINOS, navegar, useCaminho } from "./navegacao";
+import { DESTINOS, ROTAS_DA_GESTAO, TITULOS_DAS_SUBROTAS, navegar, useCaminho } from "./navegacao";
 import { armarPrazo } from "./prazo";
 import { ContextoDaSessao } from "./SessaoDaGestao";
 
@@ -50,7 +50,7 @@ export default function AppGestao(): ReactElement {
   const caminho = useCaminho();
   const normal = semBarraFinal(caminho);
   const naEntrada = normal === ENTRAR;
-  const conhecida = naEntrada || ROTAS_DOS_DESTINOS.has(normal);
+  const conhecida = naEntrada || ROTAS_DA_GESTAO.has(normal);
 
   const [guarda, setGuarda] = useState<Guarda>({ estado: "a-abrir" });
   // Aumenta a cada «Tentar outra vez», para a guarda voltar a perguntar.
@@ -150,9 +150,11 @@ export default function AppGestao(): ReactElement {
     if (anterior.current !== null && anterior.current !== normal) focoPendente.current = true;
     anterior.current = normal;
 
-    if (naEntrada || guarda.estado !== "ok" || !ROTAS_DOS_DESTINOS.has(normal)) return;
+    if (naEntrada || guarda.estado !== "ok" || !ROTAS_DA_GESTAO.has(normal)) return;
 
-    const rotulo = DESTINOS.find((destino) => destino.caminho === normal)?.rotulo;
+    const rotulo =
+      DESTINOS.find((destino) => destino.caminho === normal)?.rotulo ??
+      TITULOS_DAS_SUBROTAS[normal];
     document.title = rotulo !== undefined ? `${rotulo} — ${TITULO_DA_GESTAO}` : TITULO_DA_GESTAO;
 
     if (focoPendente.current) {

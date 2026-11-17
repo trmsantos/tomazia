@@ -45,6 +45,7 @@ describe("destinoDepoisDeEntrar: o que se aceita", () => {
     "/gestao/eventos",
     "/gestao/galeria",
     "/gestao/mais",
+    "/gestao/mais/definicoes",
     "/gestao/ementa?categoria=garrafeira",
     "/gestao/ementa?categoria=bebidas-2",
     "/gestao/ementa?categoria=a",
@@ -118,5 +119,36 @@ describe("destinoDepoisDeEntrar: a tabela do redirecionamento aberto → Início
       expect(resultado).not.toContain("\\");
       expect(resultado).not.toContain(":");
     }
+  });
+});
+
+/**
+ * F4-05a — a lista branca ganha `/gestao/mais/definicoes` (e só essa subrota).
+ * O 401 a meio das definições volta aqui depois do login.
+ */
+describe("destinoDepoisDeEntrar: a subrota das definições (F4-05a)", () => {
+  it("{ voltar: '/gestao/mais/definicoes' } é aceite", () => {
+    expect(destinoDepoisDeEntrar({ voltar: "/gestao/mais/definicoes" })).toBe(
+      "/gestao/mais/definicoes",
+    );
+  });
+
+  it.each([
+    ["barra final", "/gestao/mais/definicoes/"],
+    ["query", "/gestao/mais/definicoes?x=1"],
+    ["fragmento", "/gestao/mais/definicoes#x"],
+    ["maiúscula", "/gestao/mais/Definicoes"],
+    ["segmento ..", "/gestao/mais/../ementa"],
+    ["subrota desconhecida", "/gestao/mais/outra"],
+    ["subrota por baixo", "/gestao/mais/definicoes/x"],
+    ["barras duplas", "/gestao/mais//definicoes"],
+    ["contrabarra", "/gestao/mais\\definicoes"],
+    ["codificada", "/gestao/mais/defini%C3%A7oes"],
+  ])("%s → Início", (_nome, voltar) => {
+    expect(destinoDepoisDeEntrar({ voltar })).toBe(INICIO);
+  });
+
+  it("continua a recusar o login", () => {
+    expect(destinoDepoisDeEntrar({ voltar: "/gestao/entrar" })).toBe(INICIO);
   });
 });

@@ -41,7 +41,12 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
-import { FICHEIROS_DA_F3_05, FICHEIROS_DA_F4_01, FICHEIROS_DA_F4_02 } from "./testes/ecras";
+import {
+  FICHEIROS_DA_F3_05,
+  FICHEIROS_DA_F4_01,
+  FICHEIROS_DA_F4_02,
+  FICHEIROS_DA_F4_05A,
+} from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -310,7 +315,7 @@ describe("o público não importa src/pages/gestao", () => {
     /(?:\bfrom\s*|\bimport\s*)["'](?:[^"']*\/)?gestao(?:\/[^"']*)?["']/;
 
   it("a gestão existe no código-fonte (sem isto, não encontrar nada não prova nada)", () => {
-    const emFalta = [...FICHEIROS_DA_F4_01, ...FICHEIROS_DA_F4_02].filter(
+    const emFalta = [...FICHEIROS_DA_F4_01, ...FICHEIROS_DA_F4_02, ...FICHEIROS_DA_F4_05A].filter(
       (relativo) => !existsSync(join(RAIZ_FRONTEND, relativo)),
     );
 
