@@ -25,6 +25,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { entrar, quemSouEu, sair } from "../../lib/api/auth";
+import { obterDefinicoes } from "../../lib/api/gestao-definicoes";
 import { obterEmentaGestao } from "../../lib/api/gestao-ementa";
 import {
   DESTINOS_ESPERADOS,
@@ -35,8 +36,10 @@ import {
   erro401,
   erroDoServidor,
   erroSemResposta,
+  definicoesConfiguradas,
   ementaDeGestaoDeTeste,
 } from "../../testes/gestao";
+import { TEXTOS as TD } from "./definicoes/textos";
 import AppGestao from "./AppGestao";
 
 vi.mock("../../lib/api/auth", () => ({ entrar: vi.fn(), quemSouEu: vi.fn(), sair: vi.fn() }));
@@ -48,6 +51,13 @@ vi.mock("../../lib/api/gestao-ementa", () => ({
   reordenarProdutos: vi.fn(),
 }));
 
+// F4-05a: a subrota Definições pede `GET /gestao/definicoes`.
+vi.mock("../../lib/api/gestao-definicoes", () => ({
+  obterDefinicoes: vi.fn(),
+  guardarDefinicoes: vi.fn(),
+}));
+
+const obterDefinicoesFalso = vi.mocked(obterDefinicoes);
 const entrarFalso = vi.mocked(entrar);
 const quemSouEuFalso = vi.mocked(quemSouEu);
 const sairFalso = vi.mocked(sair);
@@ -56,6 +66,8 @@ const obterEmentaFalso = vi.mocked(obterEmentaGestao);
 beforeEach(() => {
   obterEmentaFalso.mockReset();
   obterEmentaFalso.mockResolvedValue(ementaDeGestaoDeTeste());
+  obterDefinicoesFalso.mockReset();
+  obterDefinicoesFalso.mockResolvedValue(definicoesConfiguradas());
   entrarFalso.mockReset();
   quemSouEuFalso.mockReset();
   sairFalso.mockReset();
@@ -578,5 +590,76 @@ describe("Mais e «Sair» (7.2 a 7.4)", () => {
     });
 
     expect(screen.queryByText(T.saiuSemResposta)).toBeNull();
+  });
+});
+
+/**
+ * F4-05a — a subrota `/gestao/mais/definicoes`, «Mais» como lista e o título.
+ * Contrato: `Destino` (`Destino.tsx`) escolhe `<DefinicoesGestao />` em
+ * `/gestao/mais/definicoes`; `Mais` tem a ligação «Definições» e, por baixo, «Sair».
+ */
+describe("a subrota das definições (F4-05a)", () => {
+  it("/gestao/mais/definicoes é conhecida: não volta a /gestao, mostra as definições", async () => {
+    const substituir = vi.spyOn(window.history, "replaceState");
+    await abrir("/gestao/mais/definicoes");
+    substituir.mockClear();
+
+    expect(await screen.findByRole("heading", { level: 1, name: TD.titulo })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/gestao/mais/definicoes");
+    expect(substituir).not.toHaveBeenCalledWith(expect.anything(), "", "/gestao");
+  });
+
+  it("/gestao/mais/outra continua a voltar a /gestao", async () => {
+    await abrir("/gestao/mais/outra");
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao");
+    });
+  });
+
+  it("o título do separador é «Definições — Gestão — Bar da Tomazia»", async () => {
+    await abrir("/gestao/mais/definicoes");
+    await screen.findByRole("heading", { level: 1, name: TD.titulo });
+    expect(document.title).toBe("Definições — Gestão — Bar da Tomazia");
+  });
+
+  it("«Mais» fica ativo na barra", async () => {
+    await abrir("/gestao/mais/definicoes");
+    await screen.findByRole("heading", { level: 1, name: TD.titulo });
+    expect(
+      within(navegacao()).getByRole("link", { name: "Mais" }).getAttribute("aria-current"),
+    ).toMatch(/^(page|true)$/);
+  });
+
+  it("ao chegar da lista de «Mais», o foco vai para o <h1>", async () => {
+    await abrir("/gestao/mais");
+    fireEvent.click(screen.getByRole("link", { name: new RegExp(`^${TD.ligacaoNoMais}`) }));
+    const titulo = await screen.findByRole("heading", { level: 1, name: TD.titulo });
+    await waitFor(() => {
+      expect(titulo).toHaveFocus();
+    });
+    expect(window.location.pathname).toBe("/gestao/mais/definicoes");
+  });
+
+  it("«Mais» é uma lista: a ligação «Definições» (para /gestao/mais/definicoes) e, por baixo, «Sair»", async () => {
+    await abrir("/gestao/mais");
+
+    const ligacao = screen.getByRole("link", { name: new RegExp(`^${TD.ligacaoNoMais}`) });
+    expect(ligacao).toHaveAttribute("href", "/gestao/mais/definicoes");
+    const sair = screen.getByRole("button", { name: T.sair });
+    expect(
+      ligacao.compareDocumentPosition(sair) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "«Sair» vem depois de «Definições»",
+    ).toBeTruthy();
+    expect(within(screen.getByRole("main")).getByRole("list")).toContainElement(ligacao);
+  });
+
+  it("um 401 no GET das definições leva ao login com o destino lembrado; entrar volta lá", async () => {
+    obterDefinicoesFalso.mockRejectedValue(erro401());
+    await abrir("/gestao/mais/definicoes");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect(window.history.state).toMatchObject({ voltar: "/gestao/mais/definicoes" });
   });
 });

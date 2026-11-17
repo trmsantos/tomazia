@@ -22,7 +22,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DESTINOS_ESPERADOS, TEXTOS_DA_GESTAO, abrirEm } from "../../testes/gestao";
+import { limparGuardaDeSaida } from "../../testes/guarda";
 import { MolduraDaGestao } from "./MolduraDaGestao";
+import { definirGuardaDeSaida } from "./navegacao";
 
 function moldura(caminho: string) {
   abrirEm(caminho);
@@ -45,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  limparGuardaDeSaida();
   vi.restoreAllMocks();
 });
 
@@ -182,5 +185,84 @@ describe("tocar numa ligação", () => {
     expect(seguiuOPadrao).toBe(false);
     expect(empurrar).not.toHaveBeenCalled();
     expect(substituir).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F4-05a, plano 2.2 — a subrota `/gestao/mais/definicoes`: «Mais» continua ativo,
+ * tocar nele leva a `/gestao/mais` (antes não fazia nada e o dono ficava preso),
+ * e os toques da barra passam pela guarda de saída (D3).
+ */
+describe("a subrota /gestao/mais/definicoes", () => {
+  it("«Mais» é o ativo (o `aria-current` exato é da ui-ux: «page» ou «true») e os outros não", () => {
+    moldura("/gestao/mais/definicoes");
+    expect(screen.getByRole("link", { name: "Mais" }).getAttribute("aria-current")).toMatch(
+      /^(page|true)$/,
+    );
+    for (const rotulo of ["Início", "Ementa", "Eventos", "Galeria"]) {
+      expect(screen.getByRole("link", { name: rotulo })).not.toHaveAttribute("aria-current");
+    }
+  });
+
+  it("tocar em «Mais» na subrota navega para /gestao/mais (uma entrada nova, sem recarregar)", () => {
+    const empurrar = vi.spyOn(window.history, "pushState");
+    moldura("/gestao/mais/definicoes");
+
+    const seguiuOPadrao = fireEvent.click(screen.getByRole("link", { name: "Mais" }));
+
+    expect(seguiuOPadrao).toBe(false);
+    expect(empurrar).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe("/gestao/mais");
+  });
+
+  it("tocar em «Mais» em /gestao/mais continua a não fazer nada", () => {
+    const empurrar = vi.spyOn(window.history, "pushState");
+    moldura("/gestao/mais");
+    fireEvent.click(screen.getByRole("link", { name: "Mais" }));
+    expect(empurrar).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/gestao/mais");
+  });
+});
+
+describe("a guarda de saída na barra (D3)", () => {
+  it("com guarda a tratar: tocar noutro destino não navega e chama a guarda", () => {
+    const guarda = vi.fn<(seguir: () => void) => boolean>(() => true);
+    moldura("/gestao/mais/definicoes");
+    definirGuardaDeSaida(guarda);
+
+    const seguiuOPadrao = fireEvent.click(screen.getByRole("link", { name: "Ementa" }));
+
+    expect(seguiuOPadrao, "o clique não deixa o browser recarregar").toBe(false);
+    expect(guarda).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe("/gestao/mais/definicoes");
+  });
+
+  it("`seguir` faz a navegação que foi tocada", () => {
+    let seguir: () => void = () => undefined;
+    moldura("/gestao/mais/definicoes");
+    definirGuardaDeSaida((s) => {
+      seguir = s;
+      return true;
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Ementa" }));
+    definirGuardaDeSaida(null);
+    seguir();
+    expect(window.location.pathname).toBe("/gestao/ementa");
+  });
+
+  it("também tocar em «Mais» na subrota pergunta antes", () => {
+    const guarda = vi.fn<(seguir: () => void) => boolean>(() => true);
+    moldura("/gestao/mais/definicoes");
+    definirGuardaDeSaida(guarda);
+    fireEvent.click(screen.getByRole("link", { name: "Mais" }));
+    expect(guarda).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe("/gestao/mais/definicoes");
+  });
+
+  it("com a guarda a devolver false, navega", () => {
+    moldura("/gestao/mais/definicoes");
+    definirGuardaDeSaida(() => false);
+    fireEvent.click(screen.getByRole("link", { name: "Ementa" }));
+    expect(window.location.pathname).toBe("/gestao/ementa");
   });
 });

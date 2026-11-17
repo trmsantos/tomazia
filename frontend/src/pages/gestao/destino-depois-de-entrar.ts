@@ -1,4 +1,4 @@
-import { ROTAS_DOS_DESTINOS } from "./navegacao";
+import { ROTAS_DA_GESTAO } from "./navegacao";
 
 /**
  * Para onde vai quem acabou de entrar (F4-02, D4).
@@ -19,7 +19,8 @@ import { ROTAS_DOS_DESTINOS } from "./navegacao";
  *  - até 96 caracteres (cabe `/gestao/ementa?categoria=` e um `slug` de 60);
  *  - nenhum `//`, `\`, `:`, `%`, `.`, `#`, espaço nem carácter de controlo
  *    (o browser apaga `\t\n\r` num endereço, e `/\t/x` vira `//x`);
- *  - é exatamente um destino conhecido e não é o login — **única exceção**,
+ *  - é exatamente uma rota conhecida da gestão (os cinco destinos e
+ *    `/gestao/mais/definicoes`) e não é o login — **única exceção**,
  *    `/gestao/ementa?categoria=<slug>` com o `slug` em `^[a-z0-9-]{1,60}$`,
  *    para voltar à mesma categoria.
  *
@@ -47,7 +48,7 @@ function eDestinoAceite(voltar: string): boolean {
   if (voltar.length === 0 || voltar.length > COMPRIMENTO_MAXIMO) return false;
   if (CARACTERES_PROIBIDOS.test(voltar) || temCaracterDeControlo(voltar)) return false;
   if (EMENTA_DE_UMA_CATEGORIA.test(voltar)) return true;
-  return voltar !== ENTRAR && ROTAS_DOS_DESTINOS.has(voltar);
+  return voltar !== ENTRAR && ROTAS_DA_GESTAO.has(voltar);
 }
 
 /** O `voltar` de um estado de forma desconhecida; um getter que lança não rebenta. */

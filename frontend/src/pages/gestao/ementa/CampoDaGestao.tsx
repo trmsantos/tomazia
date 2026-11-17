@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactElement, Ref } from "react";
+import type { HTMLAttributes, KeyboardEvent, ReactElement, Ref } from "react";
 import { useId } from "react";
 
 import { juntar } from "../../../components/ui/juntar";
@@ -13,7 +13,11 @@ import { juntar } from "../../../components/ui/juntar";
  *    `type="number"`: o `number` rejeita a vírgula em vários browsers e deixa a
  *    roda do rato trocar o preço a quem desloca a página);
  *  - **`aria-disabled`** em vez de `disabled`, para a pesquisa que fica parada
- *    (mas focável) enquanto o modo «Ordenar» está aberto.
+ *    (mas focável) enquanto o modo «Ordenar» está aberto;
+ *  - **o teclado de quem escreve uma password, um telefone ou um endereço**
+ *    (F4-05a): `inputMode`, `autoCapitalize`, `spellCheck`, `enterKeyHint`, e uma
+ *    `ajuda` ligada por `aria-describedby` (junto com o erro). Todas opcionais:
+ *    sem elas o campo da F4-02 fica exatamente como estava.
  */
 export type PropriedadesDoCampoDaGestao = {
   etiqueta: string;
@@ -25,6 +29,15 @@ export type PropriedadesDoCampoDaGestao = {
   decimal?: boolean;
   /** `aria-disabled`: o valor não muda, o foco não sai. */
   parado?: boolean;
+  /** `tel`, `url`… — o teclado que o telemóvel abre. Por omissão, o do `decimal` ou nenhum. */
+  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  /** `none` para uma password ou um endereço: sem maiúscula à primeira letra. */
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  /** `false` tira o sublinhado e a correção automática (também no iOS). */
+  spellCheck?: boolean;
+  enterKeyHint?: HTMLAttributes<HTMLInputElement>["enterKeyHint"];
+  /** Uma linha de ajuda por baixo do campo, ligada por `aria-describedby`. */
+  ajuda?: string;
   /** O `Esc` da edição do preço cancela-a. */
   aoTeclar?: (tecla: KeyboardEvent<HTMLInputElement>) => void;
   ref?: Ref<HTMLInputElement>;
@@ -37,6 +50,11 @@ export function CampoDaGestao({
   id,
   erro,
   decimal = false,
+  inputMode,
+  autoCapitalize,
+  spellCheck,
+  enterKeyHint,
+  ajuda,
   parado = false,
   aoTeclar,
   ref,
@@ -44,6 +62,11 @@ export function CampoDaGestao({
   const gerado = useId();
   const identificador = id ?? gerado;
   const idDoErro = `${identificador}-erro`;
+  const idDaAjuda = `${identificador}-ajuda`;
+  const descritoPor =
+    [ajuda !== undefined ? idDaAjuda : null, erro !== undefined ? idDoErro : null]
+      .filter((id) => id !== null)
+      .join(" ") || undefined;
 
   return (
     <div className="flex w-full flex-col gap-1">
@@ -55,13 +78,14 @@ export function CampoDaGestao({
         ref={ref}
         type="text"
         value={valor}
-        inputMode={decimal ? "decimal" : undefined}
-        enterKeyHint={decimal ? "done" : undefined}
+        inputMode={inputMode ?? (decimal ? "decimal" : undefined)}
+        enterKeyHint={enterKeyHint ?? (decimal ? "done" : undefined)}
         autoComplete="off"
-        autoCapitalize={decimal ? "none" : undefined}
-        spellCheck={decimal ? false : undefined}
+        autoCapitalize={autoCapitalize ?? (decimal ? "none" : undefined)}
+        autoCorrect={spellCheck === false ? "off" : undefined}
+        spellCheck={spellCheck ?? (decimal ? false : undefined)}
         aria-invalid={erro !== undefined ? "true" : undefined}
-        aria-describedby={erro !== undefined ? idDoErro : undefined}
+        aria-describedby={descritoPor}
         aria-disabled={parado ? "true" : undefined}
         onKeyDown={aoTeclar}
         onChange={(evento) => {
@@ -74,6 +98,11 @@ export function CampoDaGestao({
           parado && "opacity-desativado cursor-not-allowed",
         )}
       />
+      {ajuda !== undefined && (
+        <p id={idDaAjuda} className="text-nota text-texto-suave">
+          {ajuda}
+        </p>
+      )}
       {erro !== undefined && (
         <p id={idDoErro} className="text-nota text-erro">
           {erro}

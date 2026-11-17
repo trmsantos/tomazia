@@ -250,7 +250,12 @@ export default {
       // A barra de chips: `h-barra` fixa-lhe a altura e `top-cabecalho` diz
       // onde ela pára quando cola. Os dois saem do mesmo sítio que a âncora
       // das categorias, para não haver duas contas a discordar.
-      inset: { cabecalho: "var(--altura-cabecalho)" },
+      inset: {
+        cabecalho: "var(--altura-cabecalho)",
+        // A barra de guardar das definições (F4-05a) assenta por cima da barra
+        // inferior da gestão: `bottom-barra-gestao`, do token que já existe.
+        "barra-gestao": "var(--altura-barra-gestao)",
+      },
       // A folga do `<main>` por baixo do cabeçalho fixo (F3-03, secção 2). O
       // `inset` acima dá `top-cabecalho` e **não** dá `padding`: a escala de
       // espaçamento deste projeto é substituída, por isso um `pt-cabecalho`
