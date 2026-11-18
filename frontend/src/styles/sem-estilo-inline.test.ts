@@ -28,7 +28,12 @@ import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "../testes/componentes";
-import { FICHEIROS_DA_F3_05, FICHEIROS_DA_F4_02, FICHEIROS_DA_F4_05A } from "../testes/ecras";
+import {
+  FICHEIROS_DA_F3_05,
+  FICHEIROS_DA_F4_02,
+  FICHEIROS_DA_F4_03,
+  FICHEIROS_DA_F4_05A,
+} from "../testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -112,6 +117,7 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
         ...FICHEIROS_DA_F3_05,
         ...FICHEIROS_DA_F4_02,
         ...FICHEIROS_DA_F4_05A,
+        ...FICHEIROS_DA_F4_03,
       ],
       "style inline",
     );

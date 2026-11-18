@@ -238,6 +238,23 @@
   }
 
   /*
+   * Em telemóveis estreitos o aviso (texto, «Desfazer» e «×») não cabe numa linha: o texto
+   * ocupava cinco. Abaixo de 400 px os botões descem para uma linha por baixo do texto.
+   * Só da gestão (o público não tem esta classe); o componente do aviso não muda.
+   */
+  @media (max-width: 400px) {
+    .aviso-sobre-a-barra-da-gestao [role="status"],
+    .aviso-sobre-a-barra-da-gestao [role="alert"] {
+      flex-wrap: wrap;
+    }
+
+    .aviso-sobre-a-barra-da-gestao [role="status"] > p,
+    .aviso-sobre-a-barra-da-gestao [role="alert"] > p {
+      flex-basis: 100%;
+    }
+  }
+
+  /*
    * O destino ativo na coluna lateral da gestão (F4-01, 5.3): um degrau abaixo
    * do painel, sem dourado nem borda. Só a partir de 1024 px; abaixo, o ativo
    * distingue-se pelo peso e pela barra de 2 px, sem preenchimento. Uma classe

@@ -38,33 +38,11 @@ import {
   dataPorExtenso,
   diaEHora,
 } from "../../testes/eventos";
+import { comOFusoDoAparelhoEm } from "../../testes/fuso";
 import { DIAS_DA_SEMANA, MESES, formatarDataDoEvento } from "./data-do-evento";
 
 /** 2 de novembro de 2026, segunda-feira, 10:00 em Lisboa (UTC+0 em novembro). */
 const SEGUNDA_DE_MANHA = new Date("2026-11-02T10:00:00Z");
-
-/**
- * Correr um bloco com o fuso do **processo** noutro sítio do mundo.
- *
- * O guarda é a regra 10 em pessoa: se a troca de `TZ` não pegar — e houve
- * versões do Node em que não pegava a meio do processo —, os casos corriam em
- * Lisboa e passavam todos, a dizer que o código é imune ao fuso do aparelho
- * quando ninguém chegou a sair de Lisboa. "Não consegui mudar o fuso" tem de
- * se ler diferente de "está certo".
- */
-function comOFusoDoAparelhoEm(fuso: string, correr: () => void): void {
-  const anterior = process.env.TZ;
-  process.env.TZ = fuso;
-  try {
-    expect(
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-      `não consegui pôr o fuso do processo em ${fuso}: este caso não verificou nada`,
-    ).toBe(fuso);
-    correr();
-  } finally {
-    process.env.TZ = anterior;
-  }
-}
 
 /**
  * Trocar o `Intl.DateTimeFormat` do processo e **recarregar o módulo** por

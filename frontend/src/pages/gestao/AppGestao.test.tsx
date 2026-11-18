@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { entrar, quemSouEu, sair } from "../../lib/api/auth";
 import { obterDefinicoes } from "../../lib/api/gestao-definicoes";
 import { obterEmentaGestao } from "../../lib/api/gestao-ementa";
+import { obterEventosGestao } from "../../lib/api/gestao-eventos";
 import {
   DESTINOS_ESPERADOS,
   SESSAO_DE_TESTE,
@@ -38,8 +39,10 @@ import {
   erroSemResposta,
   definicoesConfiguradas,
   ementaDeGestaoDeTeste,
+  eventosDeGestaoDeTeste,
 } from "../../testes/gestao";
 import { TEXTOS as TD } from "./definicoes/textos";
+import { TEXTOS as TE } from "./eventos/textos";
 import AppGestao from "./AppGestao";
 
 vi.mock("../../lib/api/auth", () => ({ entrar: vi.fn(), quemSouEu: vi.fn(), sair: vi.fn() }));
@@ -57,6 +60,16 @@ vi.mock("../../lib/api/gestao-definicoes", () => ({
   guardarDefinicoes: vi.fn(),
 }));
 
+// F4-03: o destino Eventos pede `GET /gestao/eventos`.
+vi.mock("../../lib/api/gestao-eventos", () => ({
+  obterEventosGestao: vi.fn(),
+  criarEvento: vi.fn(),
+  alterarEvento: vi.fn(),
+  eliminarEvento: vi.fn(),
+  duplicarEvento: vi.fn(),
+}));
+
+const obterEventosFalso = vi.mocked(obterEventosGestao);
 const obterDefinicoesFalso = vi.mocked(obterDefinicoes);
 const entrarFalso = vi.mocked(entrar);
 const quemSouEuFalso = vi.mocked(quemSouEu);
@@ -68,6 +81,8 @@ beforeEach(() => {
   obterEmentaFalso.mockResolvedValue(ementaDeGestaoDeTeste());
   obterDefinicoesFalso.mockReset();
   obterDefinicoesFalso.mockResolvedValue(definicoesConfiguradas());
+  obterEventosFalso.mockReset();
+  obterEventosFalso.mockImplementation(() => Promise.resolve(eventosDeGestaoDeTeste()));
   entrarFalso.mockReset();
   quemSouEuFalso.mockReset();
   sairFalso.mockReset();
@@ -452,10 +467,9 @@ describe("mudar de destino (5.5)", () => {
   });
 });
 
-describe("os três destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02)", () => {
+describe("os destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02 e os Eventos na F4-03)", () => {
   it.each([
     ["/gestao", T.vazioInicio],
-    ["/gestao/eventos", T.vazioEventos],
     ["/gestao/galeria", T.vazioGaleria],
   ])("%s: o título comum, a linha própria e nenhum botão", async (caminho, linha) => {
     await abrir(caminho);
@@ -467,11 +481,43 @@ describe("os três destinos que continuam vazios (7.1; a Ementa deixou de o ser 
   });
 
   it("nenhum promete datas nem funcionalidades: não dizem «em breve»", async () => {
-    for (const caminho of ["/gestao", "/gestao/eventos", "/gestao/galeria"]) {
+    for (const caminho of ["/gestao", "/gestao/galeria"]) {
       abrirEm(caminho);
     }
-    await abrir("/gestao/eventos");
+    await abrir("/gestao/galeria");
     expect(screen.getByRole("main").textContent).not.toMatch(/em breve|brevemente|vai/i);
+  });
+});
+
+describe("Eventos deixou de ser um destino vazio (F4-03)", () => {
+  it("/gestao/eventos mostra o ecrã dos eventos, não o «Ainda não há nada aqui.»", async () => {
+    await abrir("/gestao/eventos");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TE.novoEvento })).toBeInTheDocument();
+    });
+
+    expect(h1()).toHaveTextContent(TE.titulo);
+    expect(obterEventosFalso).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("main")).queryByText(T.vazioTitulo)).toBeNull();
+    expect(screen.getByRole("region", { name: TE.proximos })).toBeInTheDocument();
+    expect(document.title).toBe("Eventos — Gestão — Bar da Tomazia");
+  });
+
+  it("um 401 ao carregar os eventos leva ao login e, depois de entrar, volta a /gestao/eventos", async () => {
+    quemSouEuFalso.mockReset();
+    quemSouEuFalso.mockResolvedValueOnce(SESSAO_DE_TESTE);
+    quemSouEuFalso.mockRejectedValue(erro401());
+    obterEventosFalso.mockRejectedValue(erro401());
+
+    await abrir("/gestao/eventos");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect((window.history.state as { voltar?: unknown } | null)?.voltar).toBe("/gestao/eventos");
+    expect((window.history.state as { sessaoTerminou?: unknown } | null)?.sessaoTerminou).toBe(
+      true,
+    );
   });
 });
 

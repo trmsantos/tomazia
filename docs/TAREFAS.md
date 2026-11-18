@@ -8,7 +8,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
-1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto.
+1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado.
 2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
@@ -257,7 +257,7 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa.
 - **O que se sabe do bar, e com que confiança** (perguntado ao Tomás em 2026-11-02). Fica escrito porque esta é a área onde mais vezes se inventaram factos nesta sessão, e porque a diferença entre «sabemos» e «achamos» desapareceu duas vezes ao ser repetida:
-  - **Há uma noite de samba às quintas-feiras.** Confirmado pelo Tomás.
+  - **Há as Quintas de Samba, na 1.ª e 3.ª quinta-feira do mês.** Confirmado pelo Tomás.
   - **A cadência é incerta.** Palavras dele: «é sempre na 3ª quinta-feira do mês, penso eu, não tenho a certeza». Qualquer desenho que dependa de ser a 1.ª, a 3.ª ou todas as semanas está a assumir o que ninguém confirmou.
   - **A entrada é sempre livre.** Não há eventos pagos nem consumo mínimo — logo o cartão não fala de preço, e isso é uma decisão, não uma omissão.
   - **A hora mostra-se sempre.** O Tomás recusou a convenção de `00:00` significar «sem hora»: é escondida, e prefere não a ter.
@@ -380,13 +380,30 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Feito quando:** com a ementa vazia, o dono cria uma categoria e adiciona-lhe um produto sem sair da gestão (e2e); esconder uma categoria tira-a da ementa pública sem deploy; eliminar um produto pede confirmação numa folha e, cancelada, não faz pedido nenhum; um `409` ao reordenar categorias mostra a lista atual.
 - **Vem antes da F5-02:** o dono não pode lançar sem conseguir corrigir as categorias nem retirar um produto.
 
+### F4-07 Cartaz do evento
+
+- **Agentes:** qa, backend, ui-ux, frontend; revisor-seguranca obrigatório.
+- **Depende de:** F4-03.
+- **Faz:** upload do cartaz na folha do evento, validação e redimensionamento no backend com Pillow como nas fotos da F2-06, e retirar o cartaz.
+- **Feito quando:** um cartaz enviado aparece no cartão público e um ficheiro que não é imagem é recusado — teste em `backend/tests/seguranca/`.
+- **Decidido pelo Tomás em 2026-11-18:** o cartaz ficou fora da F4-03 (a imagem só se lê, F2-05). Precisa de um ADR ao planear: onde se guarda e o tamanho.
+
+### F4-08 Evento cancelado ou adiado
+
+- **Agentes:** arquiteto, ui-ux, dominio-bar, backend, frontend, qa.
+- **Depende de:** F4-03.
+- **Faz:** o dono marca um evento como «Cancelado» ou «Adiado» e o cartão público mostra um selo, em vez de o evento desaparecer sem explicação.
+- **Feito quando:** um evento publicado marcado como cancelado continua no site com o selo e sai sozinho depois da data.
+- **Ao planear:** precisa de ADR (o estado do evento e o que o público vê) e de migração aditiva (regra 7).
+
 ### F4-03 Eventos na gestão
 
-- **Agentes:** ui-ux, dominio-bar, frontend, qa.
+- **Agentes:** ui-ux, dominio-bar, backend, frontend, qa.
 - **Depende de:** F2-05, F4-01.
 - **Faz:** lista de próximos e rascunhos, arquivo, criar com data obrigatória, **editar**, publicar e despublicar, duplicar, **eliminar** com confirmação numa folha.
 - **Feito quando:** duplicar um evento semanal cria um rascunho com a data da semana seguinte; editar um evento publicado muda o site sem deploy; eliminar pede confirmação numa folha e o evento sai da lista e do site.
 - **Decidido pelo Tomás em 2026-11-16:** editar e eliminar entram nesta tarefa. O site antigo fazia as duas coisas e o backend já as tem (`PATCH` e `DELETE /gestao/eventos/{id}`, F2-05b); o "Faz" original não as dizia. O upload do cartaz continua fora — a imagem só se lê (F2-05).
+- **Decidido pelo Tomás em 2026-11-18:** as Quintas de Samba são na 1.ª e 3.ª quinta-feira do mês (14 ou 21 dias de intervalo), por isso duplicar só a +7 dias não serve. «Duplicar» oferece «Daqui a 1 semana», «2 semanas» e «3 semanas», cada opção com a data real à vista. O backend ganha um corpo opcional `{semanas: 1..4}` em `POST /gestao/eventos/{id}/duplicar` (omissão = 1, igual à F2-05b): `semanas = n` dá a n-ésima data da série semanal do original (mesma hora de parede de Lisboa) estritamente depois de agora, para as opções nunca colidirem quando o original já tem mais de uma semana. O "semanal" do "Feito quando" lê-se como "com o número de semanas escolhido".
 
 ### F4-04 Moderação de fotos
 
