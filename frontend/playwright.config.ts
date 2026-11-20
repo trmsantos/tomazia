@@ -1,4 +1,24 @@
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { defineConfig } from "@playwright/test";
+
+/**
+ * Onde se constrói o pacote servido ao `e2e/csp-producao.spec.ts`. Fora do
+ * repositório (como em `src/orcamento-q02.test.ts`): dentro de `test-results/`
+ * o Playwright pode limpá-la ao arrancar, com o `vite preview` já a servir
+ * dela, e o ESLint passava a analisar o bundle. O sufixo (hash do caminho
+ * deste ficheiro) separa worktrees que corram ao mesmo tempo. O segundo
+ * webServer arranca sempre e custa um `vite build` por corrida.
+ */
+const PASTA_DO_BUILD_CSP = join(
+  tmpdir(),
+  `tomazia-dist-csp-${createHash("sha256")
+    .update(import.meta.dirname)
+    .digest("hex")
+    .slice(0, 8)}`,
+);
 
 /**
  * Playwright para a F3-01.
@@ -42,29 +62,42 @@ export default defineConfig({
     hasTouch: true,
     trace: "retain-on-failure",
   },
-  webServer: {
-    // A página de demonstração só existe em desenvolvimento — é esse o
-    // ponto dela (ver `src/build-de-producao.test.ts`). Por isso estes
-    // testes correm contra o servidor do Vite e não contra `dist/`.
-    //
-    // Porta própria, `--strictPort` e `reuseExistingServer: false`, os três
-    // pela mesma razão, que já aconteceu a escrever estes testes: a 5173
-    // (a de omissão do Vite) tinha outra coisa qualquer a correr nesta
-    // máquina, o Playwright reutilizou-a por ser "um servidor que
-    // responde", e todos os testes falharam com 404 em
-    // `/demonstracao.html` — um 404 que não queria dizer "a página não
-    // existe", queria dizer "estou a falar com o servidor errado". Com
-    // `--strictPort`, o Vite recusa arrancar numa porta ocupada em vez de
-    // saltar em silêncio para a seguinte; sem reutilização, o servidor é
-    // sempre o nosso e conhece sempre os ficheiros que existem agora.
-    //
-    // A porta é a 8075, e não uma 517x, por isso mesmo: as 5173, 5174,
-    // 5175 e 5190 desta máquina estavam todas ocupadas por outros
-    // projetos com Vite. A 8075 fica ao lado da 8070 do backend (ver
-    // `CLAUDE.md`), onde é improvável haver outra coisa deste feitio.
-    command: "npm run dev -- --port 8075 --strictPort",
-    url: "http://localhost:8075/",
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      // A página de demonstração só existe em desenvolvimento — é esse o
+      // ponto dela (ver `src/build-de-producao.test.ts`). Por isso estes
+      // testes correm contra o servidor do Vite e não contra `dist/`.
+      //
+      // Porta própria, `--strictPort` e `reuseExistingServer: false`, os três
+      // pela mesma razão, que já aconteceu a escrever estes testes: a 5173
+      // (a de omissão do Vite) tinha outra coisa qualquer a correr nesta
+      // máquina, o Playwright reutilizou-a por ser "um servidor que
+      // responde", e todos os testes falharam com 404 em
+      // `/demonstracao.html` — um 404 que não queria dizer "a página não
+      // existe", queria dizer "estou a falar com o servidor errado". Com
+      // `--strictPort`, o Vite recusa arrancar numa porta ocupada em vez de
+      // saltar em silêncio para a seguinte; sem reutilização, o servidor é
+      // sempre o nosso e conhece sempre os ficheiros que existem agora.
+      //
+      // A porta é a 8075, e não uma 517x, por isso mesmo: as 5173, 5174,
+      // 5175 e 5190 desta máquina estavam todas ocupadas por outros
+      // projetos com Vite. A 8075 fica ao lado da 8070 do backend (ver
+      // `CLAUDE.md`), onde é improvável haver outra coisa deste feitio.
+      command: "npm run dev -- --port 8075 --strictPort",
+      url: "http://localhost:8075/",
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // O pacote de produção, servido para o `e2e/csp-producao.spec.ts`:
+      // o servidor de desenvolvimento mete scripts e estilos inline que a
+      // CSP de produção proíbe, por isso nele não se pode testar com ela.
+      // Constrói para uma pasta à parte para não pisar `dist/`. `npx` para
+      // não depender do PATH do shell do webServer (nem no CI).
+      command: `npx vite build --outDir ${JSON.stringify(PASTA_DO_BUILD_CSP)} --emptyOutDir && npx vite preview --outDir ${JSON.stringify(PASTA_DO_BUILD_CSP)} --port 8076 --strictPort`,
+      url: "http://localhost:8076/",
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
+  ],
 });

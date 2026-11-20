@@ -105,6 +105,10 @@ async function comFicheiroPronto(
   await act(async () => {
     await Promise.resolve();
   });
+  // A prévia é um `data:` URL lido de forma assíncrona (FileReader).
+  await waitFor(() => {
+    expect(document.querySelector("img")).not.toBeNull();
+  });
   return desenho;
 }
 
@@ -219,41 +223,30 @@ describe("sem ficheiro escolhido", () => {
 });
 
 describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheiro reduzido", () => {
-  it("existe assim que o ficheiro é escolhido — antes de reduzir() resolver", () => {
+  it("existe assim que o ficheiro é lido, antes de reduzir() resolver, e é um data: URL (a CSP bloqueia blob:)", async () => {
     reduzirFalso.mockReturnValue(new Promise(() => undefined)); // nunca resolve
+    const criarUrl = vi.spyOn(URL, "createObjectURL");
     render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
 
     escolherFicheiro(ficheiroFalso());
 
-    // "de imediato (URL.createObjectURL, sem esperar pela redução)" — a
-    // especificação é explícita: a pré-visualização não pode esperar por
-    // "A preparar a foto…" para aparecer, as duas coexistem.
-    //
-    // `document.querySelector`, não `getByRole("img")`: o `alt=""`
-    // (decorativo, de propósito — o ficheiro já está nomeado pela
-    // etiqueta do campo) dá à imagem o papel ARIA "presentation", não
-    // "img", por isso `getByRole` nunca a encontraria.
-    const previa = document.querySelector("img");
-    expect(previa, "a pré-visualização tem de existir antes da redução acabar").not.toBeNull();
-    expect(previa).toHaveAttribute("src", expect.stringMatching(/^blob:/) as unknown as string);
+    // `document.querySelector`, não `getByRole("img")`: o `alt=""` dá à
+    // imagem o papel ARIA "presentation".
+    await waitFor(() => {
+      expect(document.querySelector("img")).not.toBeNull();
+    });
+    expect(document.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringMatching(/^data:/) as unknown as string,
+    );
     expect(screen.getByText(TEXTOS_DA_GALERIA.aPreparar)).toBeInTheDocument();
+    expect(criarUrl, "createObjectURL produz blob:, que a CSP bloqueia").not.toHaveBeenCalled();
+    criarUrl.mockRestore();
   });
 
-  it("troca a fonte para o ficheiro reduzido assim que reduzir() acaba — fontes distintas, não só a forma «blob:»", async () => {
-    // Correção de revisão de código: a versão anterior só exigia que o
-    // `src` começasse por "blob:", que é verdade **antes e depois** da
-    // troca — por isso não provava a troca em si. Trocar
-    // `src={previaReduzidaUrl ?? previaUrl ?? ""}` por `src={previaUrl ??
-    // ""}` (desfazer metade da correcção 6.4) deixava este teste verde na
-    // mesma. Aqui `URL.createObjectURL` devolve um valor **distinto e
-    // reconhecível** consoante o objecto que lhe é passado, para a
-    // asserção ser sobre QUAL blob está lá, não só sobre a forma do texto.
+  it("troca a fonte para o ficheiro reduzido assim que reduzir() acaba — fontes distintas, ambas data:", async () => {
     const original = ficheiroFalso();
-    const reduzido = new Blob(["reduzida"], { type: "image/webp" });
-
-    const criarUrl = vi.spyOn(URL, "createObjectURL").mockImplementation((objecto) => {
-      return objecto === reduzido ? "blob:reduzido" : "blob:original";
-    });
+    const reduzido = new Blob(["reduzida"], { type: "image/jpeg" });
 
     let resolverReducao: (valor: ResultadoDaReducao) => void = () => undefined;
     reduzirFalso.mockImplementation(
@@ -264,28 +257,112 @@ describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheir
     );
 
     render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
-    try {
-      escolherFicheiro(original);
-      await waitFor(() => {
-        expect(reduzirFalso).toHaveBeenCalledTimes(1);
-      });
+    escolherFicheiro(original);
+    await waitFor(() => {
+      expect(document.querySelector("img")).not.toBeNull();
+    });
+    const srcOriginal = document.querySelector("img")?.getAttribute("src") ?? "";
+    expect(srcOriginal).toMatch(/^data:/);
 
-      expect(
-        document.querySelector("img"),
-        "antes de reduzir() acabar, a pré-visualização é a do ficheiro ORIGINAL",
-      ).toHaveAttribute("src", "blob:original");
+    await act(async () => {
+      resolverReducao({ estado: "reduzida", ficheiro: reduzido });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const src = document.querySelector("img")?.getAttribute("src") ?? "";
+      expect(src).toMatch(/^data:/);
+      expect(src, "a fonte tem de passar a ser a do ficheiro REDUZIDO").not.toBe(srcOriginal);
+    });
+  });
+
+  it("a leitura do original acabar depois da reduzida não muda a fonte mostrada: a troca espera pelas duas", async () => {
+    // FileReader falso, de resolução manual: cada leitura fica pendente
+    // até o teste a concluir, pela ordem que quiser.
+    const pendentes: { blob: Blob; concluir: () => void }[] = [];
+    class LeitorManual {
+      result: string | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsDataURL(blob: Blob): void {
+        pendentes.push({
+          blob,
+          concluir: () => {
+            this.result = `data:x;nome=${blob instanceof File ? "original" : "reduzida"}`;
+            this.onload?.();
+          },
+        });
+      }
+    }
+    vi.stubGlobal("FileReader", LeitorManual);
+    try {
+      const reduzido = new Blob(["reduzida"], { type: "image/jpeg" });
+      reduzirFalso.mockResolvedValue({ estado: "reduzida", ficheiro: reduzido });
+      render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+      escolherFicheiro(ficheiroFalso());
+
+      await waitFor(() => {
+        expect(pendentes).toHaveLength(2); // original + reduzida
+      });
+      const original = pendentes.find((p) => p.blob instanceof File);
+      const reduzida = pendentes.find((p) => !(p.blob instanceof File));
 
       await act(async () => {
-        resolverReducao({ estado: "reduzida", ficheiro: reduzido });
+        reduzida?.concluir();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        original?.concluir(); // chega TARDE, depois da reduzida
         await Promise.resolve();
       });
 
+      expect(document.querySelector("img")).toHaveAttribute("src", "data:x;nome=reduzida");
       expect(
-        document.querySelector("img"),
-        "depois de reduzir() acabar, a fonte troca para o ficheiro REDUZIDO",
-      ).toHaveAttribute("src", "blob:reduzido");
+        document.querySelectorAll("img"),
+        "só a prévia reduzida existe; a do original não pode voltar",
+      ).toHaveLength(1);
     } finally {
-      criarUrl.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uma escolha tardia não se sobrepõe à mais recente: a leitura da primeira acaba depois da segunda", async () => {
+    const pendentes: { blob: Blob; concluir: () => void }[] = [];
+    class LeitorManual {
+      result: string | null = null;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsDataURL(blob: Blob): void {
+        pendentes.push({
+          blob,
+          concluir: () => {
+            this.result = `data:x;nome=${(blob as File).name}`;
+            this.onload?.();
+          },
+        });
+      }
+    }
+    vi.stubGlobal("FileReader", LeitorManual);
+    try {
+      reduzirFalso.mockReturnValue(new Promise(() => undefined));
+      render(<FolhaEnviarFoto aberta aoFechar={vi.fn()} />);
+
+      escolherFicheiro(new File(["primeira"], "a.jpg", { type: "image/jpeg" }));
+      escolherFicheiro(new File(["segunda"], "b.jpg", { type: "image/jpeg" }));
+      expect(pendentes).toHaveLength(2);
+
+      await act(async () => {
+        pendentes[1]?.concluir();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        pendentes[0]?.concluir(); // a mais antiga chega TARDE
+        await Promise.resolve();
+      });
+
+      expect(document.querySelector("img")).toHaveAttribute("src", "data:x;nome=b.jpg");
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 
@@ -305,23 +382,6 @@ describe("a pré-visualização (6.4): aparece de imediato, troca para o ficheir
       "a imagem (partida) tem de desaparecer, não ficar visível com um ícone quebrado",
     ).toBeNull();
     expect(screen.getByText("foto.jpg")).toBeInTheDocument();
-  });
-
-  it("revoga as duas URLs de objecto (a original e a reduzida) ao desmontar", async () => {
-    // `previaUrl` e `previaReduzidaUrl` são dois `URL.createObjectURL`
-    // distintos (o ficheiro escolhido, e o que `reduzir()` devolveu) —
-    // sem isto, só a primeira ficava presa à gestão de fugas, e a segunda
-    // vivia para sempre a cada foto reduzida.
-    const revogarUrl = vi.spyOn(URL, "revokeObjectURL");
-    const { unmount } = await comFicheiroPronto();
-
-    unmount();
-
-    expect(
-      revogarUrl,
-      "a pré-visualização original e a reduzida têm de ser revogadas as duas ao desmontar",
-    ).toHaveBeenCalledTimes(2);
-    revogarUrl.mockRestore();
   });
 });
 
