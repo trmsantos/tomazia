@@ -28,6 +28,7 @@ import { entrar, quemSouEu, sair } from "../../lib/api/auth";
 import { obterDefinicoes } from "../../lib/api/gestao-definicoes";
 import { obterEmentaGestao } from "../../lib/api/gestao-ementa";
 import { obterEventosGestao } from "../../lib/api/gestao-eventos";
+import { obterFilaDeModeracao } from "../../lib/api/gestao-fotos";
 import {
   DESTINOS_ESPERADOS,
   SESSAO_DE_TESTE,
@@ -40,9 +41,11 @@ import {
   definicoesConfiguradas,
   ementaDeGestaoDeTeste,
   eventosDeGestaoDeTeste,
+  filaDeTeste,
 } from "../../testes/gestao";
 import { TEXTOS as TD } from "./definicoes/textos";
 import { TEXTOS as TE } from "./eventos/textos";
+import { TEXTOS as TF } from "./galeria/textos";
 import AppGestao from "./AppGestao";
 
 vi.mock("../../lib/api/auth", () => ({ entrar: vi.fn(), quemSouEu: vi.fn(), sair: vi.fn() }));
@@ -69,7 +72,16 @@ vi.mock("../../lib/api/gestao-eventos", () => ({
   duplicarEvento: vi.fn(),
 }));
 
+// F4-04: o destino Galeria pede `GET /gestao/fotos` (a fila de moderação).
+vi.mock("../../lib/api/gestao-fotos", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/api/gestao-fotos")>()),
+  obterFilaDeModeracao: vi.fn(),
+  aprovarFoto: vi.fn(),
+  rejeitarFoto: vi.fn(),
+}));
+
 const obterEventosFalso = vi.mocked(obterEventosGestao);
+const obterFilaFalsa = vi.mocked(obterFilaDeModeracao);
 const obterDefinicoesFalso = vi.mocked(obterDefinicoes);
 const entrarFalso = vi.mocked(entrar);
 const quemSouEuFalso = vi.mocked(quemSouEu);
@@ -83,6 +95,8 @@ beforeEach(() => {
   obterDefinicoesFalso.mockResolvedValue(definicoesConfiguradas());
   obterEventosFalso.mockReset();
   obterEventosFalso.mockImplementation(() => Promise.resolve(eventosDeGestaoDeTeste()));
+  obterFilaFalsa.mockReset();
+  obterFilaFalsa.mockImplementation(() => Promise.resolve({ fotos: filaDeTeste(3) }));
   entrarFalso.mockReset();
   quemSouEuFalso.mockReset();
   sairFalso.mockReset();
@@ -467,25 +481,75 @@ describe("mudar de destino (5.5)", () => {
   });
 });
 
-describe("os destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02 e os Eventos na F4-03)", () => {
-  it.each([
-    ["/gestao", T.vazioInicio],
-    ["/gestao/galeria", T.vazioGaleria],
-  ])("%s: o título comum, a linha própria e nenhum botão", async (caminho, linha) => {
-    await abrir(caminho);
-    const principal = screen.getByRole("main");
+describe("os destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02, os Eventos na F4-03 e a Galeria na F4-04)", () => {
+  it.each([["/gestao", T.vazioInicio]])(
+    "%s: o título comum, a linha própria e nenhum botão",
+    async (caminho, linha) => {
+      await abrir(caminho);
+      const principal = screen.getByRole("main");
 
-    expect(within(principal).getByText(T.vazioTitulo)).toBeInTheDocument();
-    expect(within(principal).getByText(linha)).toBeInTheDocument();
-    expect(within(principal).queryAllByRole("button")).toHaveLength(0);
-  });
+      expect(within(principal).getByText(T.vazioTitulo)).toBeInTheDocument();
+      expect(within(principal).getByText(linha)).toBeInTheDocument();
+      expect(within(principal).queryAllByRole("button")).toHaveLength(0);
+    },
+  );
 
   it("nenhum promete datas nem funcionalidades: não dizem «em breve»", async () => {
-    for (const caminho of ["/gestao", "/gestao/galeria"]) {
-      abrirEm(caminho);
-    }
-    await abrir("/gestao/galeria");
+    await abrir("/gestao");
     expect(screen.getByRole("main").textContent).not.toMatch(/em breve|brevemente|vai/i);
+  });
+});
+
+describe("Galeria deixou de ser um destino vazio (F4-04)", () => {
+  it("/gestao/galeria mostra o ecrã de moderação, não o «Ainda não há nada aqui.»", async () => {
+    await abrir("/gestao/galeria");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TF.enviarFoto })).toBeInTheDocument();
+    });
+
+    expect(h1()).toHaveTextContent(TF.titulo);
+    expect(h1()).toHaveAttribute("tabindex", "-1");
+    expect(obterFilaFalsa).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("main")).queryByText(T.vazioTitulo)).toBeNull();
+    expect(screen.getByRole("region", { name: TF.fotosAEsperaN(3) })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: TF.aprovar })).toBeInTheDocument();
+    expect(document.title).toBe("Galeria — Gestão — Bar da Tomazia");
+  });
+
+  it("a fila vazia (200) mostra «Não há fotos à espera.», e não «Ainda não há nada aqui.»", async () => {
+    obterFilaFalsa.mockResolvedValue({ fotos: [] });
+    await abrir("/gestao/galeria");
+    await waitFor(() => {
+      expect(screen.getByText(TF.vazioTitulo)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(T.vazioTitulo)).toBeNull();
+  });
+
+  it("um 401 ao carregar a fila leva ao login e, depois de entrar, volta a /gestao/galeria", async () => {
+    quemSouEuFalso.mockReset();
+    quemSouEuFalso.mockResolvedValueOnce(SESSAO_DE_TESTE);
+    quemSouEuFalso.mockRejectedValue(erro401());
+    obterFilaFalsa.mockRejectedValue(erro401());
+
+    await abrir("/gestao/galeria");
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/gestao/entrar");
+    });
+    expect((window.history.state as { voltar?: unknown } | null)?.voltar).toBe("/gestao/galeria");
+    expect((window.history.state as { sessaoTerminou?: unknown } | null)?.sessaoTerminou).toBe(
+      true,
+    );
+  });
+
+  it("um erro do servidor ao carregar a fila fica no ecrã (nunca o login nem o vazio)", async () => {
+    obterFilaFalsa.mockRejectedValue(erroDoServidor(500));
+    await abrir("/gestao/galeria");
+    await waitFor(() => {
+      expect(screen.getByText(TF.carregarTitulo)).toBeInTheDocument();
+    });
+    expect(window.location.pathname).toBe("/gestao/galeria");
+    expect(screen.queryByText(TF.vazioTitulo)).toBeNull();
   });
 });
 

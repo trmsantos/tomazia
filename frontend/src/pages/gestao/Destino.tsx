@@ -9,21 +9,21 @@ import { DefinicoesGestao } from "./definicoes/DefinicoesGestao";
 import { TEXTOS as TEXTOS_DAS_DEFINICOES } from "./definicoes/textos";
 import { EmentaGestao } from "./ementa/EmentaGestao";
 import { EventosGestao } from "./eventos/EventosGestao";
+import { GaleriaGestao } from "./galeria/GaleriaGestao";
 import { DESTINOS, eCliqueSimples, navegar } from "./navegacao";
 import { armarPrazo } from "./prazo";
 
 /**
  * O conteúdo de cada destino (F4-01, secções 6 e 7).
  *
- * Nesta altura dois destinos são vazios (Início e Galeria), e «Mais» tem «Definições» e «Sair».
- * Quando uma das F4-04 e F4-05 preencher um destino, esse destino perde o `EstadoVazio` e
- * fica só o `<h1>`. O `<h1>` é de cada destino (`tabindex="-1"`, para receber o
+ * Nesta altura só o Início é vazio (a F4-05b preenche-o), e «Mais» tem «Definições» e «Sair».
+ * Quando um destino ganha o seu ecrã, perde o `EstadoVazio` e fica só o `<h1>`. O `<h1>` é de
+ * cada destino (`tabindex="-1"`, para receber o
  * foco ao mudar de destino — quem o move é o `AppGestao`).
  */
 const TEXTOS = {
   vazioTitulo: "Ainda não há nada aqui.",
   vazioInicio: "Esta página não tem conteúdo nesta versão.",
-  vazioGaleria: "A moderação das fotos não está disponível nesta versão.",
   sair: "Sair",
   aSair: "A sair…",
   saiuSemResposta:
@@ -34,7 +34,6 @@ const TEXTOS = {
 
 const LINHA_DO_VAZIO: Record<string, string> = {
   "/gestao": TEXTOS.vazioInicio,
-  "/gestao/galeria": TEXTOS.vazioGaleria,
 };
 
 function Titulo({ children }: { children: string }): ReactElement {
@@ -150,6 +149,7 @@ export function Destino({ caminho }: { caminho: string }): ReactElement {
   if (caminho === "/gestao/mais/definicoes") return <DefinicoesGestao />;
   if (caminho === "/gestao/ementa") return <EmentaGestao />;
   if (caminho === "/gestao/eventos") return <EventosGestao />;
+  if (caminho === "/gestao/galeria") return <GaleriaGestao />;
 
   const titulo = DESTINOS.find((destino) => destino.caminho === caminho)?.rotulo ?? "Início";
   return (
