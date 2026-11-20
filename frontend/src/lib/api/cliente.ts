@@ -64,7 +64,7 @@ export const CAMINHO_BASE = "/api";
  */
 export type OpcoesDePedido = {
   sinal?: AbortSignal;
-  metodo?: "GET" | "POST" | "PUT" | "PATCH";
+  metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /**
    * Aceita um 204 com o corpo vazio como sucesso (`POST /auth/logout`). Só
    * quem o pede: sem esta opção um 204 é erro, porque o chamador espera JSON, e

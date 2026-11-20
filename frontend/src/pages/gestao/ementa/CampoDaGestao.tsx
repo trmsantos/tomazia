@@ -41,6 +41,12 @@ export type PropriedadesDoCampoDaGestao = {
   /** O `Esc` da edição do preço cancela-a. */
   aoTeclar?: (tecla: KeyboardEvent<HTMLInputElement>) => void;
   ref?: Ref<HTMLInputElement>;
+  /**
+   * Um `<textarea>` de três linhas no lugar do `<input>` (F4-03: a descrição de um evento, que
+   * aceita quebras de linha). Com `aria-disabled` em vez de `disabled`, como o resto do campo:
+   * a descrição que se está a guardar fica parada mas focável.
+   */
+  multilinha?: boolean;
 };
 
 export function CampoDaGestao({
@@ -58,6 +64,7 @@ export function CampoDaGestao({
   parado = false,
   aoTeclar,
   ref,
+  multilinha = false,
 }: PropriedadesDoCampoDaGestao): ReactElement {
   const gerado = useId();
   const identificador = id ?? gerado;
@@ -68,36 +75,57 @@ export function CampoDaGestao({
       .filter((id) => id !== null)
       .join(" ") || undefined;
 
+  const classes = juntar(
+    "min-h-toque w-full rounded-pequeno border bg-transparent px-3 py-2 text-corpo text-texto",
+    erro !== undefined ? "border-erro" : "border-contorno",
+    parado && "opacity-desativado cursor-not-allowed",
+  );
+
   return (
     <div className="flex w-full flex-col gap-1">
       <label htmlFor={identificador} className="text-nota font-forte text-texto">
         {etiqueta}
       </label>
-      <input
-        id={identificador}
-        ref={ref}
-        type="text"
-        value={valor}
-        inputMode={inputMode ?? (decimal ? "decimal" : undefined)}
-        enterKeyHint={enterKeyHint ?? (decimal ? "done" : undefined)}
-        autoComplete="off"
-        autoCapitalize={autoCapitalize ?? (decimal ? "none" : undefined)}
-        autoCorrect={spellCheck === false ? "off" : undefined}
-        spellCheck={spellCheck ?? (decimal ? false : undefined)}
-        aria-invalid={erro !== undefined ? "true" : undefined}
-        aria-describedby={descritoPor}
-        aria-disabled={parado ? "true" : undefined}
-        onKeyDown={aoTeclar}
-        onChange={(evento) => {
-          if (parado) return;
-          aoMudar(evento.target.value);
-        }}
-        className={juntar(
-          "min-h-toque w-full rounded-pequeno border bg-transparent px-3 py-2 text-corpo text-texto",
-          erro !== undefined ? "border-erro" : "border-contorno",
-          parado && "opacity-desativado cursor-not-allowed",
-        )}
-      />
+      {multilinha ? (
+        <textarea
+          id={identificador}
+          rows={3}
+          value={valor}
+          autoComplete="off"
+          autoCapitalize={autoCapitalize}
+          spellCheck={spellCheck}
+          aria-invalid={erro !== undefined ? "true" : undefined}
+          aria-describedby={descritoPor}
+          aria-disabled={parado ? "true" : undefined}
+          onChange={(evento) => {
+            if (parado) return;
+            aoMudar(evento.target.value);
+          }}
+          className={classes}
+        />
+      ) : (
+        <input
+          id={identificador}
+          ref={ref}
+          type="text"
+          value={valor}
+          inputMode={inputMode ?? (decimal ? "decimal" : undefined)}
+          enterKeyHint={enterKeyHint ?? (decimal ? "done" : undefined)}
+          autoComplete="off"
+          autoCapitalize={autoCapitalize ?? (decimal ? "none" : undefined)}
+          autoCorrect={spellCheck === false ? "off" : undefined}
+          spellCheck={spellCheck ?? (decimal ? false : undefined)}
+          aria-invalid={erro !== undefined ? "true" : undefined}
+          aria-describedby={descritoPor}
+          aria-disabled={parado ? "true" : undefined}
+          onKeyDown={aoTeclar}
+          onChange={(evento) => {
+            if (parado) return;
+            aoMudar(evento.target.value);
+          }}
+          className={classes}
+        />
+      )}
       {ajuda !== undefined && (
         <p id={idDaAjuda} className="text-nota text-texto-suave">
           {ajuda}

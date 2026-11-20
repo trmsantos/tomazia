@@ -85,7 +85,7 @@ const DIAS_DA_JANELA_DO_NOME = 6;
  * Nunca `getDate()` nem `getHours()`: esses leem o fuso do aparelho e dão a
  * data certa em Lisboa e errada em todo o lado (5.4).
  */
-type PartesEmLisboa = {
+export type PartesEmLisboa = {
   ano: number;
   mes: number;
   dia: number;
@@ -129,10 +129,18 @@ function construirFormatador(): {
   }
 }
 
-/** Lê um instante em Lisboa, em números. Falha alto se não houver Lisboa. */
-function partesEmLisboa(instante: Date): PartesEmLisboa {
+/** O aparelho não conhece o fuso de Lisboa (a única falha que a gestão trata como «sem Lisboa»). */
+export class ErroSemLisboa extends Error {}
+
+/**
+ * Lê um instante em Lisboa, em números. Falha alto se não houver Lisboa.
+ *
+ * Exportada na F4-03: a gestão dos eventos lê a hora de Lisboa pela mesma tabela e pelo mesmo
+ * formatador, e não por uma segunda cópia (uma forma só de falhar sem Lisboa).
+ */
+export function partesEmLisboa(instante: Date): PartesEmLisboa {
   if (formatador === null) {
-    throw new Error(
+    throw new ErroSemLisboa(
       `Não consegui ler a data no fuso ${FUSO_DO_BAR}: este aparelho não o conhece.`,
       { cause: erroAoConstruir },
     );

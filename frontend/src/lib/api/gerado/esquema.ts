@@ -438,7 +438,10 @@ export interface paths {
         put?: never;
         /**
          * Duplicar Evento
-         * @description Cria um rascunho na próxima semana livre, à mesma hora de Lisboa.
+         * @description Cria um rascunho na `semanas`-ésima data livre, à mesma hora de Lisboa.
+         *
+         *     O corpo é opcional (sem corpo, `null` ou `{}` é `semanas = 1`). Num
+         *     original sem data a cópia fica sem data e `semanas` é ignorado.
          */
         post: operations["duplicar_evento_gestao_eventos__id__duplicar_post"];
         delete?: never;
@@ -935,6 +938,19 @@ export interface components {
             wifi_password: string;
             /** Wifi Rede */
             wifi_rede: string;
+        };
+        /**
+         * PedidoDuplicarEvento
+         * @description `semanas = n` é a n-ésima data livre da série semanal do original.
+         *
+         *     Num original sem data é validado e ignorado.
+         */
+        PedidoDuplicarEvento: {
+            /**
+             * Semanas
+             * @default 1
+             */
+            semanas: number;
         };
         /**
          * PedidoLogin
@@ -2264,7 +2280,11 @@ export interface operations {
                 "__Host-sessao_tomazia"?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PedidoDuplicarEvento"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

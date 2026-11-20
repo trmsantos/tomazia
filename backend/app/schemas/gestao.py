@@ -24,6 +24,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictBool,
+    StrictInt,
     StringConstraints,
     field_validator,
 )
@@ -255,6 +256,15 @@ class PedidoCriarEvento(_Corpo):
     @classmethod
     def _descricao_vazia(cls, valor: str | None) -> str | None:
         return _descricao_vazia_e_nula(valor)
+
+
+class PedidoDuplicarEvento(_Corpo):
+    """`semanas = n` é a n-ésima data livre da série semanal do original.
+
+    Num original sem data é validado e ignorado.
+    """
+
+    semanas: Annotated[StrictInt, Field(ge=1, le=4)] = 1
 
 
 class PedidoAlterarEvento(_Corpo):

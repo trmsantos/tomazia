@@ -38,7 +38,6 @@ export const TEXTOS_DA_GESTAO = {
 
   vazioTitulo: "Ainda não há nada aqui.",
   vazioInicio: "Esta página não tem conteúdo nesta versão.",
-  vazioEventos: "A gestão dos eventos não está disponível nesta versão.",
   vazioGaleria: "A moderação das fotos não está disponível nesta versão.",
 
   sair: "Sair",
@@ -280,8 +279,13 @@ export const TEXTOS_DA_EMENTA_GESTAO = {
   sessaoTerminou: "A sessão terminou. Entra outra vez.",
 } as const;
 
-/** O 404 de um `PATCH` (`produto_inexistente`) ou de um `PUT` (`categoria_inexistente`). */
-export function erro404(codigo: "produto_inexistente" | "categoria_inexistente"): ErroDaApi {
+/**
+ * O 404 de um `PATCH` (`produto_inexistente`), de um `PUT` (`categoria_inexistente`) ou de
+ * qualquer pedido a um evento (`evento_inexistente`, F4-03).
+ */
+export function erro404(
+  codigo: "produto_inexistente" | "categoria_inexistente" | "evento_inexistente",
+): ErroDaApi {
   return new ErroDaApi("Não encontrei isto. (mensagem do backend)", { estado: 404, codigo });
 }
 
@@ -472,4 +476,96 @@ export function ecoDoPedido(pedido: PedidoDefinicoes): DefinicoesGestao {
     ...pedido,
     horario_estado: pedido.horario === null ? "nao_configurado" : "configurado",
   };
+}
+
+// ---------------------------------------------------------------------------
+// F4-03 — os eventos na gestão. Dados claramente falsos; tipados com o OpenAPI
+// gerado. O relógio de todos os testes é o `AGORA` de `./eventos` (segunda-feira,
+// 2 de novembro de 2026, 10:00 em Lisboa); em novembro Lisboa está em UTC+0, por
+// isso a hora de parede é a do `…Z`.
+// ---------------------------------------------------------------------------
+
+export type EventoGestao = components["schemas"]["EventoGestao"];
+export type RespostaEventosGestao = components["schemas"]["RespostaEventosGestao"];
+
+/** Um evento falso; só o `id` é obrigatório. Publicado, com data e sem cartaz por omissão. */
+export function eventoDeTeste(
+  parcial: Partial<EventoGestao> & Pick<EventoGestao, "id">,
+): EventoGestao {
+  return {
+    titulo: `Evento ${String(parcial.id)}`,
+    inicio: "2026-11-05T22:00:00Z",
+    descricao: null,
+    imagem: null,
+    publicado: true,
+    ...parcial,
+  };
+}
+
+/** O nome do ficheiro do cartaz de teste (só se lê; a gestão não o muda, F4-07). */
+export const CARTAZ_DA_GESTAO = "cartaz-de-teste.png";
+
+/**
+ * As três listas de todos os testes, **como o servidor as divide** (corte à
+ * meia-noite de Lisboa de 2/11/2026, ADR 0010). Ids: próximos `1x`, rascunhos
+ * `2x`, arquivo `3x`.
+ *
+ *  - Próximos (4, do mais próximo ao mais longe; o 4.º fica abaixo da divisória):
+ *    «Fado ao vivo» (qui 5/11 22:00, descrição de duas linhas), «Karaoke de teste»
+ *    (sex 6/11 **00:30**), «Sessão de jazz» (qui 12/11 22:00), «Concerto de teste»
+ *    (qui 19/11 22:00).
+ *  - Rascunhos: «Rascunho com data» (sex 20/11 22:00) e **«Rascunho importado»,
+ *    sem data** (ADR 0009).
+ *  - Arquivo: «Noite de samba» (qui 29/10 22:00, **com cartaz**) e «Fado de
+ *    outubro» (qui 15/10 22:00 de Lisboa, hora de verão = 21:00Z).
+ */
+export function eventosDeGestaoDeTeste(): RespostaEventosGestao {
+  return {
+    proximos: [
+      eventoDeTeste({
+        id: 11,
+        titulo: "Fado ao vivo",
+        inicio: "2026-11-05T22:00:00Z",
+        descricao: "Primeira linha da descrição.\nSegunda linha da descrição.",
+      }),
+      eventoDeTeste({ id: 12, titulo: "Karaoke de teste", inicio: "2026-11-06T00:30:00Z" }),
+      eventoDeTeste({ id: 13, titulo: "Sessão de jazz", inicio: "2026-11-12T22:00:00Z" }),
+      eventoDeTeste({ id: 14, titulo: "Concerto de teste", inicio: "2026-11-19T22:00:00Z" }),
+    ],
+    rascunhos: [
+      eventoDeTeste({
+        id: 21,
+        titulo: "Rascunho com data",
+        inicio: "2026-11-20T22:00:00Z",
+        publicado: false,
+      }),
+      eventoDeTeste({ id: 22, titulo: "Rascunho importado", inicio: null, publicado: false }),
+    ],
+    arquivo: [
+      eventoDeTeste({
+        id: 31,
+        titulo: "Noite de samba",
+        inicio: "2026-10-29T22:00:00Z",
+        imagem: CARTAZ_DA_GESTAO,
+      }),
+      eventoDeTeste({ id: 32, titulo: "Fado de outubro", inicio: "2026-10-15T21:00:00Z" }),
+    ],
+  };
+}
+
+/** As três listas vazias: um `200` normal (a instalação nova), nunca um erro. */
+export function eventosDeGestaoVazios(): RespostaEventosGestao {
+  return { proximos: [], rascunhos: [], arquivo: [] };
+}
+
+/**
+ * O 422 de publicar um rascunho sem data (`evento_sem_data`, `campo = "inicio"`). A
+ * `mensagem` do backend nunca pode chegar ao ecrã.
+ */
+export function erro422EventoSemData(): ErroDaApi {
+  return new ErroDaApi("O evento não tem data. (mensagem do backend)", {
+    estado: 422,
+    codigo: "evento_sem_data",
+    extra: { campo: "inicio" },
+  });
 }

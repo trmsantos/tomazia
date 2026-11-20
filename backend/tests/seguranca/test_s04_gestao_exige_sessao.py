@@ -61,6 +61,7 @@ from tests.apoio_auth import (
 )
 from tests.apoio_gestao import (
     CORPOS_VALIDOS,
+    ID_EVT_PUBLICADO,
     caminho_concreto,
     corpo_valido,
     fotografia,
@@ -441,4 +442,54 @@ class TestCamada3cMutacaoBemFormadaSemSessao:
             headers={**CABECALHO_MUTACAO, "Content-Type": "application/json"},
         )
         assert resposta.status_code == 422, resposta.text
+        assert fotografia(motor) == antes
+
+
+class TestDuplicarComCorpoSemSessao:
+    """F4-03: o `POST …/duplicar` ganhou um corpo opcional (`{semanas}`).
+
+    A Camada 3c classifica esta rota como «sem corpo» (e continua certo: o corpo é
+    opcional). Estes casos provam a entrada nova: **com** corpo e sem sessão é 401 e
+    nada muda; com o corpo mal formado e sem sessão é 422 (o FastAPI lê o corpo antes
+    das `dependencies`, medido na F2-05; o teto de 64 KiB protege-o).
+    """
+
+    URL = f"/gestao/eventos/{ID_EVT_PUBLICADO}/duplicar"
+
+    def test_corpo_valido_sem_sessao_e_401_e_nada_muda(
+        self, cliente_sem_sessao_com_ementa: TestClient, motor: Engine
+    ) -> None:
+        antes = fotografia(motor)
+        resposta = cliente_sem_sessao_com_ementa.post(
+            self.URL, json={"semanas": 2}, headers=CABECALHO_MUTACAO
+        )
+        assert resposta.status_code == 401, resposta.text
+        assert resposta.json()["erro"] == "sessao_em_falta"
+        assert fotografia(motor) == antes
+
+    def test_corpo_mal_formado_sem_sessao_e_422_e_nada_muda(
+        self, cliente_sem_sessao_com_ementa: TestClient, motor: Engine
+    ) -> None:
+        antes = fotografia(motor)
+        resposta = cliente_sem_sessao_com_ementa.post(
+            self.URL,
+            content=b'{"semanas": ',
+            headers={**CABECALHO_MUTACAO, "Content-Type": "application/json"},
+        )
+        assert resposta.status_code == 422, resposta.text
+        assert fotografia(motor) == antes
+
+    def test_semanas_invalido_sem_sessao_nao_chega_a_ser_lido_como_autorizado(
+        self, cliente_sem_sessao_com_ementa: TestClient, motor: Engine
+    ) -> None:
+        """Um valor fora do intervalo, sem sessão, dá 401 e nunca cria uma cópia.
+
+        O JSON lê-se antes das dependências (por isso o JSON partido dá 422), mas a
+        validação do campo só depois do `exigir_admin`: a sessão decide primeiro.
+        """
+        antes = fotografia(motor)
+        resposta = cliente_sem_sessao_com_ementa.post(
+            self.URL, json={"semanas": 9}, headers=CABECALHO_MUTACAO
+        )
+        assert resposta.status_code == 401, resposta.text
         assert fotografia(motor) == antes

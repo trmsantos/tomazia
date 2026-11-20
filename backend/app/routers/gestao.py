@@ -38,6 +38,7 @@ from app.schemas.gestao import (
     PedidoCriarEvento,
     PedidoCriarProduto,
     PedidoDefinicoes,
+    PedidoDuplicarEvento,
     PedidoMudarPassword,
     PedidoOrdem,
     ProdutoGestao,
@@ -329,9 +330,18 @@ def eliminar_evento(id_evento: IdDaBD, sessao: SessaoDaBD) -> None:
     response_model=EventoGestao,
     responses=_respostas(_404_EVENTO, _422),
 )
-def duplicar_evento(id_evento: IdDaBD, sessao: SessaoDaBD) -> EventoGestao:
-    """Cria um rascunho na próxima semana livre, à mesma hora de Lisboa."""
-    return servico_eventos.duplicar_evento(sessao, id_evento)
+def duplicar_evento(
+    id_evento: IdDaBD,
+    sessao: SessaoDaBD,
+    corpo: PedidoDuplicarEvento | None = None,
+) -> EventoGestao:
+    """Cria um rascunho na `semanas`-ésima data livre, à mesma hora de Lisboa.
+
+    O corpo é opcional (sem corpo, `null` ou `{}` é `semanas = 1`). Num
+    original sem data a cópia fica sem data e `semanas` é ignorado.
+    """
+    semanas = 1 if corpo is None else corpo.semanas
+    return servico_eventos.duplicar_evento(sessao, id_evento, semanas)
 
 
 @router.get("/resumo", response_model=RespostaResumo)
