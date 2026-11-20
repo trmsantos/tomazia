@@ -343,3 +343,333 @@ class TestErros:
 
     def test_o_maior_id_valido_e_404(self, gestao: TestClient) -> None:
         exigir_erro(_duplicar(gestao, MAIOR_ID_DO_SQLITE), 404, "evento_inexistente")
+
+
+# ---------------------------------------------------------------------------
+# F4-03, plano 11: `semanas` (corpo opcional, 1..4). Vermelhos antes do código.
+#
+# Semântica: `k0` = o menor k >= 1 com `original + 7k dias` (parede de Lisboa,
+# `fold=0`) estritamente depois de agora; a cópia fica em
+# `original + 7 * (k0 + semanas - 1)` dias, ou seja, a n-ésima data livre da série
+# semanal. A tabela de casos (as Quintas de Samba, o arquivo, a mudança de hora) é a
+# mesma de `frontend/src/pages/gestao/eventos/datas-da-copia.test.ts`: o que o ecrã
+# mostra como pré-visualização tem de ser o que o servidor faz.
+# ---------------------------------------------------------------------------
+
+
+def _duplicar_com(cliente: TestClient, identificador: int, corpo: Any) -> Any:
+    return cliente.post(
+        f"/gestao/eventos/{identificador}/duplicar",
+        json=corpo,
+        headers=CABECALHO_MUTACAO,
+    )
+
+
+def _copia_com_semanas(
+    cliente: TestClient,
+    sessao: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    agora: datetime,
+    original: datetime,
+    semanas: int,
+) -> datetime:
+    fixar_relogio_gestao(monkeypatch, agora)
+    semear_evento(sessao, ID_ORIGINAL, inicio=original, publicado=True)
+    resposta = _duplicar_com(cliente, ID_ORIGINAL, {"semanas": semanas})
+    assert resposta.status_code == 201, resposta.text
+    corpo = resposta.json()
+    assert corpo["publicado"] is False
+    return datetime.fromisoformat(corpo["inicio"])
+
+
+class TestSemanasCorpoOpcional:
+    @pytest.mark.parametrize("variante", ["sem corpo", "objeto vazio", "null"])
+    def test_sem_semanas_e_igual_a_hoje(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        variante: str,
+    ) -> None:
+        fixar_relogio_gestao(monkeypatch, _lisboa(2026, 11, 2, 10, 0))
+        semear_evento(
+            sessao, ID_ORIGINAL, inicio=_lisboa(2026, 11, 5, 22, 0), publicado=True
+        )
+        url = f"/gestao/eventos/{ID_ORIGINAL}/duplicar"
+        if variante == "sem corpo":
+            resposta = sessao_de_admin.post(url, headers=CABECALHO_MUTACAO)
+        elif variante == "objeto vazio":
+            resposta = _duplicar_com(sessao_de_admin, ID_ORIGINAL, {})
+        else:
+            resposta = sessao_de_admin.post(
+                url,
+                content=b"null",
+                headers={**CABECALHO_MUTACAO, "Content-Type": "application/json"},
+            )
+        assert resposta.status_code == 201, resposta.text
+        assert datetime.fromisoformat(resposta.json()["inicio"]) == _lisboa(
+            2026, 11, 12, 22, 0
+        )
+
+    @pytest.mark.parametrize(
+        ("semanas", "esperado"),
+        [
+            (1, _lisboa(2026, 11, 12, 22, 0)),
+            (2, _lisboa(2026, 11, 19, 22, 0)),
+            (3, _lisboa(2026, 11, 26, 22, 0)),
+            (4, _lisboa(2026, 12, 3, 22, 0)),
+        ],
+    )
+    def test_original_futuro_soma_n_semanas(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        semanas: int,
+        esperado: datetime,
+    ) -> None:
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 11, 2, 10, 0),
+            original=_lisboa(2026, 11, 5, 22, 0),
+            semanas=semanas,
+        )
+        assert inicio == esperado
+        assert inicio.astimezone(LISBOA).hour == 22
+
+
+class TestAsQuintasDeSamba:
+    """1.ª e 3.ª quinta do mês: da 1.ª à 3.ª são 14 dias."""
+
+    def test_da_1_para_a_3_quinta_sao_duas_semanas(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 11, 2, 10, 0),
+            original=_lisboa(2026, 11, 5, 22, 0),  # 1.ª quinta de novembro
+            semanas=2,
+        )
+        assert inicio == _lisboa(2026, 11, 19, 22, 0)  # 3.ª quinta
+        assert inicio.astimezone(LISBOA).weekday() == 3
+
+    def test_da_3_quinta_a_1_do_mes_seguinte(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """3.ª quinta 19/11, agora sexta 20/11: a 1.ª data livre é 26/11; `semanas=2` dá 3/12."""
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 11, 20, 10, 0),
+            original=_lisboa(2026, 11, 19, 22, 0),
+            semanas=2,
+        )
+        assert inicio == _lisboa(2026, 12, 3, 22, 0)  # 1.ª quinta de dezembro
+
+
+class TestOriginalNoArquivoComTresDatasDistintas:
+    """15/10/2026 22:00 (hora de verão), agora 2/11: +1, +2 e +3 semanas **não** colidem."""
+
+    @pytest.mark.parametrize(
+        ("semanas", "esperado"),
+        [
+            (1, _lisboa(2026, 11, 5, 22, 0)),
+            (2, _lisboa(2026, 11, 12, 22, 0)),
+            (3, _lisboa(2026, 11, 19, 22, 0)),
+        ],
+    )
+    def test_a_n_esima_data_livre(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        semanas: int,
+        esperado: datetime,
+    ) -> None:
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 11, 2, 10, 0),
+            original=_lisboa(2026, 10, 15, 22, 0),
+            semanas=semanas,
+        )
+        assert inicio == esperado
+        assert inicio == datetime(
+            esperado.year, esperado.month, esperado.day, 22, 0, tzinfo=UTC
+        ), "em novembro as 22:00 de Lisboa são 22:00Z, nunca 21:00Z"
+
+    def test_as_tres_opcoes_sao_distintas_e_estritamente_futuras(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agora = _lisboa(2026, 11, 2, 10, 0)
+        fixar_relogio_gestao(monkeypatch, agora)
+        semear_evento(
+            sessao, ID_ORIGINAL, inicio=_lisboa(2026, 10, 15, 22, 0), publicado=True
+        )
+        datas = [
+            datetime.fromisoformat(
+                _duplicar_com(sessao_de_admin, ID_ORIGINAL, {"semanas": n}).json()[
+                    "inicio"
+                ]
+            )
+            for n in (1, 2, 3)
+        ]
+        assert len(set(datas)) == 3
+        assert all(data > agora for data in datas)
+
+
+class TestSemanasEAMudancaDeHora:
+    def test_quinta_15_10_com_duas_semanas_fica_29_10_as_22h_de_inverno(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 10, 16, 10, 0),
+            original=_lisboa(2026, 10, 15, 22, 0),
+            semanas=2,
+        )
+        assert inicio == datetime(2026, 10, 29, 22, 0, tzinfo=UTC)  # WET: 22:00Z
+        assert inicio.astimezone(LISBOA).hour == 22
+
+    def test_hora_inexistente_com_duas_semanas_fica_as_02_30(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Dom 15/03/2026 01:30; `semanas=2` → 29/03, onde 01:30 não existe: `fold=0` dá 02:30."""
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 3, 1, 12, 0),
+            original=_lisboa(2026, 3, 15, 1, 30),
+            semanas=2,
+        )
+        assert inicio == datetime(2026, 3, 29, 1, 30, tzinfo=UTC)
+        assert inicio.astimezone(LISBOA).hour == 2
+
+    def test_hora_ambigua_com_duas_semanas_fica_a_primeira(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Dom 11/10/2026 01:30; `semanas=2` → 25/10 01:30, a primeira ocorrência (00:30Z)."""
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 10, 1, 12, 0),
+            original=_lisboa(2026, 10, 11, 1, 30),
+            semanas=2,
+        )
+        assert inicio == datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+
+    def test_cada_candidato_parte_da_parede_original_com_semanas_4(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Original em julho (UTC+1), agora em dezembro: k0 = 22 (3/12); `semanas=4` → 24/12 22:00 (UTC+0)."""
+        inicio = _copia_com_semanas(
+            sessao_de_admin,
+            sessao,
+            monkeypatch,
+            agora=_lisboa(2026, 12, 1, 12, 0),
+            original=_lisboa(2026, 7, 2, 22, 0),
+            semanas=4,
+        )
+        assert inicio == datetime(2026, 12, 24, 22, 0, tzinfo=UTC)
+        assert inicio.astimezone(LISBOA).weekday() == 3
+
+
+class TestSemanasRecusadas:
+    @pytest.mark.parametrize(
+        "corpo",
+        [
+            {"semanas": 0},
+            {"semanas": 5},
+            {"semanas": -1},
+            {"semanas": "2"},
+            {"semanas": 2.0},
+            {"semanas": True},
+            {"semanas": None},
+            {"semanas": [2]},
+        ],
+        ids=["0", "5", "-1", "texto", "2.0", "true", "null", "lista"],
+    )
+    def test_valor_invalido_e_422_com_campo_e_nenhuma_linha_nova(
+        self,
+        sessao_de_admin: TestClient,
+        sessao: Session,
+        motor: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+        corpo: dict[str, Any],
+    ) -> None:
+        fixar_relogio_gestao(monkeypatch, _lisboa(2026, 11, 2, 10, 0))
+        semear_evento(
+            sessao, ID_ORIGINAL, inicio=_lisboa(2026, 11, 5, 22, 0), publicado=True
+        )
+        antes = fotografia(motor)
+        resposta = _duplicar_com(sessao_de_admin, ID_ORIGINAL, corpo)
+        exigir_erro(resposta, 422, "dados_invalidos", campo="semanas")
+        assert fotografia(motor) == antes, "um 422 não pode deixar uma cópia"
+
+    def test_chave_a_mais_e_422_e_nenhuma_linha_nova(
+        self, gestao: TestClient, motor: Engine
+    ) -> None:
+        antes = fotografia(motor)
+        resposta = _duplicar_com(
+            gestao, ID_EVT_PUBLICADO, {"semanas": 1, "inicio": "2030-01-01T00:00:00Z"}
+        )
+        exigir_erro(resposta, 422, "dados_invalidos")
+        assert fotografia(motor) == antes
+
+    def test_inexistente_com_corpo_valido_continua_404(
+        self, gestao: TestClient
+    ) -> None:
+        exigir_erro(
+            _duplicar_com(gestao, 999, {"semanas": 2}), 404, "evento_inexistente"
+        )
+
+
+class TestSemanasOriginalSemData:
+    def test_semanas_e_aceite_e_ignorado(
+        self, gestao: TestClient, motor: Engine
+    ) -> None:
+        resposta = _duplicar_com(gestao, ID_EVT_RASCUNHO_SEM_DATA, {"semanas": 3})
+        assert resposta.status_code == 201, resposta.text
+        copia = resposta.json()
+        assert copia["inicio"] is None
+        assert copia["publicado"] is False
+
+    def test_semanas_9_continua_a_ser_422_mesmo_sem_data(
+        self, gestao: TestClient, motor: Engine
+    ) -> None:
+        antes = fotografia(motor)
+        resposta = _duplicar_com(gestao, ID_EVT_RASCUNHO_SEM_DATA, {"semanas": 9})
+        exigir_erro(resposta, 422, "dados_invalidos", campo="semanas")
+        assert fotografia(motor) == antes

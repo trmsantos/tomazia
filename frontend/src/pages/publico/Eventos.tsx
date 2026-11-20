@@ -162,12 +162,14 @@ function CartaoDoEvento({ evento, data }: CartaoDeEvento): ReactElement {
 
       {/*
        * A descrição aparece **inteira**, sem corte e sem "ver mais" (10): não
-       * há ecrã de detalhe para onde mandar quem quer ler o resto. E só
+       * há ecrã de detalhe para onde mandar quem quer ler o resto. As quebras
+       * de linha que o dono escreveu na gestão respeitam-se (`whitespace-pre-line`,
+       * F4-03): o que ele escreve é o que aparece. E só
        * existe quando há texto — um `<p>` vazio não se vê e ocupa a sua linha
        * de altura, e o cartão curto deixava de ser curto.
        */}
       {evento.descricao !== null && evento.descricao !== "" && (
-        <p className="mt-2 text-corpo text-texto-suave">{evento.descricao}</p>
+        <p className="mt-2 whitespace-pre-line text-corpo text-texto-suave">{evento.descricao}</p>
       )}
 
       {/*

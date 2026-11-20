@@ -61,6 +61,7 @@ import {
   TEXTOS_DOS_EVENTOS,
   TRES_EVENTOS,
   UM_EVENTO,
+  evento,
   resposta,
 } from "../../testes/eventos";
 import type { EventoPublico } from "../../testes/eventos";
@@ -508,6 +509,32 @@ describe("o cabeçalho composto do cartão (4.3)", () => {
     expect(descricao, "guarda: a fixtura tem mesmo de trazer descrição").not.toBeNull();
     const paragrafo = screen.getByText(descricao as string);
     expect(paragrafo.closest("h3")).toBeNull();
+  });
+
+  it("as quebras de linha da descrição respeitam-se: o parágrafo leva `whitespace-pre-line` e o texto é o que o dono escreveu (F4-03, decisão do Tomás)", async () => {
+    // O `<textarea>` da gestão aceita quebras de linha, e o dono espera ver no site o que
+    // escreveu: sem `white-space: pre-line` as duas linhas fundiam-se numa. Uma classe do Tailwind,
+    // a única alteração desta tarefa ao ecrã público. O jsdom não carrega o CSS, por isso aqui
+    // prova-se a classe e o texto sem tocar nele; o estilo calculado, no Chromium, está em
+    // `e2e/gestao-eventos.spec.ts`.
+    const comLinhas = evento({
+      id: 70,
+      titulo: "Noite com duas linhas",
+      inicio: "2026-11-05T22:00:00+00:00",
+      descricao: "Primeira linha.\nSegunda linha.\n\nTerceiro parágrafo.",
+    });
+    await comResposta(resposta([comLinhas]));
+
+    const paragrafo = screen.getByText(
+      (_texto, no) => no?.tagName === "P" && no.textContent === comLinhas.descricao,
+    );
+    expect(paragrafo).toHaveClass("whitespace-pre-line");
+    expect(paragrafo.textContent).toBe("Primeira linha.\nSegunda linha.\n\nTerceiro parágrafo.");
+    expect(paragrafo.closest("h3")).toBeNull();
+    expect(
+      paragrafo.querySelector("br"),
+      "as quebras não viram <br>: é o CSS que as desenha",
+    ).toBeNull();
   });
 
   it("um evento sem descrição não deixa parágrafo vazio", async () => {

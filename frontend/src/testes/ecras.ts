@@ -120,3 +120,28 @@ export const FICHEIROS_DA_F4_05A = [
   "src/pages/gestao/definicoes/textos.ts",
   "src/lib/api/gestao-definicoes.ts",
 ];
+
+/**
+ * Os eventos na gestão (F4-03). Sentinelas: uma varredura que olha para pastas e não encontra
+ * os ficheiros novos devolve zero violações e passa (regra 10 do `CLAUDE.md`). Entra nas
+ * varreduras de textos PT-PT, de build de produção e de `sem-estilo-inline`. A folha de
+ * duplicar e o campo da data podem viver em ficheiros próprios do frontend: quem os criar
+ * acrescenta-os aqui (é uma linha, e é a linha que faz as varreduras passarem a vê-los).
+ */
+export const FICHEIROS_DA_F4_03 = [
+  "src/pages/gestao/eventos/EventosGestao.tsx",
+  "src/pages/gestao/eventos/LinhaDoEvento.tsx",
+  "src/pages/gestao/eventos/FolhaDoEvento.tsx",
+  "src/pages/gestao/eventos/FolhaEliminarEvento.tsx",
+  "src/pages/gestao/eventos/hora-de-lisboa.ts",
+  "src/pages/gestao/eventos/formulario.ts",
+  "src/pages/gestao/eventos/data-na-gestao.ts",
+  "src/pages/gestao/eventos/datas-da-copia.ts",
+  "src/pages/gestao/eventos/textos.ts",
+  "src/lib/api/gestao-eventos.ts",
+  // Os que o frontend acrescentou ao contrato de nomes do qa: a folha de duplicar, o campo da
+  // data (a irmã do `CampoDeHora`) e o cartão de «Assim aparece no site».
+  "src/pages/gestao/eventos/FolhaDuplicar.tsx",
+  "src/pages/gestao/eventos/CampoDeData.tsx",
+  "src/pages/gestao/eventos/PreVisualizacao.tsx",
+];

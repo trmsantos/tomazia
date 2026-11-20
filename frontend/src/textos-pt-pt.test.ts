@@ -46,6 +46,7 @@ import {
   FICHEIROS_DA_F3_05,
   FICHEIROS_DA_F4_01,
   FICHEIROS_DA_F4_02,
+  FICHEIROS_DA_F4_03,
   FICHEIROS_DA_F4_05A,
 } from "./testes/ecras";
 import {
@@ -66,6 +67,21 @@ const PALAVRAS_DE_OUTRO_PORTUGUES = [
   "tela",
   "você",
 ];
+
+/**
+ * Os únicos ficheiros em que «arquivo» é o nome de uma secção de eventos (ver a varredura de
+ * pt-BR); `gestao-eventos.ts` só o diz como o nome da lista do contrato (`arquivo`).
+ */
+const ARQUIVO_E_UMA_SECCAO: ReadonlySet<string> = new Set([
+  "src/pages/gestao/eventos/textos.ts",
+  "src/pages/gestao/eventos/EventosGestao.tsx",
+  "src/pages/gestao/eventos/LinhaDoEvento.tsx",
+  "src/lib/api/gestao-eventos.ts",
+]);
+
+/** As formas aceites nesses ficheiros: «Arquivo», «o/no/do/ao arquivo», o campo `.arquivo` e a chave `arquivo:`. */
+const FORMAS_DO_ARQUIVO_DA_SECCAO =
+  /\b(?:[Oo]s?|no|do|ao|pelo|um) arquivo\b|\bArquivo\b|\.arquivo\b|\barquivo\s*[:,)\]]|\barquivo\s*$|"arquivo"/g;
 
 const SIGLAS_PERMITIDAS = new Set([
   "CSS",
@@ -158,6 +174,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F4_01,
   ...FICHEIROS_DA_F4_02,
   ...FICHEIROS_DA_F4_05A,
+  ...FICHEIROS_DA_F4_03,
 ];
 
 describe("texto visível em português de Portugal", () => {
@@ -172,7 +189,14 @@ describe("texto visível em português de Portugal", () => {
 
       fonte.split("\n").forEach((linha, indice) => {
         for (const palavra of PALAVRAS_DE_OUTRO_PORTUGUES) {
-          if (new RegExp(`\\b${palavra}`, "i").test(linha)) {
+          // F4-03: «Arquivo» é o nome da secção dos eventos passados (um substantivo, o que o
+          // dono diz: «o arquivo»), não o ficheiro do informático. A exceção é só dos ficheiros
+          // dos eventos na gestão; no resto do código a palavra continua a ser recusada.
+          const verificada =
+            palavra === "arquivo" && ARQUIVO_E_UMA_SECCAO.has(relativo)
+              ? linha.replace(FORMAS_DO_ARQUIVO_DA_SECCAO, "")
+              : linha;
+          if (new RegExp(`\\b${palavra}`, "i").test(verificada)) {
             violacoes.push(`${relativo}:${indice + 1} usa «${palavra}»`);
           }
         }
