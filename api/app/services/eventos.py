@@ -218,8 +218,11 @@ def eliminar_evento(sessao: Session, id_evento: int) -> None:
     sessao.commit()
 
 
-def proxima_semana(original: datetime, agora: datetime) -> datetime:
-    """O primeiro `original + 7k dias` (k >= 1) estritamente depois de `agora`.
+def proxima_semana(original: datetime, agora: datetime, semanas: int = 1) -> datetime:
+    """A `semanas`-ésima data livre de `original + 7k dias` (k >= 1).
+
+    Com `semanas = 1`, o primeiro `original + 7k dias` estritamente depois
+    de `agora`; com `n`, o n-ésimo, ou seja `original + 7 (k0 + n - 1) dias`.
 
     Soma-se na **hora de parede de Lisboa** e converte-se depois para UTC:
     somar 7 x 24 h em UTC erra uma hora na semana da mudança da hora
@@ -238,17 +241,19 @@ def proxima_semana(original: datetime, agora: datetime) -> datetime:
       semana não alterar as seguintes.
     """
     parede = original.astimezone(FUSO_DO_BAR).replace(tzinfo=None)
-    semanas = 1
+    k = 1
     while True:
-        candidato = (parede + semanas * UMA_SEMANA).replace(tzinfo=FUSO_DO_BAR, fold=0)
-        em_utc = candidato.astimezone(UTC)
-        if em_utc > agora:
-            return em_utc
-        semanas += 1
+        candidato = (parede + k * UMA_SEMANA).replace(tzinfo=FUSO_DO_BAR, fold=0)
+        if candidato.astimezone(UTC) > agora:
+            break
+        k += 1
+    k += semanas - 1
+    candidato = (parede + k * UMA_SEMANA).replace(tzinfo=FUSO_DO_BAR, fold=0)
+    return candidato.astimezone(UTC)
 
 
-def duplicar_evento(sessao: Session, id_evento: int) -> EventoGestao:
-    """Um rascunho com o mesmo título, descrição e imagem, na próxima semana livre.
+def duplicar_evento(sessao: Session, id_evento: int, semanas: int = 1) -> EventoGestao:
+    """Um rascunho com o mesmo título, descrição e imagem, na `semanas`-ésima data livre.
 
     Sem data no original, a cópia fica sem data e o relógio nem se lê.
     """
@@ -256,7 +261,7 @@ def duplicar_evento(sessao: Session, id_evento: int) -> EventoGestao:
     inicio: datetime | None = None
     if original.inicio is not None:
         try:
-            inicio = proxima_semana(original.inicio, agora_utc())
+            inicio = proxima_semana(original.inicio, agora_utc(), semanas)
         except OverflowError as erro:
             raise ErroDaApi(
                 422, "dados_invalidos", MENSAGEM_DATA_FORA_DO_INTERVALO
