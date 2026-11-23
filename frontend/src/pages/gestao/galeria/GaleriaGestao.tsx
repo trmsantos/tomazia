@@ -88,7 +88,8 @@ export function GaleriaGestao(): ReactElement {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [linha, setLinha] = useState<LinhaDeEstado | null>(null);
   const [ocupado, setOcupado] = useState<Ocupado | null>(null);
-  const [rejeitarAberta, setRejeitarAberta] = useState(false);
+  // A foto que o dono escolheu rejeitar quando abriu a folha: a folha e o `POST` valem só para ela.
+  const [rejeitarId, setRejeitarId] = useState<number | null>(null);
   const [rejeitarFalhou, setRejeitarFalhou] = useState(false);
   const [enviarAberta, setEnviarAberta] = useState(false);
   // A imagem atual: a fase (9.5) e a `key` que a remonta. Só vale para a foto `id`.
@@ -123,6 +124,11 @@ export function GaleriaGestao(): ReactElement {
   });
 
   function guardarFila(nova: FotoPendente[]): void {
+    // Se a foto da frente muda, a folha «Tem a certeza?» (que era sobre a anterior) fecha.
+    if (atual(nova)?.id !== atual(filaAgora.current)?.id) {
+      setRejeitarId(null);
+      setRejeitarFalhou(false);
+    }
     filaAgora.current = nova;
     setFilaDoEstado(nova);
   }
@@ -232,6 +238,9 @@ export function GaleriaGestao(): ReactElement {
 
   const foto = atual(fila);
   const proxima = seguinte(fila);
+  const idDaFotoAtual = foto?.id ?? null;
+  // A folha só está aberta para a foto que a abriu: se a da frente muda, deixa de valer.
+  const rejeitarAberta = rejeitarId !== null && foto?.id === rejeitarId;
   const daImagem = foto !== null && imagem.id === foto.id ? imagem : null;
   const fase: FaseDaImagem = daImagem?.fase ?? "ok";
   const chave = daImagem?.chave ?? 0;
@@ -255,7 +264,17 @@ export function GaleriaGestao(): ReactElement {
 
   function aoCarregarImagem(id: number, deChave: number): void {
     const k = `${String(id)}-${String(deChave)}`;
-    setCarregadas((antes) => (antes.has(k) ? antes : new Set(antes).add(k)));
+    // Só interessam as chaves da foto atual e da seguinte: o conjunto não cresce.
+    const frente = atual(filaAgora.current)?.id;
+    const atras = seguinte(filaAgora.current)?.id;
+    setCarregadas((antes) => {
+      const fica = new Set<string>([k]);
+      for (const outra of antes) {
+        const id = Number(outra.split("-")[0]);
+        if (id === frente || id === atras) fica.add(outra);
+      }
+      return fica.size === antes.size && antes.has(k) ? antes : fica;
+    });
   }
 
   function pedirFoco(alvo: "titulo" | "vazio"): void {
@@ -382,19 +401,25 @@ export function GaleriaGestao(): ReactElement {
     if (!vivo.current) return;
 
     const desfecho = resolverDesfecho(pedido, false, naGaleria);
-    if (desfecho === "nada") return;
+    if (desfecho === "nada") {
+      moderando.current = false;
+      setOcupado(null);
+      return;
+    }
     moderada(alvo.id);
     moderando.current = false;
     setOcupado(null);
-    setRejeitarAberta(false);
+    setRejeitarId(null);
     setRejeitarFalhou(false);
     dizerOResultado(pedido, desfecho);
     avancarCom(substituir(retirar(filaAgora.current, alvo.id), naFilaDe.fotos), true);
   }
 
-  async function moderar(pedido: Pedido): Promise<void> {
+  async function moderar(pedido: Pedido, escolhida: FotoPendente): Promise<void> {
+    // Só se modera a foto que o dono escolheu e que ainda está à frente: se a fila mudou entretanto,
+    // não se confirma nada (rejeitar apaga os bytes).
     const alvo = atual(filaAgora.current);
-    if (alvo === null || moderando.current) return;
+    if (alvo === null || alvo.id !== escolhida.id || moderando.current) return;
     moderando.current = true;
     setLinha(null);
     setAviso(null);
@@ -426,7 +451,7 @@ export function GaleriaGestao(): ReactElement {
     moderada(alvo.id);
     moderando.current = false;
     setOcupado(null);
-    setRejeitarAberta(false);
+    setRejeitarId(null);
     dizerOResultado(pedido, pedido === "aprovar" ? "aprovada" : "rejeitada");
     avancarCom(retirar(filaAgora.current, alvo.id), false);
   }
@@ -444,7 +469,7 @@ export function GaleriaGestao(): ReactElement {
     }
     if (erro instanceof ErroDaApi && erro.estado === 409) {
       // Outro aparelho moderou-a: é informação, não erro. A verificação diz o que ficou.
-      setRejeitarAberta(false);
+      setRejeitarId(null);
       await verificar(alvo, pedido, false);
       return;
     }
@@ -452,7 +477,7 @@ export function GaleriaGestao(): ReactElement {
       moderada(alvo.id);
       moderando.current = false;
       setOcupado(null);
-      setRejeitarAberta(false);
+      setRejeitarId(null);
       setAviso(null);
       setLinha({ texto: TEXTOS.jaNaoExistia, erro: false });
       const nova = retirar(filaAgora.current, alvo.id);
@@ -462,7 +487,7 @@ export function GaleriaGestao(): ReactElement {
     }
     if (erro instanceof ErroDaApi && erro.estado === null) {
       // Sem resposta: não se sabe. A folha fecha e o ecrã vai ver (nunca reenvia).
-      setRejeitarAberta(false);
+      setRejeitarId(null);
       await verificar(alvo, pedido, true);
       return;
     }
@@ -471,7 +496,9 @@ export function GaleriaGestao(): ReactElement {
     moderando.current = false;
     setOcupado(null);
     if (pedido === "aprovar") setLinha({ texto: TEXTOS.aprovarServidor, erro: true });
-    else setRejeitarFalhou(true);
+    else if (atual(filaAgora.current)?.id === alvo.id) setRejeitarFalhou(true);
+    // A folha já fechou (a fila mudou a meio): o erro vai para a linha de estado da página.
+    else setLinha({ texto: TEXTOS.rejeitarServidor, erro: true });
   }
 
   // --- A imagem não carrega ---------------------------------------------------
@@ -519,7 +546,6 @@ export function GaleriaGestao(): ReactElement {
     void verificarImagem(foto, fase, chave);
   }
 
-  const idDaFotoAtual = foto?.id ?? null;
   useEffect(() => {
     if (idDaFotoAtual === null || !falhadas.current.has(idDaFotoAtual)) return;
     falhadas.current.delete(idDaFotoAtual);
@@ -634,11 +660,11 @@ export function GaleriaGestao(): ReactElement {
         aoRejeitar={() => {
           if (rejeitarInerte) return;
           setRejeitarFalhou(false);
-          setRejeitarAberta(true);
+          setRejeitarId(foto.id);
         }}
         aoAprovar={() => {
           if (aprovarInerte) return;
-          void moderar("aprovar");
+          void moderar("aprovar", foto);
         }}
       />
     );
@@ -688,11 +714,12 @@ export function GaleriaGestao(): ReactElement {
         aRejeitar={aRejeitar}
         falhou={rejeitarFalhou}
         aoConfirmar={() => {
-          void moderar("rejeitar");
+          if (rejeitarId === null || foto?.id !== rejeitarId) return;
+          void moderar("rejeitar", foto);
         }}
         aoFechar={() => {
           setRejeitarFalhou(false);
-          setRejeitarAberta(false);
+          setRejeitarId(null);
         }}
       />
 

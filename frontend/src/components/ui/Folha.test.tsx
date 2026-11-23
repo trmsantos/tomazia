@@ -25,6 +25,7 @@
  * `e2e/componentes.spec.ts`, num Chromium.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { estaModal } from "../../testes/dialogo-jsdom";
@@ -101,6 +102,73 @@ describe("Folha", () => {
     fireEvent(dialogoNoDocumento(), new Event("cancel", { cancelable: true }));
 
     expect(aoFechar).toHaveBeenCalledTimes(1);
+  });
+
+  it("o Esc cancela o fecho nativo (preventDefault): fecha-se só por `aberta`", () => {
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={vi.fn()}>
+        <p>x</p>
+      </Folha>,
+    );
+    const cancel = new Event("cancel", { cancelable: true });
+
+    fireEvent(dialogoNoDocumento(), cancel);
+
+    expect(cancel.defaultPrevented).toBe(true);
+  });
+
+  it("Esc com um aoFechar que não fecha: a folha continua aberta", () => {
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={vi.fn()}>
+        <p>x</p>
+      </Folha>,
+    );
+
+    fireEvent(dialogoNoDocumento(), new Event("cancel", { cancelable: true }));
+
+    expect(dialogoNoDocumento().hasAttribute("open")).toBe(true);
+    expect(document.body.classList.contains("sem-deslizar")).toBe(true);
+  });
+
+  it("fechou nativamente (o Chrome ignorou o preventDefault) com `aberta` ainda true: volta a abrir como modal", () => {
+    const abrirModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={vi.fn()}>
+        <p>x</p>
+      </Folha>,
+    );
+    expect(abrirModal).toHaveBeenCalledTimes(1);
+
+    dialogoNoDocumento().close();
+
+    expect(abrirModal).toHaveBeenCalledTimes(2);
+    expect(dialogoNoDocumento().hasAttribute("open")).toBe(true);
+    expect(estaModal(dialogoNoDocumento())).toBe(true);
+  });
+
+  it("Esc com um aoFechar normal: fecha como antes, sem reabrir", () => {
+    function Pagina(): ReactElement {
+      const [aberta, setAberta] = useState(true);
+      return (
+        <Folha
+          aberta={aberta}
+          titulo="WiFi"
+          aoFechar={() => {
+            setAberta(false);
+          }}
+        >
+          <p>x</p>
+        </Folha>
+      );
+    }
+    const abrirModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+    render(<Pagina />);
+
+    fireEvent(dialogoNoDocumento(), new Event("cancel", { cancelable: true }));
+
+    expect(dialogoNoDocumento().hasAttribute("open")).toBe(false);
+    expect(abrirModal).toHaveBeenCalledTimes(1);
+    expect(document.body.classList.contains("sem-deslizar")).toBe(false);
   });
 
   it("o botão de fechar tem nome e fecha", () => {

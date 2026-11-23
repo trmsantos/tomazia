@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactElement, ReactNode } from "react";
+import type { MouseEvent, ReactElement, ReactNode, SyntheticEvent } from "react";
 import { useEffect, useId, useRef } from "react";
 
 import { Botao } from "./Botao";
@@ -31,6 +31,11 @@ const TRAVAO_DO_FUNDO = "sem-deslizar";
 export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolha): ReactElement {
   const referencia = useRef<HTMLDialogElement>(null);
   const idDoTitulo = useId();
+  const abertaAgora = useRef(aberta);
+
+  useEffect(() => {
+    abertaAgora.current = aberta;
+  });
 
   useEffect(() => {
     const dialogo = referencia.current;
@@ -50,6 +55,23 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
     };
   }, [aberta]);
 
+  // O `Esc` (e o «voltar» do Android) disparam `cancel`: cancela-se o fecho nativo e quem manda é
+  // `aberta`. Assim, uma página que ignora o `aoFechar` (a meio de um pedido) não fica com o
+  // `<dialog>` fechado e o React a achar que está aberto.
+  const aoCancelar = (evento: SyntheticEvent<HTMLDialogElement>): void => {
+    evento.preventDefault();
+    aoFechar();
+  };
+
+  // O Chrome ignora o `preventDefault` do `cancel` sem ativação do utilizador (um segundo `Esc`
+  // seguido) e fecha à mesma. Se o diálogo fechou com `aberta` ainda verdadeira, reabre-se: o
+  // estado do React continua a ser a verdade. (`showModal` e não só repor `open`: tem de voltar
+  // a ser modal.) Quando é `aberta` a passar a falso, a referência já está a falso: não reabre.
+  const aoFecharNativo = (): void => {
+    const dialogo = referencia.current;
+    if (dialogo !== null && abertaAgora.current && !dialogo.open) dialogo.showModal();
+  };
+
   // Tocar na cortina fecha. Com o `<dialog>`, a cortina é o próprio elemento
   // por fora do painel, por isso basta comparar o alvo com ele.
   const aoTocarNaCortina = (evento: MouseEvent<HTMLDialogElement>): void => {
@@ -61,7 +83,7 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
      * As duas regras desligadas aqui pedem um atalho de teclado para quem
      * carrega na cortina. Ele existe e é o do browser: num `<dialog>` aberto
      * com `showModal()`, o `Esc` fecha de origem e chega ao `aoFechar` pelo
-     * `onCancel` que está aqui em baixo. A cortina é o próprio elemento por fora do
+     * `onCancel` que está aqui em baixo (que cancela o fecho nativo: fecha-se por `aberta`). A cortina é o próprio elemento por fora do
      * painel, não uma `<div>` a fingir de botão, e por isso não é por ela que
      * o teclado passa.
      */
@@ -70,7 +92,8 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
       ref={referencia}
       aria-modal="true"
       aria-labelledby={idDoTitulo}
-      onCancel={aoFechar}
+      onCancel={aoCancelar}
+      onClose={aoFecharNativo}
       onClick={aoTocarNaCortina}
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-transparent p-0 open:flex open:items-end open:justify-center lg:open:items-center"
     >

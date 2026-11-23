@@ -640,6 +640,17 @@ describe("a imagem não carrega: o `onError` NÃO decide, dispara a verificaçã
     expect(imagensDaPagina()).toHaveLength(2);
   });
 
+  it("a pré-carregada que falha e depois chega à frente: exatamente um GET de verificação, e só nessa altura", async () => {
+    await abrirGaleria();
+    await falharImagem(imgsOcultas()[0] as HTMLImageElement);
+    expect(obterFalso).toHaveBeenCalledTimes(1);
+    await prontaParaModerar();
+    await tocar(botaoAprovar());
+    await avancar(60_000);
+
+    expect(obterFalso).toHaveBeenCalledTimes(2);
+  });
+
   it("e quando essa foto passa a atual com a imagem já falhada, nunca se aprova às cegas: Aprovar fica inerte", async () => {
     await abrirGaleria();
     await falharImagem(imgsOcultas()[0] as HTMLImageElement);

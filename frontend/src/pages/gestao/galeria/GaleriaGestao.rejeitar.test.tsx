@@ -175,6 +175,21 @@ describe("a folha «Tem a certeza?»", () => {
   });
 });
 
+describe("a folha vale só para a foto que a abriu", () => {
+  it("a fila muda com a folha aberta (outro aparelho moderou a da frente): a folha fecha e não há nenhum POST de rejeitar", async () => {
+    await abrirAFolha();
+    obterFalso.mockResolvedValueOnce({ fotos: filaDeTeste(3).slice(1) });
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await assentar();
+
+    expect(idDaImagem(imgAtual())).toBe(102);
+    expect(haFolha(TEXTOS.tituloRejeitar)).toBe(false);
+    expect(rejeitarFalso).not.toHaveBeenCalled();
+  });
+});
+
 describe("confirmar", () => {
   it("um POST com o id e o sinal; «A rejeitar…» (aria-busy, aria-disabled); «Cancelar» inerte; a folha NÃO fecha até chegar a resposta", async () => {
     await abrirAFolha();
@@ -291,6 +306,28 @@ describe("erros ao rejeitar", () => {
       expect(rejeitarFalso, "nunca repete sozinho").toHaveBeenCalledTimes(1);
     },
   );
+
+  it("a fila muda a meio do pedido (a folha fecha) e o pedido falha com 500: o erro vai para a linha de estado da página; sem outro POST", async () => {
+    await abrirAFolha();
+    const pedido = pendente<{ id: number; estado: "rejeitada" }>();
+    rejeitarFalso.mockReturnValueOnce(pedido.promessa);
+    await tocar(confirmar());
+    obterFalso.mockResolvedValueOnce({ fotos: filaDeTeste(3).slice(1) });
+
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await assentar();
+    expect(haFolha(TEXTOS.tituloRejeitar)).toBe(false);
+
+    pedido.rejeitar(erroDoServidor(500));
+    await assentar();
+
+    const linha = linhaDeEstado(TEXTOS.rejeitarServidor);
+    expect(linha).not.toBeNull();
+    expect(haFolha(TEXTOS.tituloRejeitar)).toBe(false);
+    expect(idDaImagem(imgAtual())).toBe(102);
+    expect(rejeitarFalso).toHaveBeenCalledTimes(1);
+  });
 
   it("depois do erro, tocar outra vez é seguro: o segundo pedido avança e fecha a folha", async () => {
     await abrirAFolha();
