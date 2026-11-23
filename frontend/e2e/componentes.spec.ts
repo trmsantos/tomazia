@@ -730,6 +730,23 @@ test.describe("Folha: o que só o browser faz", () => {
     expect(voltouAoGatilho, "ao fechar, o foco volta ao controlo que a abriu").toBe(true);
   });
 
+  test("um fecho nativo sem `cancel` (o que o Chrome faz ao saltar o Esc) chega ao aoFechar: a Folha fecha, sem reabrir em ciclo", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: CONTROLOS.abrirFolhaWifi }).click();
+    const folha = page.getByRole("dialog");
+    await expect(folha).toBeVisible();
+
+    // `close()` não passa pelo `cancel`, tal como o fecho que o Chrome faz quando salta o evento.
+    await page.evaluate(() => {
+      document.querySelector("dialog")?.close();
+    });
+
+    await expect(folha).toBeHidden();
+    await page.waitForTimeout(200);
+    await expect(folha).toBeHidden();
+  });
+
   test("com prefers-reduced-motion, a Folha aparece sem translação", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.reload();

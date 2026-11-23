@@ -64,12 +64,16 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
   };
 
   // O Chrome ignora o `preventDefault` do `cancel` sem ativação do utilizador (um segundo `Esc`
-  // seguido) e fecha à mesma. Se o diálogo fechou com `aberta` ainda verdadeira, reabre-se: o
-  // estado do React continua a ser a verdade. (`showModal` e não só repor `open`: tem de voltar
-  // a ser modal.) Quando é `aberta` a passar a falso, a referência já está a falso: não reabre.
+  // seguido) e fecha à mesma, sem passar pelo nosso `onCancel`. Se o diálogo fechou com `aberta`
+  // ainda verdadeira, reabre-se (o estado do React continua a ser a verdade) e pede-se à página
+  // o que o `Esc` pedia: `aoFechar()`. Se a página fecha, o efeito faz `close()` com a referência
+  // já a falso e não reabre; se ignora (um pedido a meio), a folha fica aberta. `showModal` e não
+  // só repor `open`: tem de voltar a ser modal.
   const aoFecharNativo = (): void => {
     const dialogo = referencia.current;
-    if (dialogo !== null && abertaAgora.current && !dialogo.open) dialogo.showModal();
+    if (dialogo === null || !abertaAgora.current || dialogo.open) return;
+    dialogo.showModal();
+    aoFechar();
   };
 
   // Tocar na cortina fecha. Com o `<dialog>`, a cortina é o próprio elemento

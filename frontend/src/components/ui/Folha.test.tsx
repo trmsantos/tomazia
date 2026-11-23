@@ -24,7 +24,7 @@
  * `Esc` — chega ao `aoFechar`. O comportamento a sério está em
  * `e2e/componentes.spec.ts`, num Chromium.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -144,6 +144,45 @@ describe("Folha", () => {
     expect(abrirModal).toHaveBeenCalledTimes(2);
     expect(dialogoNoDocumento().hasAttribute("open")).toBe(true);
     expect(estaModal(dialogoNoDocumento())).toBe(true);
+  });
+
+  it("fechou nativamente sem cancel: chama o aoFechar; se a página fecha, acaba fechada sem ciclo", () => {
+    function Pagina(): ReactElement {
+      const [aberta, setAberta] = useState(true);
+      return (
+        <Folha
+          aberta={aberta}
+          titulo="WiFi"
+          aoFechar={() => {
+            setAberta(false);
+          }}
+        >
+          <p>x</p>
+        </Folha>
+      );
+    }
+    render(<Pagina />);
+
+    act(() => {
+      dialogoNoDocumento().close();
+    });
+
+    expect(dialogoNoDocumento().hasAttribute("open")).toBe(false);
+    expect(document.body.classList.contains("sem-deslizar")).toBe(false);
+  });
+
+  it("fechou nativamente sem cancel e a página ignora o aoFechar: chamado uma vez e fica aberta", () => {
+    const aoFechar = vi.fn();
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={aoFechar}>
+        <p>x</p>
+      </Folha>,
+    );
+
+    dialogoNoDocumento().close();
+
+    expect(aoFechar).toHaveBeenCalledTimes(1);
+    expect(dialogoNoDocumento().hasAttribute("open")).toBe(true);
   });
 
   it("Esc com um aoFechar normal: fecha como antes, sem reabrir", () => {
