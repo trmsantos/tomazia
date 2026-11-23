@@ -156,6 +156,20 @@ const CampoComFoco = forwardRef<
 
 export type PropriedadesDaFolhaEnviarFoto = { aberta: boolean; aoFechar: () => void };
 
+/** Lê um ficheiro como `data:` URL; `null` se a leitura falhar. */
+function lerComoDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise((resolver) => {
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      resolver(typeof leitor.result === "string" ? leitor.result : null);
+    };
+    leitor.onerror = () => {
+      resolver(null);
+    };
+    leitor.readAsDataURL(blob);
+  });
+}
+
 export function FolhaEnviarFoto({ aberta, aoFechar }: PropriedadesDaFolhaEnviarFoto): ReactElement {
   return (
     <Folha aberta={aberta} titulo={TEXTOS.titulo} aoFechar={aoFechar}>
@@ -214,8 +228,6 @@ function ConteudoDaFolha(): ReactElement {
   const refIsco = useRef<HTMLInputElement>(null);
 
   const operacaoRef = useRef(0);
-  const previaUrlRef = useRef<string | null>(null);
-  const previaReduzidaUrlRef = useRef<string | null>(null);
   const controladorRef = useRef<AbortController | null>(null);
 
   // Fechar a Folha a meio do envio cancela o pedido (6.6): o desmontar
@@ -223,8 +235,9 @@ function ConteudoDaFolha(): ReactElement {
   useEffect(() => {
     return () => {
       controladorRef.current?.abort();
-      if (previaUrlRef.current !== null) URL.revokeObjectURL(previaUrlRef.current);
-      if (previaReduzidaUrlRef.current !== null) URL.revokeObjectURL(previaReduzidaUrlRef.current);
+      // Invalida leituras de prévia ainda a decorrer (nada a revogar: as
+      // prévias são `data:` URLs, que a CSP permite, e o GC trata delas).
+      operacaoRef.current += 1;
     };
   }, []);
 
@@ -259,18 +272,6 @@ function ConteudoDaFolha(): ReactElement {
     setPedidoDeFoco((anterior) => ({ alvo, vez: (anterior?.vez ?? 0) + 1 }));
   }
 
-  function definirPrevia(novaUrl: string | null): void {
-    if (previaUrlRef.current !== null) URL.revokeObjectURL(previaUrlRef.current);
-    previaUrlRef.current = novaUrl;
-    setPreviaUrl(novaUrl);
-  }
-
-  function definirPreviaReduzida(novaUrl: string | null): void {
-    if (previaReduzidaUrlRef.current !== null) URL.revokeObjectURL(previaReduzidaUrlRef.current);
-    previaReduzidaUrlRef.current = novaUrl;
-    setPreviaReduzidaUrl(novaUrl);
-  }
-
   function limparErrosDeEnvio(): void {
     setErroDeFicheiro(null);
     setErroDeLegenda(null);
@@ -283,13 +284,22 @@ function ConteudoDaFolha(): ReactElement {
     limparErrosDeEnvio();
     setFicheiroEscolhido(ficheiro);
     setResultadoPronto(null);
-    definirPreviaReduzida(null);
+    setPreviaReduzidaUrl(null);
     setPreviaFalhou(false);
     setAPreparar(true);
     // A pré-visualização aparece de imediato, sem esperar pela redução
     // (6.4) — é por isso que fica aqui, antes do `reduzir()` começar, e não
     // dentro do `.then()`.
-    definirPrevia(URL.createObjectURL(ficheiro));
+    // `data:` e não `blob:`: a CSP de produção (`img-src 'self' data:`,
+    // ADR 0008) bloqueia `blob:`. A leitura é assíncrona; a guarda da
+    // operação descarta-a se entretanto houve outra escolha, uma troca ou
+    // o fecho da Folha.
+    setPreviaUrl(null);
+    const leituraOriginal = lerComoDataUrl(ficheiro);
+    void leituraOriginal.then((url) => {
+      if (operacaoRef.current !== minhaOperacao) return;
+      setPreviaUrl(url);
+    });
 
     reduzir(ficheiro)
       .then((resultado) => {
@@ -307,8 +317,28 @@ function ConteudoDaFolha(): ReactElement {
           // decodifica mas o Chrome não deixava de se ver certo a meio da
           // troca; o reduzido nunca tem esse problema (ver o cabeçalho de
           // `reduzir.ts`).
-          definirPreviaReduzida(URL.createObjectURL(resultado.ficheiro));
-          setPreviaFalhou(false);
+          // Sem mudança, o ficheiro é o próprio original: reaproveita-se a
+          // leitura em vez de a repetir.
+          const leituraReduzida =
+            resultado.ficheiro === ficheiro ? leituraOriginal : lerComoDataUrl(resultado.ficheiro);
+          // Esperar também pelo original garante que a callback dele já
+          // correu: o `setPreviaUrl(null)` daqui é sempre o último a
+          // escrever, por isso o `data:` do original nunca volta ao estado.
+          void Promise.all([leituraReduzida, leituraOriginal]).then(
+            ([urlReduzida, urlOriginal]) => {
+              if (operacaoRef.current !== minhaOperacao) return;
+              if (urlReduzida === null) {
+                // Fica a prévia do original; se também essa falhou, a caixa
+                // neutra com o nome do ficheiro (6.4).
+                if (urlOriginal === null) setPreviaFalhou(true);
+                return;
+              }
+              // Liberta a prévia do original (pode ser de vários MB).
+              setPreviaUrl(null);
+              setPreviaReduzidaUrl(urlReduzida);
+              setPreviaFalhou(false);
+            },
+          );
           return;
         }
 
@@ -326,8 +356,8 @@ function ConteudoDaFolha(): ReactElement {
         // mesmo "nenhum ficheiro" — repõe-se via `inputFotoRef`, não via
         // este estado.
         setResultadoPronto(null);
-        definirPrevia(null);
-        definirPreviaReduzida(null);
+        setPreviaUrl(null);
+        setPreviaReduzidaUrl(null);
         if (inputFotoRef.current !== null) inputFotoRef.current.value = "";
         setErroDeFicheiro(TEXTOS.falhaAPreparar);
         pedirFoco("foto");
@@ -340,8 +370,8 @@ function ConteudoDaFolha(): ReactElement {
         setAPreparar(false);
         setResultadoPronto(null);
         // `ficheiroEscolhido` fica como está — ver o comentário acima.
-        definirPrevia(null);
-        definirPreviaReduzida(null);
+        setPreviaUrl(null);
+        setPreviaReduzidaUrl(null);
         setErroDeFicheiro(TEXTOS.falhaAPreparar);
         pedirFoco("foto");
       });
@@ -358,8 +388,8 @@ function ConteudoDaFolha(): ReactElement {
     setFicheiroEscolhido(null);
     setResultadoPronto(null);
     setAPreparar(false);
-    definirPrevia(null);
-    definirPreviaReduzida(null);
+    setPreviaUrl(null);
+    setPreviaReduzidaUrl(null);
     setPreviaFalhou(false);
     setErroDeFicheiro(null);
     if (inputFotoRef.current !== null) {
@@ -500,8 +530,8 @@ function ConteudoDaFolha(): ReactElement {
     setFicheiroEscolhido(null);
     setResultadoPronto(null);
     setAPreparar(false);
-    definirPrevia(null);
-    definirPreviaReduzida(null);
+    setPreviaUrl(null);
+    setPreviaReduzidaUrl(null);
     setPreviaFalhou(false);
     setErroDeFicheiro(null);
     setLegenda("");
@@ -576,7 +606,7 @@ function ConteudoDaFolha(): ReactElement {
              * das duas (`onError`), mostra-se uma caixa neutra com o nome do
              * ficheiro em vez do ícone de imagem partida.
              */}
-            {(previaUrl !== null || previaReduzidaUrl !== null) && (
+            {(previaUrl !== null || previaReduzidaUrl !== null || aPreparar || previaFalhou) && (
               <div className="flex flex-col gap-2">
                 {previaFalhou ? (
                   <div className="rounded-pequeno border border-fio-interno p-3 text-nota text-texto-suave">
@@ -585,15 +615,17 @@ function ConteudoDaFolha(): ReactElement {
                 ) : (
                   // alt="" de propósito: decorativa, o ficheiro já está
                   // nomeado pela etiqueta do campo "Foto".
-                  <img
-                    src={previaReduzidaUrl ?? previaUrl ?? ""}
-                    alt=""
-                    draggable={false}
-                    onError={() => {
-                      setPreviaFalhou(true);
-                    }}
-                    className="w-full rounded-pequeno border border-fio-interno object-contain"
-                  />
+                  (previaReduzidaUrl ?? previaUrl) !== null && (
+                    <img
+                      src={previaReduzidaUrl ?? previaUrl ?? undefined}
+                      alt=""
+                      draggable={false}
+                      onError={() => {
+                        setPreviaFalhou(true);
+                      }}
+                      className="w-full rounded-pequeno border border-fio-interno object-contain"
+                    />
+                  )
                 )}
 
                 {aPreparar && (
