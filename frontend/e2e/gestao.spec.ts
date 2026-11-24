@@ -9,6 +9,7 @@ import { guardar } from "./apoio/capturas";
 import { fingirEmentaFixa } from "./apoio/ementa";
 import { fingirEventosFixos } from "./apoio/eventos";
 import { RESPOSTA_400, fingirApiDeSessao, resposta429 } from "./apoio/gestao";
+import { fingirApiDasFotos } from "./apoio/gestao-fotos";
 import { SEM_EVENTOS } from "../src/testes/eventos";
 
 /**
@@ -160,6 +161,9 @@ test.describe("a moldura, a 390 × 844", () => {
   });
 
   test("os cinco destinos sem violações sérias do axe", async ({ page }) => {
+    // F4-04: a Galeria pede a fila de moderação; a API das fotos fica fingida (com fotos: o
+    // destino «Galeria» é o ecrã de moderação e não o vazio de lançamento).
+    await fingirApiDasFotos(page);
     for (const caminho of [
       "/gestao",
       "/gestao/ementa",
@@ -295,6 +299,7 @@ for (const [largura, altura] of [
 
     test("os cinco destinos", async ({ page }) => {
       await fingirApiDeSessao(page, { sessaoAberta: true });
+      await fingirApiDasFotos(page);
       for (const caminho of [
         "/gestao",
         "/gestao/ementa",

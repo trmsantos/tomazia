@@ -42,7 +42,7 @@ import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "../../testes/componentes";
-import { FICHEIROS_DA_F3_05 } from "../../testes/ecras";
+import { FICHEIROS_DA_F3_05, FICHEIROS_DA_F4_04 } from "../../testes/ecras";
 import {
   RAIZ_FRONTEND,
   caminhoRelativo,
@@ -228,7 +228,13 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
     // zero violações.
     exigirSentinelas(
       ficheiros,
-      [...COMPONENTES_DA_F3_01, "src/App.tsx", ...FICHEIROS_DA_F3_05],
+      [
+        ...COMPONENTES_DA_F3_01,
+        "src/App.tsx",
+        ...FICHEIROS_DA_F3_05,
+        // F4-04: só os de fora de `src/lib/api/` (o `gestao-fotos.ts` é o cliente, não se varre aqui).
+        ...FICHEIROS_DA_F4_04.filter((ficheiro) => !ficheiro.startsWith("src/lib/api/")),
+      ],
       "pedidos HTTP fora do cliente",
     );
 

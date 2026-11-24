@@ -145,3 +145,22 @@ export const FICHEIROS_DA_F4_03 = [
   "src/pages/gestao/eventos/CampoDeData.tsx",
   "src/pages/gestao/eventos/PreVisualizacao.tsx",
 ];
+
+/**
+ * A moderação de fotos na gestão (F4-04). Sentinelas: uma varredura que olha para pastas e não
+ * encontra os ficheiros novos devolve zero violações e passa (regra 10 do `CLAUDE.md`) — e
+ * `src/pages/gestao/galeria/` é uma pasta que ainda não existe, o caso exato. Entra nas varreduras
+ * de textos PT-PT, de build de produção («o público não importa a gestão»), de `sem-estilo-inline`
+ * e na do `fetch` só dentro do cliente. Quem acrescentar um ficheiro a `galeria/` acrescenta-o aqui
+ * (é uma linha, e é a linha que faz as varreduras passarem a vê-lo).
+ */
+export const FICHEIROS_DA_F4_04 = [
+  "src/pages/gestao/galeria/GaleriaGestao.tsx",
+  "src/pages/gestao/galeria/FotoEmModeracao.tsx",
+  "src/pages/gestao/galeria/FolhaRejeitarFoto.tsx",
+  "src/pages/gestao/galeria/FolhaEnviarFotoDoDono.tsx",
+  "src/pages/gestao/galeria/estado-da-fila.ts",
+  "src/pages/gestao/galeria/quando-foi-enviada.ts",
+  "src/pages/gestao/galeria/textos.ts",
+  "src/lib/api/gestao-fotos.ts",
+];

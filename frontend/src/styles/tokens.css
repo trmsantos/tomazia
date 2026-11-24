@@ -76,6 +76,7 @@
   --espessura-foco: 2px;
   --afastamento-foco: 2px;
   --alvo-toque: 44px; /* Q-04; em px de propósito */
+  --alvo-grande: 56px; /* os botões de moderar (F4-04, D5); em px de propósito, como o --alvo-toque */
   --descida-premido: 1px; /* o botão desce 1 px quando está a ser carregado */
 
   /*

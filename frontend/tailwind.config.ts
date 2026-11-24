@@ -227,6 +227,8 @@ export default {
     extend: {
       minHeight: {
         toque: "var(--alvo-toque)",
+        // Aprovar e Rejeitar na moderação de fotos (F4-04, D5): o toque falhado aprova a foto errada.
+        grande: "var(--alvo-grande)",
         // O lugar da linha viva da Folha do WiFi (F3-03, 8.2). `min-h` e não
         // `h`: a reserva é de uma linha, mas com o tamanho de letra do sistema
         // no dobro a frase passa a duas e tem de poder crescer.

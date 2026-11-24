@@ -38,7 +38,6 @@ export const TEXTOS_DA_GESTAO = {
 
   vazioTitulo: "Ainda não há nada aqui.",
   vazioInicio: "Esta página não tem conteúdo nesta versão.",
-  vazioGaleria: "A moderação das fotos não está disponível nesta versão.",
 
   sair: "Sair",
   aSair: "A sair…",
@@ -280,11 +279,13 @@ export const TEXTOS_DA_EMENTA_GESTAO = {
 } as const;
 
 /**
- * O 404 de um `PATCH` (`produto_inexistente`), de um `PUT` (`categoria_inexistente`) ou de
- * qualquer pedido a um evento (`evento_inexistente`, F4-03).
+ * O 404 de um `PATCH` (`produto_inexistente`), de um `PUT` (`categoria_inexistente`), de
+ * qualquer pedido a um evento (`evento_inexistente`, F4-03) ou a uma foto (`foto_nao_encontrada`,
+ * F4-04).
  */
 export function erro404(
-  codigo: "produto_inexistente" | "categoria_inexistente" | "evento_inexistente",
+  codigo:
+    "produto_inexistente" | "categoria_inexistente" | "evento_inexistente" | "foto_nao_encontrada",
 ): ErroDaApi {
   return new ErroDaApi("Não encontrei isto. (mensagem do backend)", { estado: 404, codigo });
 }
@@ -567,5 +568,78 @@ export function erro422EventoSemData(): ErroDaApi {
     estado: 422,
     codigo: "evento_sem_data",
     extra: { campo: "inicio" },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// F4-04 — a moderação de fotos na gestão. Dados claramente falsos; tipados com o
+// OpenAPI gerado. O relógio de todos os testes é o `AGORA` de `./eventos` (segunda-feira,
+// 2 de novembro de 2026, 10:00 em Lisboa; em novembro Lisboa está em UTC+0).
+// ---------------------------------------------------------------------------
+
+export type FotoPendente = components["schemas"]["FotoPendente"];
+export type RespostaFilaDeModeracao = components["schemas"]["RespostaFilaDeModeracao"];
+
+/** Uma foto pendente falsa; só o `id` é obrigatório. Sem legenda nem nome por omissão. */
+export function fotoPendenteDeTeste(
+  parcial: Partial<FotoPendente> & Pick<FotoPendente, "id">,
+): FotoPendente {
+  return {
+    ficheiro: `foto-${String(parcial.id)}.webp`,
+    descricao: null,
+    enviada_por: null,
+    criada_em: "2026-11-02T09:15:00Z",
+    ...parcial,
+  };
+}
+
+/** A legenda mais comprida que o backend aceita, sem um único espaço para quebrar. */
+export const LEGENDA_DE_255 = "Z".repeat(255);
+
+/**
+ * A fila de todos os testes, **como o servidor a manda** (da mais antiga para a mais recente).
+ * `filaDeTeste(n)` devolve as `n` primeiras (até 5). Ids 101 a 105; relógio em `AGORA`.
+ *
+ *  - 101: legenda com `&`, apóstrofo e emoji, enviada por «Rita»; **ontem**, 23:40.
+ *  - 102: sem legenda e sem nome; hoje, 00:30.
+ *  - 103: legenda de 255 carateres sem espaços, por «Zé»; hoje, **01:10** («à 01:10»).
+ *  - 104: legenda curta, por «Marta»; hoje, 08:00.
+ *  - 105: sem legenda, por «Quim»; hoje, 09:15.
+ */
+export function filaDeTeste(n = 3): FotoPendente[] {
+  const todas: FotoPendente[] = [
+    fotoPendenteDeTeste({
+      id: 101,
+      descricao: "Noite de samba 🎶 & amigos d'a casa",
+      enviada_por: "Rita",
+      criada_em: "2026-11-01T23:40:00Z",
+    }),
+    fotoPendenteDeTeste({ id: 102, criada_em: "2026-11-02T00:30:00Z" }),
+    fotoPendenteDeTeste({
+      id: 103,
+      descricao: LEGENDA_DE_255,
+      enviada_por: "Zé",
+      criada_em: "2026-11-02T01:10:00Z",
+    }),
+    fotoPendenteDeTeste({
+      id: 104,
+      descricao: "Quarta foto",
+      enviada_por: "Marta",
+      criada_em: "2026-11-02T08:00:00Z",
+    }),
+    fotoPendenteDeTeste({
+      id: 105,
+      enviada_por: "Quim",
+      criada_em: "2026-11-02T09:15:00Z",
+    }),
+  ];
+  return todas.slice(0, n);
+}
+
+/** O 409 de aprovar ou rejeitar uma foto que já não está pendente. A `mensagem` nunca chega ao ecrã. */
+export function erro409FotoJaModerada(): ErroDaApi {
+  return new ErroDaApi("A foto já foi moderada. (mensagem do backend)", {
+    estado: 409,
+    codigo: "foto_ja_moderada",
   });
 }
