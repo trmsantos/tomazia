@@ -271,6 +271,9 @@ export default {
         manipulo: "var(--manipulo)",
         // A coluna lateral da gestão (F4-01, 5.3).
         "menu-gestao": "var(--largura-menu-gestao)",
+        // A miniatura da lista de fotos aprovadas da gestão (F4-04b, 2.1).
+        miniatura: "var(--miniatura-aprovada)",
+        "miniatura-grande": "var(--miniatura-aprovada-grande)",
       },
       // As duas colunas da moldura da gestão a partir de 1024 px: o menu e o resto.
       gridTemplateColumns: { gestao: "var(--largura-menu-gestao) 1fr" },

@@ -170,7 +170,12 @@ test.describe("Feito quando 1: aprovar mostra «Foto aprovada» e passa à segui
     await expect(aviso(page)).toContainText(T.avisoAprovada);
     await expect(aviso(page)).toContainText("Feito.");
     await expect(page.getByText(LEGENDA_DA_102)).toBeVisible();
-    await expect(page.getByText(LEGENDA_DA_101)).toHaveCount(0);
+    // Só na fila: a secção «Fotos no site» (F4-04b) mostra a foto acabada de aprovar.
+    await expect(
+      page
+        .getByRole("region", { name: new RegExp(`^${T.fotosAEspera}`) })
+        .getByText(LEGENDA_DA_101),
+    ).toHaveCount(0);
     await expect(h2(page)).toHaveText(T.fotosAEsperaN(2));
     expect(pedidosDe(servidor, "POST", /\/gestao\/fotos\/101\/aprovar$/)).toHaveLength(1);
     expect(estadoDe(servidor, 101)).toBe("aprovada");

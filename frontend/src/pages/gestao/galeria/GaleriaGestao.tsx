@@ -16,6 +16,7 @@ import { armarPrazo } from "../prazo";
 import { useSessaoDaGestao } from "../SessaoDaGestao";
 import { FolhaEnviarFotoDoDono, type ResultadoDoEnvio } from "./FolhaEnviarFotoDoDono";
 import { FolhaRejeitarFoto } from "./FolhaRejeitarFoto";
+import { FotosAprovadas, type AvisoDaPagina } from "./FotosAprovadas";
 import { FotoEmModeracao, type FaseDaImagem, type LinhaDeEstado } from "./FotoEmModeracao";
 import {
   INTERVALO_CONTRA_DUPLO_TOQUE_MS,
@@ -35,9 +36,10 @@ import { TEXTOS } from "./textos";
  * antiga para a mais recente. Aprovar custa um toque; rejeitar dois (a folha «Tem a certeza?»);
  * a foto seguinte aparece logo, já descarregada. Mais enviar uma foto do bar.
  *
- * É o dono do estado: a fila local, o único `AvisoTemporario` da página (para a F4-04b o
- * partilhar), as folhas e os pedidos. Compõe **secções irmãs**: a da fila e, a seguir a ela, a
- * F4-04b acrescenta a sua sem mexer na fila.
+ * É o dono do estado: a fila local, o único `AvisoTemporario` da página (partilhado com a secção
+ * «Fotos no site» da F4-04b), as folhas e os pedidos. Compõe **secções irmãs**: a da fila e, a
+ * seguir a ela, `FotosAprovadas`, que tem o seu próprio estado e só recebe o aviso e o sinal de
+ * reler quando se aprova.
  *
  * Regras que atravessam o ecrã:
  *  - **Nada é otimista**: a foto só avança depois da resposta. Sem resposta o ecrã não sabe, e
@@ -54,7 +56,7 @@ import { TEXTOS } from "./textos";
 /** Os avisos de moderar duram 3 s: o aviso de 5 s cobria os botões da foto seguinte (spec 5.1). */
 const DURACAO_DO_AVISO_DE_MODERAR_MS = 3_000;
 
-type Aviso = { tipo: "sucesso" | "erro"; mensagem: string; duracaoMs?: number };
+type Aviso = AvisoDaPagina;
 type Carga = "a-carregar" | "ok" | "erro";
 type Resultado = "aprovada" | "rejeitada";
 
@@ -92,6 +94,8 @@ export function GaleriaGestao(): ReactElement {
   const [rejeitarId, setRejeitarId] = useState<number | null>(null);
   const [rejeitarFalhou, setRejeitarFalhou] = useState(false);
   const [enviarAberta, setEnviarAberta] = useState(false);
+  // Sobe quando uma foto fica aprovada: a secção «Fotos no site» relê em silêncio (F4-04b, spec 4).
+  const [aprovouNaFila, setAprovouNaFila] = useState(0);
   // A imagem atual: a fase (9.5) e a `key` que a remonta. Só vale para a foto `id`.
   const [imagem, setImagem] = useState<{ id: number; fase: FaseDaImagem; chave: number }>({
     id: 0,
@@ -411,6 +415,8 @@ export function GaleriaGestao(): ReactElement {
     setOcupado(null);
     setRejeitarId(null);
     setRejeitarFalhou(false);
+    // Ficou aprovada (por este pedido ou por outro aparelho): a secção das aprovadas relê.
+    if (desfecho === "aprovada") setAprovouNaFila((n) => n + 1);
     dizerOResultado(pedido, desfecho);
     avancarCom(substituir(retirar(filaAgora.current, alvo.id), naFilaDe.fotos), true);
   }
@@ -452,6 +458,7 @@ export function GaleriaGestao(): ReactElement {
     moderando.current = false;
     setOcupado(null);
     setRejeitarId(null);
+    if (pedido === "aprovar") setAprovouNaFila((n) => n + 1);
     dizerOResultado(pedido, pedido === "aprovar" ? "aprovada" : "rejeitada");
     avancarCom(retirar(filaAgora.current, alvo.id), false);
   }
@@ -704,7 +711,7 @@ export function GaleriaGestao(): ReactElement {
           {corpo}
         </section>
 
-        {/* A secção das aprovadas (F4-04b) entra aqui, a seguir à fila. */}
+        <FotosAprovadas sinalDeReleitura={aprovouNaFila} aoAviso={setAviso} />
       </div>
 
       <FolhaRejeitarFoto

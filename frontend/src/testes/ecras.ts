@@ -159,6 +159,10 @@ export const FICHEIROS_DA_F4_04 = [
   "src/pages/gestao/galeria/FotoEmModeracao.tsx",
   "src/pages/gestao/galeria/FolhaRejeitarFoto.tsx",
   "src/pages/gestao/galeria/FolhaEnviarFotoDoDono.tsx",
+  // F4-04b: a secção das aprovadas e a folha de eliminar (a varredura de Q-05 passa a cobri-las;
+  // `exigirSentinelas` falha enquanto não existirem).
+  "src/pages/gestao/galeria/FotosAprovadas.tsx",
+  "src/pages/gestao/galeria/FolhaEliminarFoto.tsx",
   "src/pages/gestao/galeria/estado-da-fila.ts",
   "src/pages/gestao/galeria/quando-foi-enviada.ts",
   "src/pages/gestao/galeria/textos.ts",

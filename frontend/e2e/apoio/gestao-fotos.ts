@@ -2,6 +2,7 @@ import { deflateSync } from "node:zlib";
 
 import type { Page, Route } from "@playwright/test";
 
+import { AGORA } from "../../src/testes/eventos";
 import { fotoPendenteDeTeste, type FotoPendente } from "../../src/testes/gestao";
 import { fingirInfoFixo } from "./cabecalho";
 import { fingirEmentaFixa } from "./ementa";
@@ -42,6 +43,11 @@ import type { ServidorFingido } from "./gestao";
  *    que condizem com `metodo` + `caminho`, a partir de 1). `"abortar"` não responde;
  *    **`"aplicar-e-abortar"`** aplica o efeito no estado e depois não responde (o pedido chegou,
  *    a resposta perdeu-se: o caso «não sei» da regra 10);
+ *  - **F4-04b:** `GET /api/gestao/fotos/aprovadas` (só as `aprovada`, por `moderada_em` decrescente
+ *    e `id` decrescente, sem `estado` nem `ip_hash`) e `DELETE /api/gestao/fotos/{id}`: só elimina
+ *    **aprovadas** (`404 foto_nao_encontrada` se não existe, `409 foto_nao_aprovada` se não está
+ *    aprovada, `204` e a foto **deixa de existir**: o `GET /api/galeria` público já não a devolve).
+ *    Aprovar grava `moderada_em` (um minuto antes de `AGORA`, para a data ser a de «hoje»);
  *  - **precedência das rotas** (Playwright: a última registada ganha): o `apoio/gestao-ementa.ts`
  *    regista `**\/api/gestao/**`; quem usar também `fingirApiDeEmenta` chama **esta** função
  *    **depois** dela.
@@ -55,10 +61,12 @@ export type PedidoObservado = {
 
 export type FotoDoServidor = FotoPendente & {
   estado: "pendente" | "aprovada" | "rejeitada";
+  /** Só as aprovadas; sem ele vale a `criada_em`. */
+  moderada_em?: string;
 };
 
 export type Falha = {
-  metodo: "GET" | "POST";
+  metodo: "GET" | "POST" | "DELETE";
   /** Condiz com o caminho depois de `/api` (`/gestao/fotos`, `/gestao/fotos/101/aprovar`, `/fotos`). */
   caminho: RegExp;
   /** O n-ésimo pedido que condiz (1 = o primeiro). Sem `ordem`, todos. */
@@ -104,7 +112,7 @@ export type ServidorDeFotos = {
 };
 
 export const ROTA_DAS_FOTOS_DE_GESTAO =
-  /\/api\/gestao\/fotos(?:\/(\d+)\/(aprovar|rejeitar|imagem))?(?:\?.*)?$/;
+  /\/api\/gestao\/fotos(?:\/aprovadas|\/\d+(?:\/(?:aprovar|rejeitar|imagem))?)?(?:\?.*)?$/;
 export const ROTA_DO_ENVIO_PUBLICO = "**/api/fotos";
 export const ROTA_DA_GALERIA_PUBLICA = "**/api/galeria";
 
@@ -159,6 +167,56 @@ export function fotosDoE2E(): FotoPendente[] {
     }),
     fotoPendenteDeTeste({ id: 103, criada_em: "2026-11-02T01:10:00Z" }),
   ];
+}
+
+/** As três aprovadas dos e2e da F4-04b (ids 201 a 203), da mais recente à mais antiga. */
+export const LEGENDA_DA_201 = "Aniversário da Marta, com bolo e tudo";
+export function aprovadasDoE2E(): FotoDoServidor[] {
+  return [
+    {
+      ...fotoPendenteDeTeste({
+        id: 201,
+        descricao: LEGENDA_DA_201,
+        enviada_por: "Marta",
+        criada_em: "2026-10-30T20:00:00Z",
+      }),
+      estado: "aprovada",
+      moderada_em: "2026-11-02T08:05:00Z",
+    },
+    {
+      ...fotoPendenteDeTeste({ id: 202, criada_em: "2026-10-30T21:00:00Z" }),
+      estado: "aprovada",
+      moderada_em: "2026-11-02T01:10:00Z",
+    },
+    {
+      ...fotoPendenteDeTeste({
+        id: 203,
+        descricao: "Z".repeat(120),
+        enviada_por: "Zé",
+        criada_em: "2026-10-29T21:00:00Z",
+      }),
+      estado: "aprovada",
+      moderada_em: "2026-11-01T23:40:00Z",
+    },
+  ];
+}
+/** `n` aprovadas (ids 1 a `n`); a de id maior é a mais recente. */
+export function muitasAprovadasDoE2E(n: number): FotoDoServidor[] {
+  return Array.from({ length: n }, (_v, i) => i + 1).map((id) => ({
+    ...fotoPendenteDeTeste({ id, descricao: `Legenda ${String(id)}` }),
+    estado: "aprovada" as const,
+    moderada_em: `2026-10-20T10:${String(id).padStart(2, "0")}:00Z`,
+  }));
+}
+
+/** Os ids que o servidor daria agora em `GET /gestao/fotos/aprovadas`, pela ordem. */
+export function aprovadasDoServidor(servidor: ServidorDeFotos): FotoDoServidor[] {
+  return servidor.fotos
+    .filter((f) => f.estado === "aprovada")
+    .sort(
+      (a, b) =>
+        (b.moderada_em ?? b.criada_em).localeCompare(a.moderada_em ?? a.criada_em) || b.id - a.id,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -315,9 +373,12 @@ export async function fingirApiDasFotos(
     const pedido = rota.request();
     const metodo = pedido.method();
     const caminho = new URL(pedido.url()).pathname.replace(/^\/api/, "");
-    const m = /^\/gestao\/fotos(?:\/(\d+)\/(aprovar|rejeitar|imagem))?$/.exec(caminho);
-    const id = m?.[1] === undefined ? null : Number(m[1]);
-    const acao = m?.[2];
+    const m = /^\/gestao\/fotos(?:\/(aprovadas)|\/(\d+)(?:\/(aprovar|rejeitar|imagem))?)?$/.exec(
+      caminho,
+    );
+    const listaAprovadas = m?.[1] === "aprovadas";
+    const id = m?.[2] === undefined ? null : Number(m[2]);
+    const acao = m?.[3];
     servidor.pedidos.push({
       metodo,
       caminho,
@@ -331,16 +392,41 @@ export async function fingirApiDasFotos(
     const moderar = (): void => {
       if (achada !== undefined && achada.estado === "pendente") {
         achada.estado = acao === "aprovar" ? "aprovada" : "rejeitada";
+        // Um minuto antes de `AGORA`: no ecrã é «hoje, às 09:59».
+        if (acao === "aprovar")
+          achada.moderada_em = new Date(AGORA.getTime() - 60_000).toISOString();
       }
     };
-    if (await falhaInjetada(rota, metodo, caminho, moderar)) return;
+    /** O que um `DELETE` aplica: só uma aprovada deixa de existir. */
+    const eliminar = (): void => {
+      if (achada !== undefined && achada.estado === "aprovada") {
+        servidor.fotos.splice(servidor.fotos.indexOf(achada), 1);
+      }
+    };
+    const aplicar = metodo === "DELETE" ? eliminar : moderar;
+    if (await falhaInjetada(rota, metodo, caminho, aplicar)) return;
 
     if (opcoes.sessao !== undefined && !opcoes.sessao.sessaoAberta) {
       await json(rota, 401, { erro: "sessao_em_falta", mensagem: "Precisas de entrar." });
       return;
     }
 
-    if (id === null && metodo === "GET") {
+    if (listaAprovadas && metodo === "GET") {
+      await json(rota, 200, {
+        // Só o que o backend manda (nunca o `estado`, que é nosso, nem o `ip_hash`).
+        fotos: aprovadasDoServidor(servidor).map((f) => ({
+          id: f.id,
+          ficheiro: f.ficheiro,
+          descricao: f.descricao,
+          enviada_por: f.enviada_por,
+          criada_em: f.criada_em,
+          moderada_em: f.moderada_em ?? f.criada_em,
+        })),
+      });
+      return;
+    }
+
+    if (id === null && !listaAprovadas && metodo === "GET") {
       await json(rota, 200, {
         // Só o que o backend manda (nunca o `estado`, que é nosso, nem o `ip_hash`).
         fotos: filaDoServidor(servidor).map(
@@ -353,6 +439,27 @@ export async function fingirApiDasFotos(
           }),
         ),
       });
+      return;
+    }
+
+    if (id !== null && acao === undefined && metodo === "DELETE") {
+      if (pedido.headers()["x-tomazia"] !== "1") {
+        await json(rota, 403, { erro: "pedido_recusado", mensagem: "x" });
+        return;
+      }
+      if (achada === undefined) {
+        await json(rota, 404, { erro: "foto_nao_encontrada", mensagem: "Não encontrei a foto." });
+        return;
+      }
+      if (achada.estado !== "aprovada") {
+        await json(rota, 409, {
+          erro: "foto_nao_aprovada",
+          mensagem: "MENSAGEM-DO-BACKEND (nunca aparece no ecrã)",
+        });
+        return;
+      }
+      eliminar();
+      await rota.fulfill({ status: 204, headers: { "Cache-Control": "no-store" } });
       return;
     }
 

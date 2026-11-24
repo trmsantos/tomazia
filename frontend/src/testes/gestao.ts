@@ -643,3 +643,73 @@ export function erro409FotoJaModerada(): ErroDaApi {
     codigo: "foto_ja_moderada",
   });
 }
+
+// ---------------------------------------------------------------------------
+// F4-04b — as fotos aprovadas (a secção «Fotos no site»). Mesmos dados falsos.
+// ---------------------------------------------------------------------------
+
+export type FotoAprovada = components["schemas"]["FotoAprovada"];
+
+/** Uma foto aprovada falsa; só o `id` é obrigatório. Sem legenda nem nome por omissão. */
+export function fotoAprovadaDeTeste(
+  parcial: Partial<FotoAprovada> & Pick<FotoAprovada, "id">,
+): FotoAprovada {
+  return {
+    ficheiro: `foto-${String(parcial.id)}.webp`,
+    descricao: null,
+    enviada_por: null,
+    criada_em: "2026-10-30T12:00:00Z",
+    moderada_em: "2026-11-02T08:05:00Z",
+    ...parcial,
+  };
+}
+
+/**
+ * As três aprovadas de todos os testes, **da mais recente para a mais antiga** (a ordem do
+ * servidor). `quando` é o que o item diz (relógio em `AGORA`).
+ *
+ *  - 201: legenda com `&` e emoji, por «Marta»; «hoje, às 08:05».
+ *  - 202: **sem legenda nem nome**; «hoje, à 01:10».
+ *  - 203: legenda de 255 carateres sem espaços, por «Zé»; «ontem, às 23:40».
+ */
+export const QUANDO_DAS_APROVADAS: Record<number, string> = {
+  201: "hoje, às 08:05",
+  202: "hoje, à 01:10",
+  203: "ontem, às 23:40",
+};
+export const LEGENDA_DA_201 = "Aniversário da Marta 🎉 & amigos d'a casa";
+
+export function aprovadasDeTeste(n = 3): FotoAprovada[] {
+  const todas: FotoAprovada[] = [
+    fotoAprovadaDeTeste({
+      id: 201,
+      descricao: LEGENDA_DA_201,
+      enviada_por: "Marta",
+      moderada_em: "2026-11-02T08:05:00Z",
+    }),
+    fotoAprovadaDeTeste({ id: 202, moderada_em: "2026-11-02T01:10:00Z" }),
+    fotoAprovadaDeTeste({
+      id: 203,
+      descricao: "Z".repeat(255),
+      enviada_por: "Zé",
+      moderada_em: "2026-11-01T23:40:00Z",
+    }),
+  ];
+  return todas.slice(0, n);
+}
+
+/** `n` aprovadas (ids 1 a `n`), a de id maior é a mais recente; pela ordem do servidor (a mais recente primeiro). */
+export function muitasAprovadas(n: number): FotoAprovada[] {
+  const fotos: FotoAprovada[] = [];
+  for (let id = n; id >= 1; id -= 1) {
+    const minutos = String(id).padStart(2, "0");
+    fotos.push(
+      fotoAprovadaDeTeste({
+        id,
+        descricao: `Legenda ${String(id)}`,
+        moderada_em: `2026-10-20T10:${minutos}:00Z`,
+      }),
+    );
+  }
+  return fotos;
+}
