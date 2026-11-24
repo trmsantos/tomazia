@@ -62,7 +62,7 @@ export const ROTA_DOS_EVENTOS = "**/api/eventos";
  */
 export type ContadorDePedidos = { total: number };
 
-type Resposta =
+export type Resposta =
   | { tipo: "ementa"; corpo: Ementa; atrasoMs?: number }
   | { tipo: "estado"; estado: number }
   | { tipo: "falha" };
