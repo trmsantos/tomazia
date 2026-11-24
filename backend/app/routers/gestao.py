@@ -26,7 +26,11 @@ from app.dependencias import IdDaBD, SessaoDaBD
 from app.models.admins import Admin
 from app.schemas.auth import RespostaAdmin
 from app.schemas.erros import RespostaDeErro
-from app.schemas.fotos import RespostaFilaDeModeracao, RespostaModeracao
+from app.schemas.fotos import (
+    RespostaFilaDeModeracao,
+    RespostaFotosAprovadas,
+    RespostaModeracao,
+)
 from app.schemas.gestao import (
     CategoriaGestao,
     DefinicoesGestao,
@@ -118,6 +122,27 @@ _404_FOTO = (404, "A foto não existe: `foto_nao_encontrada`.")
 def listar_fotos_pendentes(sessao: SessaoDaBD) -> RespostaFilaDeModeracao:
     """A fila de moderação, da foto mais antiga para a mais recente."""
     return servico.listar_pendentes(sessao)
+
+
+@router.get("/fotos/aprovadas", response_model=RespostaFotosAprovadas)
+def listar_fotos_aprovadas(sessao: SessaoDaBD) -> RespostaFotosAprovadas:
+    """As fotos na galeria, a mais recentemente aprovada primeiro."""
+    return servico.listar_aprovadas(sessao)
+
+
+@router.delete(
+    "/fotos/{id}",
+    status_code=204,
+    responses=_respostas(
+        _404_FOTO,
+        (409, "A foto ainda não está na galeria: `foto_nao_aprovada`."),
+        _422,
+        (500, "Não foi possível apagar o ficheiro: `foto_nao_eliminada`."),
+    ),
+)
+def eliminar_foto_aprovada(id_foto: IdDaBD, sessao: SessaoDaBD) -> None:
+    """Elimina uma foto aprovada, ficheiro incluído. Só aprovadas (ADR 0022)."""
+    servico.eliminar_aprovada(sessao, id_foto)
 
 
 @router.get(

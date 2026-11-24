@@ -32,20 +32,26 @@ se toca em ficheiro nenhum.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 import re
 import uuid
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, Update, select, update
+from sqlalchemy import CursorResult, Delete, Update, delete, select, update
 from sqlalchemy.orm import Session
 
 from app.config import obter_definicoes
 from app.erros import ErroDaApi
 from app.models.fotos import EstadoFoto, Foto
 from app.models.tipos import agora_utc
-from app.schemas.fotos import FotoPendente, RespostaFilaDeModeracao
+from app.schemas.fotos import (
+    FotoAprovada,
+    FotoPendente,
+    RespostaFilaDeModeracao,
+    RespostaFotosAprovadas,
+)
 from app.services import imagens
 
 #: `docs/ESPECIFICACAO.md`: "8 MB". A verificação autoritária sobre os
@@ -84,6 +90,12 @@ MENSAGEM_ENVIADA_POR_GRANDE_DEMAIS = (
 )
 MENSAGEM_FOTO_NAO_ENCONTRADA = "Esta foto não existe."
 MENSAGEM_FOTO_JA_MODERADA = "Esta foto já foi moderada."
+MENSAGEM_FOTO_NAO_APROVADA = "Só se pode eliminar uma foto que já está na galeria."
+MENSAGEM_FOTO_NAO_ELIMINADA = (
+    "Não consegui eliminar a foto. Tenta outra vez daqui a pouco."
+)
+
+registo = logging.getLogger(__name__)
 
 
 def _escrever_em_pendentes(conteudo: bytes) -> str:
@@ -195,6 +207,39 @@ def listar_pendentes(sessao: Session) -> RespostaFilaDeModeracao:
     )
 
 
+def listar_aprovadas(sessao: Session) -> RespostaFotosAprovadas:
+    """As fotos na galeria, da mais recentemente aprovada para a mais antiga.
+
+    Sem `moderada_em` (linhas semeadas sem data) vão para o fim; o desempate
+    é `id` decrescente. Colunas explícitas, nunca `ip_hash`.
+    """
+    linhas = sessao.execute(
+        select(
+            Foto.id,
+            Foto.ficheiro,
+            Foto.descricao,
+            Foto.enviada_por,
+            Foto.criada_em,
+            Foto.moderada_em,
+        )
+        .where(Foto.estado == EstadoFoto.APROVADA)
+        .order_by(Foto.moderada_em.is_(None), Foto.moderada_em.desc(), Foto.id.desc())
+    ).all()
+    return RespostaFotosAprovadas(
+        fotos=[
+            FotoAprovada(
+                id=linha.id,
+                ficheiro=linha.ficheiro,
+                descricao=linha.descricao,
+                enviada_por=linha.enviada_por,
+                criada_em=linha.criada_em,
+                moderada_em=linha.moderada_em,
+            )
+            for linha in linhas
+        ]
+    )
+
+
 def _foto_ou_404(sessao: Session, id_foto: int) -> Foto:
     foto = sessao.get(Foto, id_foto)
     if foto is None:
@@ -275,8 +320,8 @@ def obter_bytes_da_imagem(sessao: Session, id_foto: int) -> bytes:
     raise ErroDaApi(404, "foto_nao_encontrada", MENSAGEM_FOTO_NAO_ENCONTRADA)
 
 
-def _rowcount_do_update(sessao: Session, instrucao: Update) -> int:
-    """Executa um `UPDATE` e devolve o `rowcount`.
+def _rowcount_do_update(sessao: Session, instrucao: Update | Delete) -> int:
+    """Executa um `UPDATE` ou `DELETE` e devolve o `rowcount`.
 
     `Session.execute()` tipa-se para `Result[...]`, que não tem
     `rowcount` — só `CursorResult` tem. O SQLAlchemy devolve sempre um
@@ -380,3 +425,50 @@ def rejeitar(sessao: Session, id_foto: int) -> Foto:
     (definicoes.media_dir / foto.ficheiro).unlink(missing_ok=True)
     sessao.refresh(foto)
     return foto
+
+
+def eliminar_aprovada(sessao: Session, id_foto: int) -> None:
+    """Elimina uma foto aprovada: a linha e o ficheiro de `MEDIA_DIR` (ADR 0022).
+
+    Ordem: `DELETE` condicional, `unlink` com a transação aberta, `commit`.
+    `_caminho_seguro` não decide nada aqui — devolve `None` para coisas
+    diferentes (regra 10).
+    """
+    foto = _foto_ou_404(sessao, id_foto)
+    if foto.estado != EstadoFoto.APROVADA:
+        raise ErroDaApi(409, "foto_nao_aprovada", MENSAGEM_FOTO_NAO_APROVADA)
+    nome = foto.ficheiro
+
+    linhas = _rowcount_do_update(
+        sessao,
+        delete(Foto).where(Foto.id == id_foto, Foto.estado == EstadoFoto.APROVADA),
+    )
+    if linhas == 0:
+        # Perdeu a corrida: alguém eliminou (ou mudou) a foto entretanto.
+        sessao.rollback()
+        sessao.expire_all()
+        existente = sessao.get(Foto, id_foto)
+        if existente is None:
+            raise ErroDaApi(404, "foto_nao_encontrada", MENSAGEM_FOTO_NAO_ENCONTRADA)
+        raise ErroDaApi(409, "foto_nao_aprovada", MENSAGEM_FOTO_NAO_APROVADA)
+
+    if not PADRAO_NOME_DE_FICHEIRO.match(nome):
+        sessao.rollback()
+        registo.error("foto %s com nome de ficheiro fora do padrão", id_foto)
+        raise ErroDaApi(500, "foto_nao_eliminada", MENSAGEM_FOTO_NAO_ELIMINADA)
+    try:
+        (obter_definicoes().media_dir / nome).unlink()
+    except FileNotFoundError:
+        pass  # Já não estava lá: a linha vai na mesma.
+    except OSError as erro:
+        sessao.rollback()
+        registo.error("não consegui apagar o ficheiro da foto %s: %s", id_foto, erro)
+        raise ErroDaApi(
+            500, "foto_nao_eliminada", MENSAGEM_FOTO_NAO_ELIMINADA
+        ) from erro
+
+    try:
+        sessao.commit()
+    except Exception:
+        sessao.rollback()
+        raise

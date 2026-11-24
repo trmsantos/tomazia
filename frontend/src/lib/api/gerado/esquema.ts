@@ -470,6 +470,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gestao/fotos/aprovadas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Fotos Aprovadas
+         * @description As fotos na galeria, a mais recentemente aprovada primeiro.
+         */
+        get: operations["listar_fotos_aprovadas_gestao_fotos_aprovadas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gestao/fotos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar Foto Aprovada
+         * @description Elimina uma foto aprovada, ficheiro incluído. Só aprovadas (ADR 0022).
+         */
+        delete: operations["eliminar_foto_aprovada_gestao_fotos__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gestao/fotos/{id}/aprovar": {
         parameters: {
             query?: never;
@@ -795,6 +835,27 @@ export interface components {
             inicio: string;
             /** Titulo */
             titulo: string;
+        };
+        /**
+         * FotoAprovada
+         * @description Uma foto na galeria (`GET /gestao/fotos/aprovadas`). Nunca leva `ip_hash`.
+         */
+        FotoAprovada: {
+            /**
+             * Criada Em
+             * Format: date-time
+             */
+            criada_em: string;
+            /** Descricao */
+            descricao: string | null;
+            /** Enviada Por */
+            enviada_por: string | null;
+            /** Ficheiro */
+            ficheiro: string;
+            /** Id */
+            id: number;
+            /** Moderada Em */
+            moderada_em: string | null;
         };
         /**
          * FotoPendente
@@ -1126,6 +1187,14 @@ export interface components {
         RespostaFilaDeModeracao: {
             /** Fotos */
             fotos: components["schemas"]["FotoPendente"][];
+        };
+        /**
+         * RespostaFotosAprovadas
+         * @description Corpo de `GET /gestao/fotos/aprovadas`.
+         */
+        RespostaFotosAprovadas: {
+            /** Fotos */
+            fotos: components["schemas"]["FotoAprovada"][];
         };
         /**
          * RespostaGaleria
@@ -2355,6 +2424,113 @@ export interface operations {
             };
             /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    listar_fotos_aprovadas_gestao_fotos_aprovadas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaFotosAprovadas"];
+                };
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos` e `campo` diz qual o campo do corpo, quando se sabe. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+        };
+    };
+    eliminar_foto_aprovada_gestao_fotos__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: {
+                "__Host-sessao_tomazia"?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sem sessão válida. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto não existe: `foto_nao_encontrada`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description A foto ainda não está na galeria: `foto_nao_aprovada`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Corpo ou parâmetros inválidos: `erro` é `dados_invalidos`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RespostaDeErro"];
+                };
+            };
+            /** @description Não foi possível apagar o ficheiro: `foto_nao_eliminada`. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

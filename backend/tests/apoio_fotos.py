@@ -424,3 +424,60 @@ def exigir_nada_escrito(sessao: Session) -> None:
 
     quantas = contar_fotos(sessao)
     assert quantas == 0, f"a tabela `fotos` tem {quantas} linha(s) que não devia"
+
+
+def nome_de_ficheiro_no_padrao(id_foto: int) -> str:
+    """Um nome que bate com `PADRAO_NOME_DE_FICHEIRO`: 32 hex minúsculos + `.webp`."""
+    return f"{id_foto:032x}.webp"
+
+
+def semear_foto(
+    sessao: Session,
+    *,
+    id_foto: int,
+    estado: str,
+    ficheiro: str | None = None,
+    com_ficheiro: bool = True,
+    criada_em: datetime | None = None,
+    moderada_em: datetime | None = None,
+    descricao: str | None = None,
+    enviada_por: str | None = None,
+) -> str:
+    """Semeia uma linha de `fotos` (F4-04b) e, se `com_ficheiro`, os bytes falsos.
+
+    `aprovada` escreve em `MEDIA_DIR`, `pendente` em `pendentes/`, `rejeitada`
+    em lado nenhum (a rejeição apaga os bytes). Devolve o nome do ficheiro.
+    O `ip_hash` leva sempre um valor reconhecível, para os testes provarem
+    que nunca sai.
+    """
+    from datetime import UTC
+    from datetime import datetime as datahora
+
+    from app.config import obter_definicoes
+    from app.models.fotos import EstadoFoto, Foto
+
+    nome = ficheiro if ficheiro is not None else nome_de_ficheiro_no_padrao(id_foto)
+    base = datahora(2026, 6, 20, 10, 0, tzinfo=UTC)
+    sessao.add(
+        Foto(
+            id=id_foto,
+            ficheiro=nome,
+            estado=EstadoFoto(estado),
+            descricao=descricao,
+            enviada_por=enviada_por,
+            ip_hash=f"hash-falso-de-ip-{id_foto:016d}",
+            criada_em=criada_em or base,
+            moderada_em=moderada_em,
+        )
+    )
+    sessao.commit()
+
+    definicoes = obter_definicoes()
+    pasta = {
+        "aprovada": definicoes.media_dir,
+        "pendente": definicoes.pendentes_dir,
+    }.get(estado)
+    if com_ficheiro and pasta is not None:
+        pasta.mkdir(parents=True, exist_ok=True)
+        (pasta / nome).write_bytes(b"bytes-falsos-de-uma-foto")
+    return nome
