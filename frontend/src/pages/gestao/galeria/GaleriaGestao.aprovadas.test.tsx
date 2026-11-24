@@ -47,6 +47,9 @@ import {
   avancar,
   botaoAprovar,
   botaoDaSeccao,
+  abrirFolhaDeEliminar,
+  confirmarEliminar,
+  eliminarFalso,
   botaoEnviarDaFolha,
   botaoEnviarDaPagina,
   botaoRejeitar,
@@ -600,6 +603,43 @@ describe("uma foto sem `moderada_em` (decisão do Tomás: `null` não é corpo i
 
     const f = screen.getByRole("dialog", { name: A.tituloDaFolha });
     expect(within(f).getByText("Aprovada")).toBeInTheDocument();
+  });
+});
+
+describe("texto só com espaços (a lista e a folha usam a mesma regra)", () => {
+  it("legenda e nome só com espaços não aparecem, nem no item nem na folha", async () => {
+    prepararApi(filaDeTeste(3), [
+      fotoAprovadaDeTeste({ id: 7, descricao: "   ", enviada_por: "  " }),
+    ]);
+    await abrirGaleria();
+    expect(itensDasAprovadas()[0]?.textContent).not.toMatch(/Enviada por/);
+    expect(itensDasAprovadas()[0]?.querySelectorAll("p")).toHaveLength(1);
+
+    await tocar(botoesEliminar()[0] as HTMLElement);
+
+    const f = screen.getByRole("dialog", { name: A.tituloDaFolha });
+    expect(f.textContent).not.toMatch(/Enviada por/);
+    expect(f.querySelectorAll("p"), "só a data e o aviso").toHaveLength(2);
+  });
+});
+
+describe("o sinal de reler com um pedido a meio adia-se, sem se perder", () => {
+  it("aprovar na fila com um DELETE a meio: só relê quando o DELETE acaba (e relê)", async () => {
+    await abrirGaleria();
+    await prontaParaModerar();
+    await abrirFolhaDeEliminar(202);
+    const resposta = pendente<undefined>();
+    eliminarFalso.mockReturnValueOnce(resposta.promessa);
+    await tocar(confirmarEliminar());
+
+    await tocar(botaoAprovar());
+    expect(aprovarFalso).toHaveBeenCalledTimes(1);
+    expect(aprovadasFalso, "o DELETE ainda corre: nada de ler").toHaveBeenCalledTimes(1);
+
+    resposta.resolver(undefined);
+    await assentar();
+
+    expect(aprovadasFalso, "a releitura adiada fez-se").toHaveBeenCalledTimes(2);
   });
 });
 

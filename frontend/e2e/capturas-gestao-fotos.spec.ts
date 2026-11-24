@@ -157,8 +157,10 @@ test.describe("telemóvel, 390 × 844", () => {
 
   test("a carregar", async ({ page }) => {
     await abrir(page, { esperarFila: false, atrasoMs: 20_000 });
-    await expect(page.getByRole("heading", { level: 2 })).toHaveText(T.fotosAEspera);
-    await expect(page.locator('[aria-busy="true"]')).toBeVisible();
+    // Só a fila: a secção «Fotos no site» (F4-04b) também tem o seu <h2> e o seu esqueleto.
+    const fila = page.getByRole("region", { name: T.fotosAEspera, exact: true });
+    await expect(fila.getByRole("heading", { level: 2 })).toHaveText(T.fotosAEspera);
+    await expect(fila.locator('[aria-busy="true"]')).toBeVisible();
     await tirar(page, "a-carregar", "390");
   });
 

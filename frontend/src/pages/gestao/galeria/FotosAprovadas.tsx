@@ -14,7 +14,7 @@ import { armarPrazo } from "../prazo";
 import { useSessaoDaGestao } from "../SessaoDaGestao";
 import { FolhaEliminarFoto } from "./FolhaEliminarFoto";
 import { quandoFoiEnviada } from "./quando-foi-enviada";
-import { TEXTOS_APROVADAS as T, nomeDoBotaoEliminar, quandoFoiAprovada } from "./textos";
+import { TEXTOS_APROVADAS as T, nomeDoBotaoEliminar, quandoFoiAprovada, temTexto } from "./textos";
 
 /**
  * A secção «Fotos no site» do destino «Galeria» (F4-04b, `docs/ecras/F4-04b.md`): as fotos
@@ -76,10 +76,6 @@ function ordenar(fotos: readonly FotoAprovada[]): FotoAprovada[] {
   });
 }
 
-function temTexto(texto: string | null): texto is string {
-  return texto !== null && texto.trim() !== "";
-}
-
 export function FotosAprovadas({
   sinalDeReleitura,
   aoAviso,
@@ -125,6 +121,8 @@ export function FotosAprovadas({
   const verificando = useRef(false);
   const aTentarAgora = useRef(false);
   const sinalAnterior = useRef(sinalDeReleitura);
+  /** Chegou um sinal de reler com um `DELETE` ou uma verificação a meio: lê-se quando acabarem. */
+  const releituraAdiada = useRef(false);
 
   useEffect(() => {
     aoPerderSessaoAgora.current = aoPerderSessao;
@@ -229,9 +227,22 @@ export function FotosAprovadas({
   useEffect(() => {
     if (sinalAnterior.current === sinalDeReleitura) return;
     sinalAnterior.current = sinalDeReleitura;
+    // Como o `visibilitychange`: com um pedido a meio não se mexe na lista; adia-se, sem a perder.
+    if (pedindo.current || verificando.current) {
+      releituraAdiada.current = true;
+      return;
+    }
     reler();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sinalDeReleitura]);
+
+  // O `DELETE` ou a verificação acabaram: faz-se a releitura que ficou à espera.
+  useEffect(() => {
+    if (!releituraAdiada.current || aEliminar || verificacao?.fase === "a-verificar") return;
+    releituraAdiada.current = false;
+    reler();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aEliminar, verificacao]);
 
   function tentarOutraVez(): void {
     if (aTentarAgora.current) return;

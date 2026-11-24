@@ -392,3 +392,54 @@ class TestRegra10:
         assert resposta.status_code == 409, resposta.text
         assert chamadas == []
         assert _estado_na_bd(motor, ID) == "pendente"
+
+
+class TestCorridaNoDelete:
+    """O ramo `rowcount == 0`: a foto muda entre o pré-exame e o `DELETE`."""
+
+    @pytest.mark.parametrize(
+        ("acao", "esperado", "estado_final"),
+        [
+            ("apagar", 404, None),
+            ("passar_a_pendente", 409, "pendente"),
+        ],
+    )
+    def test_corrida_entre_o_preexame_e_o_delete(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        sessao: Session,
+        motor: Engine,
+        acao: str,
+        esperado: int,
+        estado_final: str | None,
+    ) -> None:
+        from app.erros import ErroDaApi
+        from app.services import fotos as servico
+
+        nome = semear_foto(sessao, id_foto=ID, estado="aprovada")
+        chamadas = _falhar_o_unlink_de(
+            monkeypatch, nome, lambda: PermissionError("não devia chegar aqui")
+        )
+        original = servico._foto_ou_404
+
+        def foto_e_depois_corrida(sessao_: Session, id_foto: int) -> Any:
+            foto = original(sessao_, id_foto)
+            with motor.begin() as ligacao:
+                if acao == "apagar":
+                    ligacao.execute(text("DELETE FROM fotos WHERE id = :i"), {"i": ID})
+                else:
+                    ligacao.execute(
+                        text("UPDATE fotos SET estado = 'pendente' WHERE id = :i"),
+                        {"i": ID},
+                    )
+            return foto
+
+        monkeypatch.setattr(servico, "_foto_ou_404", foto_e_depois_corrida)
+
+        with pytest.raises(ErroDaApi) as excinfo:
+            servico.eliminar_aprovada(sessao, ID)
+
+        assert excinfo.value.estado == esperado
+        assert chamadas == [], "sem linha apanhada, o ficheiro não se toca"
+        assert _estado_na_bd(motor, ID) == estado_final
+        assert _em_media(nome).exists()

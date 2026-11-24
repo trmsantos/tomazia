@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Botao } from "../../../components/ui/Botao";
 import { Folha } from "../../../components/ui/Folha";
 import { enderecoDaMiniatura, type FotoAprovada } from "../../../lib/api/gestao-fotos";
-import { TEXTOS_APROVADAS as T, quandoFoiAprovada } from "./textos";
+import { TEXTOS_APROVADAS as T, quandoFoiAprovada, temTexto } from "./textos";
 
 /**
  * A folha «Tem a certeza?» de eliminar uma foto aprovada (F4-04b, spec 7). Eliminar não tem volta
@@ -78,7 +78,7 @@ export function FolhaEliminarFoto({
             <ImagemDaFolha ficheiro={foto.ficheiro} />
             <div className="flex flex-col gap-1">
               <p className="text-nota text-texto-suave">{linhaDaData}</p>
-              {foto.enviada_por !== null && (
+              {temTexto(foto.enviada_por) && (
                 <p className="break-words text-nota text-texto-suave">
                   {T.enviadaPor(foto.enviada_por)}
                 </p>
@@ -86,7 +86,7 @@ export function FolhaEliminarFoto({
             </div>
           </div>
 
-          {foto.descricao !== null && (
+          {temTexto(foto.descricao) && (
             <p className="break-words text-corpo text-texto">{foto.descricao}</p>
           )}
 

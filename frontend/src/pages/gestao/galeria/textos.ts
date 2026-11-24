@@ -178,3 +178,8 @@ export function nomeDoBotaoEliminar(foto: FotoAprovada, agora: Date): string {
     ? TEXTOS_APROVADAS.nomeDoBotaoSemData(quandoFoiEnviada(foto.criada_em, agora))
     : TEXTOS_APROVADAS.nomeDoBotao(quando);
 }
+
+/** Só há texto se não for `null` nem só espaços: a lista e a folha usam a mesma regra. */
+export function temTexto(texto: string | null): texto is string {
+  return texto !== null && texto.trim() !== "";
+}

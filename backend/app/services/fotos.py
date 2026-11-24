@@ -27,6 +27,13 @@ continua a não se apagar, mas já não é por sustentar o limite de envios
 por IP — isso passou para `tentativas_de_envio` (ADR 0018) — é só por não
 haver razão nenhuma para a apagar. Se o `UPDATE` não apanhar a linha, não
 se toca em ficheiro nenhum.
+
+**Ao eliminar uma aprovada** (ADR 0022): o `DELETE` condicional da linha
+primeiro, com a transação aberta; depois o `unlink` em `MEDIA_DIR`; só então
+o `commit`. Se o `unlink` falhar (a não ser por já não existir), faz-se
+`rollback` e a linha fica. Se o `commit` falhar, o ficheiro já não existe e
+a linha continua: repetir o pedido resolve. Por isso "a linha de `fotos`
+nunca se apaga" só vale para as rejeitadas.
 """
 
 from __future__ import annotations
@@ -320,7 +327,7 @@ def obter_bytes_da_imagem(sessao: Session, id_foto: int) -> bytes:
     raise ErroDaApi(404, "foto_nao_encontrada", MENSAGEM_FOTO_NAO_ENCONTRADA)
 
 
-def _rowcount_do_update(sessao: Session, instrucao: Update | Delete) -> int:
+def _rowcount_de(sessao: Session, instrucao: Update | Delete) -> int:
     """Executa um `UPDATE` ou `DELETE` e devolve o `rowcount`.
 
     `Session.execute()` tipa-se para `Result[...]`, que não tem
@@ -372,7 +379,7 @@ def aprovar(sessao: Session, id_foto: int) -> Foto:
             os.replace(destino, origem)
 
     try:
-        linhas = _rowcount_do_update(
+        linhas = _rowcount_de(
             sessao,
             update(Foto)
             .where(Foto.id == id_foto, Foto.estado == EstadoFoto.PENDENTE)
@@ -409,7 +416,7 @@ def rejeitar(sessao: Session, id_foto: int) -> Foto:
     if foto.estado != EstadoFoto.PENDENTE:
         raise ErroDaApi(409, "foto_ja_moderada", MENSAGEM_FOTO_JA_MODERADA)
 
-    linhas = _rowcount_do_update(
+    linhas = _rowcount_de(
         sessao,
         update(Foto)
         .where(Foto.id == id_foto, Foto.estado == EstadoFoto.PENDENTE)
@@ -439,7 +446,7 @@ def eliminar_aprovada(sessao: Session, id_foto: int) -> None:
         raise ErroDaApi(409, "foto_nao_aprovada", MENSAGEM_FOTO_NAO_APROVADA)
     nome = foto.ficheiro
 
-    linhas = _rowcount_do_update(
+    linhas = _rowcount_de(
         sessao,
         delete(Foto).where(Foto.id == id_foto, Foto.estado == EstadoFoto.APROVADA),
     )
