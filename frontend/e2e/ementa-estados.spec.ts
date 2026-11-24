@@ -10,6 +10,7 @@ import {
   cartoes,
   chips,
   fingirAEmenta,
+  type Resposta,
 } from "./apoio/ementa";
 
 /**
@@ -96,15 +97,18 @@ test.describe("vazia", () => {
 
 test.describe("erro", () => {
   test("sem resposta e com resposta dizem coisas diferentes", async ({ page }) => {
-    await fingirAEmenta(page, () => ({ tipo: "falha" }));
+    // Muda-se a resposta e não as rotas: um `unrouteAll` levava também os
+    // mocks dos eventos e da galeria do `abrirAEmenta`, e as duas secções
+    // desenhavam-se em erro com a mesma frase que aqui se procura.
+    let resposta: Resposta = { tipo: "falha" };
+    await fingirAEmenta(page, () => resposta);
     await abrirAEmenta(page);
 
     await expect(page.getByText(TEXTOS_DA_EMENTA.erroTitulo)).toBeVisible();
     await expect(page.getByText(TEXTOS_DA_EMENTA.erroSemResposta)).toBeVisible();
     await expect(page.getByText(TEXTOS_DA_EMENTA.erroComResposta)).toHaveCount(0);
 
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    await fingirAEmenta(page, () => ({ tipo: "estado", estado: 500 }));
+    resposta = { tipo: "estado", estado: 500 };
     await page.reload();
 
     await expect(page.getByText(TEXTOS_DA_EMENTA.erroComResposta)).toBeVisible();
@@ -184,12 +188,12 @@ test.describe("erro", () => {
 
 test.describe("os três distinguem-se sem ler as palavras", () => {
   test("a cor computada do título do erro é diferente da do vazio", async ({ page }) => {
-    await fingirAEmenta(page, () => ({ tipo: "ementa", corpo: EMENTA_VAZIA }));
+    let resposta: Resposta = { tipo: "ementa", corpo: EMENTA_VAZIA };
+    await fingirAEmenta(page, () => resposta);
     await abrirAEmenta(page);
     const doVazio = await corDoTitulo(page, TEXTOS_DA_EMENTA.vaziaTitulo);
 
-    await page.unrouteAll({ behavior: "ignoreErrors" });
-    await fingirAEmenta(page, () => ({ tipo: "falha" }));
+    resposta = { tipo: "falha" };
     await page.reload();
     const doErro = await corDoTitulo(page, TEXTOS_DA_EMENTA.erroTitulo);
 
