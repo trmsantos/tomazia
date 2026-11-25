@@ -121,8 +121,6 @@ export function FotosAprovadas({
   const verificando = useRef(false);
   const aTentarAgora = useRef(false);
   const sinalAnterior = useRef(sinalDeReleitura);
-  /** Chegou um sinal de reler com um `DELETE` ou uma verificação a meio: lê-se quando acabarem. */
-  const releituraAdiada = useRef(false);
 
   useEffect(() => {
     aoPerderSessaoAgora.current = aoPerderSessao;
@@ -227,22 +225,9 @@ export function FotosAprovadas({
   useEffect(() => {
     if (sinalAnterior.current === sinalDeReleitura) return;
     sinalAnterior.current = sinalDeReleitura;
-    // Como o `visibilitychange`: com um pedido a meio não se mexe na lista; adia-se, sem a perder.
-    if (pedindo.current || verificando.current) {
-      releituraAdiada.current = true;
-      return;
-    }
     reler();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sinalDeReleitura]);
-
-  // O `DELETE` ou a verificação acabaram: faz-se a releitura que ficou à espera.
-  useEffect(() => {
-    if (!releituraAdiada.current || aEliminar || verificacao?.fase === "a-verificar") return;
-    releituraAdiada.current = false;
-    reler();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aEliminar, verificacao]);
 
   function tentarOutraVez(): void {
     if (aTentarAgora.current) return;
