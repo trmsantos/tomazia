@@ -47,6 +47,7 @@ import {
   FICHEIROS_DA_F4_02,
   FICHEIROS_DA_F4_03,
   FICHEIROS_DA_F4_04,
+  FICHEIROS_DA_F4_05B,
   FICHEIROS_DA_F4_05A,
 } from "./testes/ecras";
 import {
@@ -323,6 +324,7 @@ describe("o público não importa src/pages/gestao", () => {
       ...FICHEIROS_DA_F4_05A,
       ...FICHEIROS_DA_F4_03,
       ...FICHEIROS_DA_F4_04,
+      ...FICHEIROS_DA_F4_05B,
     ].filter((relativo) => !existsSync(join(RAIZ_FRONTEND, relativo)));
 
     expect(

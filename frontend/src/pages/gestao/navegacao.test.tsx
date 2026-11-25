@@ -203,12 +203,20 @@ describe("navegar com estado (F4-02, D4: o destino e o aviso viajam no history.s
  * «os cinco da barra».
  */
 describe("ROTAS_DA_GESTAO e TITULOS_DAS_SUBROTAS (F4-05a)", () => {
-  it("são os cinco destinos mais /gestao/mais/definicoes, e só isso", () => {
+  // F4-05b — ATUALIZADO DE PROPÓSITO: «os cinco destinos mais /gestao/mais/definicoes, e só isso»
+  // deixou de ser verdade quando a linha «Clientes» entrou em «Mais» (`/gestao/mais/clientes`,
+  // spec F4-05b secção 3). Continua a ser «os cinco e as subrotas conhecidas, e só isso».
+  it("são os cinco destinos mais /gestao/mais/definicoes e /gestao/mais/clientes, e só isso", () => {
     expect(Array.from(ROTAS_DA_GESTAO).sort()).toEqual(
-      [...DESTINOS_ESPERADOS.map((d) => d.caminho), "/gestao/mais/definicoes"].sort(),
+      [
+        ...DESTINOS_ESPERADOS.map((d) => d.caminho),
+        "/gestao/mais/definicoes",
+        "/gestao/mais/clientes",
+      ].sort(),
     );
     expect(Array.from(ROTAS_DA_GESTAO)).not.toContain("/gestao/entrar");
     expect(Array.from(ROTAS_DA_GESTAO)).not.toContain("/gestao/mais/outra");
+    expect(Array.from(ROTAS_DA_GESTAO)).not.toContain("/gestao/mais/x");
   });
 
   it("ROTAS_DOS_DESTINOS continua a ser só os cinco da barra", () => {
@@ -218,6 +226,14 @@ describe("ROTAS_DA_GESTAO e TITULOS_DAS_SUBROTAS (F4-05a)", () => {
 
   it("a subrota tem o título «Definições»", () => {
     expect(TITULOS_DAS_SUBROTAS["/gestao/mais/definicoes"]).toBe("Definições");
+  });
+
+  it("F4-05b: a subrota /gestao/mais/clientes tem o título «Clientes» (nunca nome, email ou telemóvel)", () => {
+    expect(TITULOS_DAS_SUBROTAS["/gestao/mais/clientes"]).toBe("Clientes");
+    expect(Object.keys(TITULOS_DAS_SUBROTAS).sort()).toEqual([
+      "/gestao/mais/clientes",
+      "/gestao/mais/definicoes",
+    ]);
   });
 });
 

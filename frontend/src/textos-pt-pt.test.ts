@@ -49,6 +49,7 @@ import {
   FICHEIROS_DA_F4_03,
   FICHEIROS_DA_F4_04,
   FICHEIROS_DA_F4_05A,
+  FICHEIROS_DA_F4_05B,
 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
@@ -100,6 +101,8 @@ const SIGLAS_PERMITIDAS = new Set([
   // F4-02: «Preço, em euros, com IVA» (a etiqueta da folha) e a mensagem do cliente
   // sobre um corpo que não era JSON, agora que `src/lib/api/` também se varre.
   "IVA",
+  // F4-05b: «Exportar CSV» (a spec obriga).
+  "CSV",
   "JSON",
 ]);
 
@@ -177,6 +180,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F4_05A,
   ...FICHEIROS_DA_F4_03,
   ...FICHEIROS_DA_F4_04,
+  ...FICHEIROS_DA_F4_05B,
 ];
 
 describe("texto visível em português de Portugal", () => {
