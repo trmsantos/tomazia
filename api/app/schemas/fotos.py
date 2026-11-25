@@ -48,6 +48,24 @@ class RespostaFilaDeModeracao(BaseModel):
     fotos: list[FotoPendente]
 
 
+class FotoAprovada(BaseModel):
+    """Uma foto na galeria (`GET /gestao/fotos/aprovadas`). Nunca leva `ip_hash`."""
+
+    id: int
+    #: Nome de ficheiro, nunca um caminho (`CHECK` da F2-01).
+    ficheiro: str
+    descricao: str | None
+    enviada_por: str | None
+    criada_em: datetime
+    moderada_em: datetime | None
+
+
+class RespostaFotosAprovadas(BaseModel):
+    """Corpo de `GET /gestao/fotos/aprovadas`."""
+
+    fotos: list[FotoAprovada]
+
+
 class RespostaModeracao(BaseModel):
     """Corpo de sucesso de aprovar ou rejeitar uma foto."""
 
