@@ -5,6 +5,8 @@ import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { resolverUrlPublica } from "./url-publica";
+
 /**
  * A marca que diz ao `tailwind.config.ts` que o CSS a ser gerado é o do
  * pacote público — e que, portanto, a página de demonstração fica de fora do
@@ -146,41 +148,8 @@ function servirMediaEmDesenvolvimento(): Plugin {
   };
 }
 
-/**
- * O endereço público do site, para o `og:image` absoluto (F3-08, secção 5).
- *
- * O `index.html` traz `%URL_PUBLICA%` e **não** o domínio escrito: o domínio
- * muda no corte (F5-02) e vive só na variável do CI, `VITE_URL_PUBLICA`.
- *
- * **Em produção, variável em falta ou vazia faz o build falhar**, com o nome
- * dela na mensagem. Regra 10: "sem domínio" nunca pode dar o mesmo que um
- * `og:image` relativo em silêncio. Em desenvolvimento (`vite` a servir) usa
- * `http://localhost:5173`; o `og:image` não se testa ao vivo.
- *
- * Lê-se do ambiente do processo e **não** de `.env*` (não os há em
- * `frontend/`, e o teste verifica-o). Uma barra final tira-se, para que o
- * endereço nunca fique com `//`.
- */
-const VARIAVEL_URL_PUBLICA = "VITE_URL_PUBLICA";
-const URL_EM_DESENVOLVIMENTO = "http://localhost:5173";
-
-function resolverUrlPublica(command: "build" | "serve", mode: string): string {
-  const valor = (process.env[VARIAVEL_URL_PUBLICA] ?? "").trim();
-  if (valor === "") {
-    if (command === "build" && mode === "production") {
-      throw new Error(
-        `${VARIAVEL_URL_PUBLICA} não está definida (ou está vazia): o og:image do index.html ` +
-          "precisa de um endereço absoluto. Define-a, por exemplo " +
-          `${VARIAVEL_URL_PUBLICA}=https://novo.bardatomazia.pt, e volta a construir.`,
-      );
-    }
-    return URL_EM_DESENVOLVIMENTO;
-  }
-  return valor.replace(/\/+$/, "");
-}
-
-function urlPublicaNoIndex(command: "build" | "serve", mode: string): Plugin {
-  const url = resolverUrlPublica(command, mode);
+function urlPublicaNoIndex(command: "build" | "serve"): Plugin {
+  const url = resolverUrlPublica(command);
   return {
     name: "tomazia-url-publica-no-index",
     transformIndexHtml: {
@@ -190,13 +159,13 @@ function urlPublicaNoIndex(command: "build" | "serve", mode: string): Plugin {
   };
 }
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command }) => {
   if (command === "build") {
     process.env[MARCA_DE_BUILD_PUBLICO] = "1";
   }
 
   return {
-    plugins: [react(), urlPublicaNoIndex(command, mode), servirMediaEmDesenvolvimento()],
+    plugins: [react(), urlPublicaNoIndex(command), servirMediaEmDesenvolvimento()],
     server: {
       proxy: {
         // F2-09: em desenvolvimento, `/api/…` vai para o uvicorn da porta

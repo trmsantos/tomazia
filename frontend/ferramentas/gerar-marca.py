@@ -13,11 +13,15 @@ Especificação: `docs/ecras/F3-08.md`, secções 1 e 3. A faixa transparente en
 o aro e o disco interior enche-se de creme (`creme-papel`), e o logótipo
 recorta-se em círculo de raio 105,5 (um pixel por dentro do aro).
 
+Com um argumento escreve nessa pasta (os testes usam-no, para nunca
+reescreverem `public/` enquanto outros testes o leem).
+
 Para trocar por um vetorial (secção 7), muda-se só `ORIGINAL` e `abrir()`.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -79,37 +83,40 @@ def sobre_bordo(logo: Image.Image, tamanho: tuple[int, int], diametro: int) -> I
     return fundo
 
 
-def main() -> None:
+def main(saida: Path) -> None:
     if not ORIGINAL.is_file():
         raise SystemExit(f"não encontrei o original: {ORIGINAL}")
 
     base = logotipo_base()
-    (PUBLIC / "marca").mkdir(parents=True, exist_ok=True)
+    (saida / "marca").mkdir(parents=True, exist_ok=True)
 
     for lado in (44, 88, 132):
         reduzir(base, lado).save(
-            PUBLIC / "marca" / f"logo-{lado}.webp", "WEBP", quality=82, method=6
+            saida / "marca" / f"logo-{lado}.webp", "WEBP", quality=82, method=6
         )
 
     icone48 = reduzir(base, 48)
     icone48.save(
-        PUBLIC / "favicon.ico",
+        saida / "favicon.ico",
         "ICO",
         sizes=[(16, 16), (32, 32), (48, 48)],
         append_images=[reduzir(base, 16), reduzir(base, 32)],
     )
-    reduzir(base, 32).save(PUBLIC / "favicon-32.png", "PNG", optimize=True)
+    reduzir(base, 32).save(saida / "favicon-32.png", "PNG", optimize=True)
 
     # RGB (tipo 2, sem alfa) mas com 64 cores: com todas as nuances do
     # anti-aliasing o PNG pesa ~29,7 KB, acima do teto de 25 KB da secção 3.
     # `quantize` seguido de `convert("RGB")` mantém o tipo de cor e poupa ~5 KB.
     apple = sobre_bordo(base, (180, 180), 144)
     apple = apple.quantize(64, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    apple.convert("RGB").save(PUBLIC / "apple-touch-icon.png", "PNG", optimize=True)
+    apple.convert("RGB").save(saida / "apple-touch-icon.png", "PNG", optimize=True)
     sobre_bordo(base, (1200, 630), 420).save(
-        PUBLIC / "og-image.jpg", "JPEG", quality=85, optimize=True, progressive=False
+        saida / "og-image.jpg", "JPEG", quality=85, optimize=True, progressive=False
     )
 
 
 if __name__ == "__main__":
-    main()
+    # Sem argumentos escreve em `frontend/public/`; com um, na pasta dada.
+    if len(sys.argv) > 2:
+        raise SystemExit("uso: gerar-marca.py [pasta-de-saida]")
+    main(Path(sys.argv[1]).resolve() if len(sys.argv) == 2 else PUBLIC)

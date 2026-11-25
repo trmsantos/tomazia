@@ -80,8 +80,8 @@ export function Cabecalho({ info }: { info: EstadoDoInfo }): ReactElement {
        * paragem de `Tab` do site. Não chumbava nenhum critério de AA e era
        * por isso que passava: "mostra anel" dava verde com o defeito lá
        * dentro. Os 8 px de cima alinham ainda o topo da ligação com o do botão
-       * "WiFi" (44 numa caixa de 60) e os 16 da esquerda com o "B" de "Bar da
-       * Tomazia", que é o `px-4` da coluna (5.3).
+       * "WiFi" (44 numa caixa de 60) e os 16 da esquerda com a aresta esquerda
+       * do logótipo, que é o `px-4` da coluna (5.3).
        *
        * O desvio de 8 px é **`translate-y-2` e não `top-2`**, e a diferença
        * importa: com `top-2`, o `-translate-y-full` sobe 44 px a partir de 8 e
@@ -89,11 +89,10 @@ export function Cabecalho({ info }: { info: EstadoDoInfo }): ReactElement {
        * por cima do cabeçalho, sem foco nenhum. A partir de `top-0` a conta
        * fecha: escondida vai de −44 a 0, com foco vai de 8 a 52.
        *
-       * O `px-6` leva-a de 182,98 a **198,98** px de largura, e é isso que
-       * tapa os **192,03** de tinta do `<h1>` — sobram 6,95. Com `px-4` faltavam
-       * 9,05 e a cauda do nome espreitava por trás dela. Os dois números são
-       * medidos na página desenhada, como os de baixo, e pela mesma razão: as
-       * caixas de linha não são a tinta.
+       * O `px-6` leva-a de 182,98 a **198,98** px de largura (medido na página
+       * desenhada), e é isso que tapa o logótipo de 44 px, que ocupa o x de 16
+       * a 60: a ligação vai de 16 a 214,98. Com `px-4` ficava mais curta e o
+       * aro do círculo podia espreitar por trás dela. Mantém-se o `px-6`.
        *
        * **`:focus` e não `:focus-visible`**, ao contrário do que a 5.3 escreve.
        * A razão que a 5.3 dá para o `:focus-visible` é "não aparece a quem
