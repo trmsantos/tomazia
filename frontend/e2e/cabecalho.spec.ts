@@ -874,15 +874,29 @@ test.describe("Q-03: o axe nas camadas novas", () => {
    *
    * Em jsdom isto já se prova (`App.test.tsx`); aqui prova-se no documento
    * que o browser montou, depois de o cabeçalho ter mudado de sítio.
+   *
+   * **Atualizado na F3-08, de propósito.** Esta asserção lia o `textContent`
+   * do `<h1>` e esperava "Bar da Tomazia". Desde a F3-08 o logótipo
+   * **substitui o texto** (`docs/ecras/F3-08.md`, secção 2): o `<h1>` não leva
+   * texto nem `aria-label`, e o nome é o `alt` do `<img>`. O `textContent` é
+   * agora "" e a asserção antiga seria falsa por desenho. O que se prova é o
+   * mesmo — um só `h1`, com o nome do bar — lido onde agora vive: o nome
+   * acessível (`getByRole`) e o `alt`.
    */
   test("um `h1` só, e é o nome do bar", async ({ page }) => {
     await abrirAPaginaPublica(page);
 
     const titulos = await page.evaluate(() =>
-      [...document.querySelectorAll("h1")].map((titulo) => (titulo.textContent ?? "").trim()),
+      [...document.querySelectorAll("h1")].map((titulo) => ({
+        texto: (titulo.textContent ?? "").trim(),
+        alts: [...titulo.querySelectorAll("img")].map((img) => img.getAttribute("alt")),
+      })),
     );
 
-    expect(titulos).toEqual(["Bar da Tomazia"]);
+    expect(titulos).toEqual([{ texto: "", alts: ["Bar da Tomazia"] }]);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Bar da Tomazia", exact: true }),
+    ).toHaveCount(1);
   });
 });
 
