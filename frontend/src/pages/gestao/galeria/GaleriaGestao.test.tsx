@@ -47,6 +47,8 @@ import {
   obterFalso,
   pendente,
   prepararApi,
+  PROIBIDOS_DA_F4_04,
+  seccaoDasAprovadas,
   ficarPendenteAteAbortar,
   sessaoFalsa,
   tocar,
@@ -60,6 +62,8 @@ vi.mock("../../../lib/api/gestao-fotos", async (importOriginal) => ({
   obterFilaDeModeracao: vi.fn(),
   aprovarFoto: vi.fn(),
   rejeitarFoto: vi.fn(),
+  obterAprovadas: vi.fn(),
+  eliminarFoto: vi.fn(),
 }));
 vi.mock("../../../lib/api/publico", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../lib/api/publico")>()),
@@ -269,13 +273,20 @@ describe("erro ao carregar (regra 10): nunca foto, nunca botão de moderar, nunc
 });
 
 describe("200 com fotos: a primeira, com a contagem", () => {
-  it("o <h2> diz «Fotos à espera (3)» e a região tem esse nome; uma só região (a F4-04b acrescenta a sua a seguir)", async () => {
+  // F4-04b: o teste dizia «uma só região» porque a F4-04 não tinha mais nenhuma. A F4-04b acrescenta
+  // a secção «Fotos no site» a seguir à fila (spec 2 e 11.1): agora são exatamente duas, a da fila
+  // primeiro. O resto do teste (o <h2> e o nome da região da fila) não mudou.
+  it("o <h2> diz «Fotos à espera (3)» e a região tem esse nome; duas regiões: a fila e, a seguir, «Fotos no site»", async () => {
     await abrirGaleria();
 
     expect(h2()).toHaveTextContent(TEXTOS.fotosAEsperaN(3));
     expect(h2()).toHaveAttribute("tabindex", "-1");
-    expect(screen.getByRole("region", { name: TEXTOS.fotosAEsperaN(3) })).toBeInTheDocument();
-    expect(screen.getAllByRole("region")).toHaveLength(1);
+    const fila = screen.getByRole("region", { name: TEXTOS.fotosAEsperaN(3) });
+    expect(fila).toBeInTheDocument();
+    const regioes = screen.getAllByRole("region");
+    expect(regioes).toHaveLength(2);
+    expect(regioes[0], "a fila vem primeiro").toBe(fila);
+    expect(regioes[1], "e a secção das aprovadas a seguir").toBe(seccaoDasAprovadas());
     expect(screen.queryByText(TEXTOS.vazioTitulo)).toBeNull();
   });
 
@@ -431,10 +442,17 @@ describe("o que se mostra de cada foto (spec 4.3) e o que nunca se mostra", () =
     expect(document.body.textContent).not.toMatch(/\b10[123]\b/);
   });
 
-  it("nada que não existe nesta tarefa: sem «Desfazer», sem aprovadas, sem eliminar", async () => {
+  // F4-04b: o teste proibia «aprovadas|eliminar|retirar» na página inteira porque a F4-04 não tinha
+  // lista das aprovadas nem «Eliminar». Agora existem, na secção «Fotos no site»; o que o teste
+  // protege (a FILA não ganha nada novo e o «Desfazer» continua a não existir) passa a ler-se
+  // na região da fila, e a página inteira só continua proibida de «desfazer» e «em lote».
+  it("nada que não existe: sem «Desfazer» nem «em lote» na página; a fila não ganha «Eliminar» (esse é da secção «Fotos no site»)", async () => {
     await abrirGaleria();
     expect(haBotao(/desfazer/i)).toBe(false);
-    expect(document.body.textContent).not.toMatch(/aprovadas|eliminar|retirar/i);
+    expect(document.body.textContent).not.toMatch(PROIBIDOS_DA_F4_04);
+    const fila = screen.getByRole("region", { name: TEXTOS.fotosAEsperaN(3) });
+    expect(fila.textContent).not.toMatch(/eliminar|aprovadas|retirar/i);
+    expect(within(fila).queryByRole("button", { name: /eliminar/i })).toBeNull();
   });
 
   it("o único aviso da página começa vazio (a região viva está no DOM desde o início)", async () => {

@@ -50,6 +50,8 @@ vi.mock("../../../lib/api/gestao-fotos", async (importOriginal) => ({
   obterFilaDeModeracao: vi.fn(),
   aprovarFoto: vi.fn(),
   rejeitarFoto: vi.fn(),
+  obterAprovadas: vi.fn(),
+  eliminarFoto: vi.fn(),
 }));
 vi.mock("../../../lib/api/publico", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../lib/api/publico")>()),

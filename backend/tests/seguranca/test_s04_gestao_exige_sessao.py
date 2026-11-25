@@ -97,6 +97,9 @@ METODOS_DE_GESTAO_POR_CAMINHO: dict[str, frozenset[str]] = {
     "/gestao/fotos/{id}/imagem": frozenset({"GET"}),
     "/gestao/fotos/{id}/aprovar": frozenset({"POST"}),
     "/gestao/fotos/{id}/rejeitar": frozenset({"POST"}),
+    # F4-04b: retirar uma foto aprovada (ADR 0022).
+    "/gestao/fotos/aprovadas": frozenset({"GET"}),
+    "/gestao/fotos/{id}": frozenset({"DELETE"}),
     # F2-05a: categorias, produtos e reordenação.
     "/gestao/categorias": frozenset({"GET", "POST"}),
     "/gestao/categorias/{id}": frozenset({"PATCH", "DELETE"}),

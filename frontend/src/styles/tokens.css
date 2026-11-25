@@ -276,6 +276,12 @@
   --manipulo: 24px;
   --manipulo-curso: 20px; /* 48 − 24 − 2 × 4 */
 
+  /* A miniatura de cada foto na lista «Fotos no site» da gestão (F4-04b, 2.1): 80 px a 390 e
+     96 px a 1024. Nem 80 nem 96 são passos da escala de espaçamento (a classe `w-20` não existe
+     nesta configuração e a miniatura ficava sem largura), por isso têm nome. */
+  --miniatura-aprovada: 5rem; /* 80 */
+  --miniatura-aprovada-grande: 6rem; /* 96 */
+
   /* Movimento */
   --duracao-curta: 120ms;
   --duracao-folha: 200ms;

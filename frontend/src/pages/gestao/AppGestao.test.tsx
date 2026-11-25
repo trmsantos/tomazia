@@ -72,12 +72,15 @@ vi.mock("../../lib/api/gestao-eventos", () => ({
   duplicarEvento: vi.fn(),
 }));
 
-// F4-04: o destino Galeria pede `GET /gestao/fotos` (a fila de moderação).
+// F4-04: o destino Galeria pede `GET /gestao/fotos` (a fila de moderação); a F4-04b junta-lhe
+// `GET /gestao/fotos/aprovadas` (sempre vazio aqui: estes testes são da guarda, não das fotos).
 vi.mock("../../lib/api/gestao-fotos", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/api/gestao-fotos")>()),
   obterFilaDeModeracao: vi.fn(),
   aprovarFoto: vi.fn(),
   rejeitarFoto: vi.fn(),
+  obterAprovadas: vi.fn(() => Promise.resolve({ fotos: [] })),
+  eliminarFoto: vi.fn(),
 }));
 
 const obterEventosFalso = vi.mocked(obterEventosGestao);

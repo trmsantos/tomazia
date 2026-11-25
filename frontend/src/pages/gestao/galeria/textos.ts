@@ -1,4 +1,4 @@
-import type { FotoPendente } from "../../../lib/api/gestao-fotos";
+import type { FotoAprovada, FotoPendente } from "../../../lib/api/gestao-fotos";
 import { quandoFoiEnviada } from "./quando-foi-enviada";
 
 /**
@@ -112,3 +112,74 @@ export const DESTINO_POR_CODIGO: Record<string, "foto" | "legenda" | "geral"> = 
   tamanho_do_pedido_em_falta: "geral",
   limite_de_envios_excedido: "geral",
 };
+
+/**
+ * Todo o texto visível da secção «Fotos no site» e da folha de eliminar (F4-04b, spec 12),
+ * validado pelo dominio-bar. A palavra é **Eliminar**, a foto fica **eliminada**.
+ * `quando` vem de `quandoFoiEnviada`.
+ */
+export const TEXTOS_APROVADAS = {
+  titulo: "Fotos no site",
+  tituloN: (n: number): string => `Fotos no site (${String(n)})`,
+
+  /** Sem `quando` (foto sem data de aprovação): só «Aprovada». */
+  aprovadaEm: (quando: string | null): string =>
+    quando === null ? "Aprovada" : `Aprovada ${quando}`,
+  enviadaPor: (nome: string): string => `Enviada por ${nome}`,
+  eliminar: "Eliminar",
+  aEliminar: "A eliminar…",
+  cancelar: "Cancelar",
+  /** O nome acessível: nunca a legenda nem o nome (texto de terceiros). */
+  nomeDoBotao: (quando: string): string => `Eliminar foto aprovada ${quando}`,
+  /** Sem data de aprovação, distingue-se pela data de envio (também nossa, nunca de terceiros). */
+  nomeDoBotaoSemData: (envio: string): string => `Eliminar foto aprovada enviada ${envio}`,
+  semImagem: "Sem imagem",
+
+  vazioTitulo: "Ainda não há fotos no site.",
+  vazioLinha: "As que aprovares aparecem aqui.",
+
+  carregarTitulo: "Não consegui carregar as fotos do site.",
+  carregarSemResposta: "Verifica a ligação e tenta outra vez.",
+  carregarServidor: "O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
+  tentarOutraVez: "Tentar outra vez",
+  aTentar: "A tentar…",
+  desatualizada: "Não consegui atualizar esta lista. Pode estar desatualizada.",
+
+  aMostrar: (x: number, n: number): string => `A mostrar ${String(x)} de ${String(n)}.`,
+  mostrarMais: "Mostrar mais fotos",
+
+  tituloDaFolha: "Tem a certeza?",
+  avisoDaFolha: "A foto deixa de aparecer no site e é eliminada. Não se pode desfazer.",
+  naoSeMostra: "Esta foto não se consegue mostrar.",
+  erroNaFolha:
+    "Não consegui eliminar. O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
+
+  avisoEliminada: "Foto eliminada.",
+  jaNaoExistia: "Essa foto já não existia.",
+  jaNaoEstaNoSite: "Essa foto já não está no site.",
+
+  // Sem resposta (spec 8.4): nunca se diz «eliminada» nem «não eliminada» como facto.
+  aVerificar: "Não consegui confirmar se a foto foi eliminada. A verificar…",
+  continuaSemResposta: "Não consegui eliminar. Verifica a ligação e tenta outra vez.",
+  semConfirmar:
+    "Não consegui confirmar se a foto foi eliminada. Verifica a ligação e toca em Verificar outra vez.",
+  verificarOutraVez: "Verificar outra vez",
+} as const;
+
+/** Quando a foto foi aprovada, em Lisboa; `null` se não tem data de aprovação. */
+export function quandoFoiAprovada(foto: FotoAprovada, agora: Date): string | null {
+  return foto.moderada_em === null ? null : quandoFoiEnviada(foto.moderada_em, agora);
+}
+
+/** O nome acessível do «Eliminar» de um item: só datas nossas, nunca a legenda nem o nome. */
+export function nomeDoBotaoEliminar(foto: FotoAprovada, agora: Date): string {
+  const quando = quandoFoiAprovada(foto, agora);
+  return quando === null
+    ? TEXTOS_APROVADAS.nomeDoBotaoSemData(quandoFoiEnviada(foto.criada_em, agora))
+    : TEXTOS_APROVADAS.nomeDoBotao(quando);
+}
+
+/** Só há texto se não for `null` nem só espaços: a lista e a folha usam a mesma regra. */
+export function temTexto(texto: string | null): texto is string {
+  return texto !== null && texto.trim() !== "";
+}

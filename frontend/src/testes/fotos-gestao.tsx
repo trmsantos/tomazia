@@ -43,6 +43,16 @@
  *    `TEXTOS.tituloEnviar`, `TEXTOS.saidaTitulo`;
  *  - o único aviso da página é o `AvisoTemporario` («Feito.» / «Erro.» + a frase).
  *
+ * ## F4-04b (as fotos aprovadas, `docs/ecras/F4-04b.md`)
+ *
+ * Cada ficheiro tem de acrescentar ao `vi.mock` de `gestao-fotos` também
+ * `obterAprovadas: vi.fn(), eliminarFoto: vi.fn()`. `prepararApi(fila, listaAprovadas)` deixa as
+ * aprovadas a responder `{ fotos: aprovadas }` (por omissão **nenhuma**: os testes da fila não
+ * dependem da secção nova) e `eliminarFoto` a resolver (204). `h2()` e `imagensDaPagina()` falam
+ * **da fila**; para a secção «Fotos no site» há `h2DasAprovadas()`, `seccaoDasAprovadas()`,
+ * `miniaturas()`, `botoesEliminar()`, … e `TEXTOS_APROVADAS`, com o texto da tabela 12 da spec
+ * **por extenso** (como `TEXTOS_DA_GESTAO`: o dominio-bar validou esta tabela, não um nome de chave).
+ *
  * Só para testes; nada em produção o importa.
  */
 import { StrictMode } from "react";
@@ -57,7 +67,21 @@ import { INTERVALO_CONTRA_DUPLO_TOQUE_MS } from "../pages/gestao/galeria/estado-
 import { TEXTOS } from "../pages/gestao/galeria/textos";
 import { ContextoDaSessao } from "../pages/gestao/SessaoDaGestao";
 import { AGORA } from "./eventos";
-import { abrirEm, erroSemResposta, filaDeTeste, type FotoPendente } from "./gestao";
+import {
+  abrirEm,
+  erro404,
+  LEGENDA_DA_201,
+  QUANDO_DAS_APROVADAS,
+  aprovadasDeTeste,
+  fotoAprovadaDeTeste,
+  muitasAprovadas,
+  type FotoAprovada,
+  erroSemResposta,
+  filaDeTeste,
+  type FotoPendente,
+} from "./gestao";
+import { ErroDaApi } from "../lib/api/cliente";
+import { TEXTOS_APROVADAS } from "./fotos-gestao-textos";
 
 export { AGORA, INTERVALO_CONTRA_DUPLO_TOQUE_MS, TEXTOS };
 
@@ -67,6 +91,8 @@ export const rejeitarFalso = vi.mocked(api.rejeitarFoto);
 export const galeriaFalsa = vi.mocked(publico.obterGaleria);
 export const enviarFalso = vi.mocked(publico.enviarFoto);
 export const reduzirFalso = vi.mocked(imagens.reduzir);
+export const aprovadasFalso = vi.mocked(api.obterAprovadas);
+export const eliminarFalso = vi.mocked(api.eliminarFoto);
 
 export const scrollFalso = vi.fn();
 
@@ -84,7 +110,10 @@ export const REDUZIDA = {
  * O que a API de verdade devolveria: uma cópia nova a cada `GET /gestao/fotos`. A galeria pública
  * fingida está vazia (ninguém foi aprovado). O relógio fica preso em `AGORA`.
  */
-export function prepararApi(fila: readonly FotoPendente[] = filaDeTeste(3)): void {
+export function prepararApi(
+  fila: readonly FotoPendente[] = filaDeTeste(3),
+  listaAprovadas: readonly FotoAprovada[] = [],
+): void {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: AGORA });
   for (const falso of [
     obterFalso,
@@ -93,6 +122,8 @@ export function prepararApi(fila: readonly FotoPendente[] = filaDeTeste(3)): voi
     galeriaFalsa,
     enviarFalso,
     reduzirFalso,
+    aprovadasFalso,
+    eliminarFalso,
   ]) {
     falso.mockReset();
   }
@@ -103,6 +134,10 @@ export function prepararApi(fila: readonly FotoPendente[] = filaDeTeste(3)): voi
   aprovarFalso.mockImplementation((id) => Promise.resolve({ id, estado: "aprovada" }));
   rejeitarFalso.mockImplementation((id) => Promise.resolve({ id, estado: "rejeitada" }));
   galeriaFalsa.mockResolvedValue({ fotos: [] });
+  aprovadasFalso.mockImplementation(() =>
+    Promise.resolve({ fotos: structuredClone([...listaAprovadas]) }),
+  );
+  eliminarFalso.mockResolvedValue(undefined);
   reduzirFalso.mockResolvedValue({ ...REDUZIDA });
   enviarFalso.mockResolvedValue({ estado: "pendente" });
 }
@@ -207,11 +242,15 @@ export function contem(texto: string): RegExp {
 export function h1(): HTMLElement {
   return screen.getByRole("heading", { level: 1 });
 }
-/** O `<h2>` da fila (não o título de uma folha, que também é um `<h2>`). */
+/** O `<h2>` da fila (não o título de uma folha, nem o da secção «Fotos no site»). */
 export function h2(): HTMLElement {
   const todos = screen
     .getAllByRole("heading", { level: 2 })
-    .filter((titulo) => titulo.closest("dialog") === null);
+    .filter(
+      (titulo) =>
+        titulo.closest("dialog") === null &&
+        !(titulo.textContent ?? "").startsWith(TEXTOS_APROVADAS.titulo),
+    );
   if (todos.length !== 1) {
     throw new Error(`esperava um só <h2> fora das folhas e há ${String(todos.length)}`);
   }
@@ -264,9 +303,12 @@ export function haFolha(nome: string): boolean {
 // As imagens
 // ---------------------------------------------------------------------------
 
-/** Todos os `<img>` fora das folhas, pela ordem do DOM. */
+/** Todos os `<img>` **da fila**, fora das folhas e fora da secção «Fotos no site», pela ordem do DOM. */
 export function imagensDaPagina(): HTMLImageElement[] {
-  return Array.from(document.querySelectorAll("img")).filter((i) => i.closest("dialog") === null);
+  const aprovadas = seccaoDasAprovadas();
+  return Array.from(document.querySelectorAll("img")).filter(
+    (i) => i.closest("dialog") === null && (aprovadas === null || !aprovadas.contains(i)),
+  );
 }
 
 /** O `<img>` da foto atual: o visível (não `hidden`). */
@@ -437,7 +479,139 @@ export function corpoEnviado(n = -1): FormData {
   return corpo;
 }
 
-/** Tudo o que não existe nesta tarefa. */
-export const PROIBIDOS_DA_F4_04 = /desfazer|aprovadas|eliminar foto|retirar|em lote/i;
+/**
+ * O que continua a não existir depois da F4-04b: voltar atrás e mexer em várias de uma vez.
+ * (Na F4-04 isto também proibia `aprovadas|eliminar foto|retirar`; a F4-04b traz a lista das
+ * aprovadas e o «Eliminar», por isso essas três palavras deixaram de ser proibidas.)
+ */
+export const PROIBIDOS_DA_F4_04 = /desfazer|em lote/i;
+
+// ---------------------------------------------------------------------------
+// F4-04b — a secção «Fotos no site»
+// ---------------------------------------------------------------------------
+
+export type { FotoAprovada };
+export {
+  LEGENDA_DA_201,
+  QUANDO_DAS_APROVADAS,
+  aprovadasDeTeste,
+  fotoAprovadaDeTeste,
+  muitasAprovadas,
+};
+
+export { TEXTOS_APROVADAS };
+
+/** A secção «Fotos no site» (`<section aria-labelledby>`), ou `null` se não existe. */
+export function seccaoDasAprovadas(): HTMLElement | null {
+  for (const seccao of Array.from(document.querySelectorAll<HTMLElement>("section"))) {
+    const id = seccao.getAttribute("aria-labelledby");
+    const titulo = id === null ? null : document.getElementById(id);
+    if ((titulo?.textContent ?? "").startsWith(TEXTOS_APROVADAS.titulo)) return seccao;
+  }
+  return null;
+}
+/** Como `seccaoDasAprovadas`, mas lança se não existe (o erro diz o que faltou). */
+export function aprovadas(): HTMLElement {
+  const seccao = seccaoDasAprovadas();
+  if (seccao === null) throw new Error("não há nenhuma secção «Fotos no site» na página");
+  return seccao;
+}
+export function h2DasAprovadas(): HTMLElement {
+  const id = aprovadas().getAttribute("aria-labelledby");
+  const titulo = id === null ? null : document.getElementById(id);
+  if (titulo === null) throw new Error("a secção «Fotos no site» não tem título");
+  return titulo;
+}
+/** Os itens (`<li>`) da secção, pela ordem do DOM. */
+export function itensDasAprovadas(): HTMLElement[] {
+  return Array.from(aprovadas().querySelectorAll<HTMLElement>("li"));
+}
+/** Os ids das miniaturas, lidos de `/media/foto-<id>.webp`, pela ordem do DOM (as «Sem imagem» não contam). */
+export function idsDasAprovadas(): number[] {
+  return itensDasAprovadas().map((li) => {
+    const botao = li.querySelector("button");
+    const img = li.querySelector("img");
+    const origem = img?.getAttribute("src") ?? "";
+    const m = /foto-(\d+)\.webp$/.exec(origem);
+    if (m?.[1] !== undefined) return Number(m[1]);
+    // «Sem imagem»: o id vem do `data-` que ninguém exige; cai no texto do botão.
+    throw new Error(`um item sem miniatura (${botao?.textContent ?? "?"}) não diz o seu id`);
+  });
+}
+export function miniaturas(): HTMLImageElement[] {
+  return Array.from(aprovadas().querySelectorAll("img"));
+}
+/** Os botões «Eliminar» dos itens (nome acessível «Eliminar foto aprovada …»), pela ordem do DOM. */
+export function botoesEliminar(): HTMLElement[] {
+  return within(aprovadas()).queryAllByRole("button", { name: /^Eliminar foto aprovada / });
+}
+/** O «Eliminar» do item cuja miniatura é a foto `id` (falha alto se não há). */
+export function eliminarDe(id: number): HTMLElement {
+  const item = itensDasAprovadas().find(
+    (li) => li.querySelector("img")?.getAttribute("src") === `/media/foto-${String(id)}.webp`,
+  );
+  const botao = item?.querySelector("button");
+  if (botao == null) throw new Error(`não há «Eliminar» para a foto ${String(id)}`);
+  return botao;
+}
+/** O texto da secção, sem o que está dentro de folhas. */
+export function textoDasAprovadas(): string {
+  return aprovadas().textContent ?? "";
+}
+/** A linha de estado da secção (`<p role="status">`) com `texto`, ou `null`. */
+export function linhaDasAprovadas(texto: string): HTMLElement | null {
+  const seccao = seccaoDasAprovadas();
+  if (seccao === null) return null;
+  return (
+    Array.from(seccao.querySelectorAll<HTMLElement>('[role="status"]')).find((p) =>
+      (p.textContent ?? "").includes(texto),
+    ) ?? null
+  );
+}
+export function botaoDaSeccao(nome: string | RegExp): HTMLElement {
+  return within(aprovadas()).getByRole("button", { name: nome });
+}
+export function haBotaoDaSeccao(nome: string | RegExp): boolean {
+  return within(aprovadas()).queryByRole("button", { name: nome }) !== null;
+}
+
+/** A folha «Tem a certeza?» de eliminar (a que está aberta). */
+export function folhaDeEliminar(): HTMLElement {
+  return screen.getByRole("dialog", { name: TEXTOS_APROVADAS.tituloDaFolha });
+}
+export function haFolhaDeEliminar(): boolean {
+  return screen.queryByRole("dialog", { name: TEXTOS_APROVADAS.tituloDaFolha }) !== null;
+}
+export function confirmarEliminar(): HTMLElement {
+  return within(folhaDeEliminar()).getByRole("button", { name: /^(Eliminar|A eliminar…)$/ });
+}
+export function cancelarEliminar(): HTMLElement {
+  return within(folhaDeEliminar()).getByRole("button", { name: TEXTOS_APROVADAS.cancelar });
+}
+
+/** Abre a folha de eliminar da foto `id`. */
+export async function abrirFolhaDeEliminar(id: number): Promise<HTMLElement> {
+  await tocar(eliminarDe(id));
+  return folhaDeEliminar();
+}
+
+/** O erro de um `DELETE` com `estado` e `codigo` do backend (a `mensagem` nunca chega ao ecrã). */
+export function erroDoEliminar(estado: 404 | 409 | 500 | 403 | 422): ErroDaApi {
+  if (estado === 404) return erro404("foto_nao_encontrada");
+  const codigo = { 409: "foto_nao_aprovada", 500: "foto_nao_eliminada", 403: null, 422: null }[
+    estado
+  ];
+  return new ErroDaApi("MENSAGEM-DO-BACKEND (nunca aparece no ecrã)", { estado, codigo });
+}
+
+/** Um 401 de qualquer pedido (a sessão acabou). */
+export { erro401 } from "./gestao";
+
+/** Faz a aba voltar a ficar visível (o ecrã relê em silêncio). */
+export async function voltarAAba(): Promise<void> {
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  document.dispatchEvent(new Event("visibilitychange"));
+  await assentar();
+}
 
 export { within };

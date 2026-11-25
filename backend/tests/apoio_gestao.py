@@ -164,6 +164,7 @@ MUTACOES_SEM_CORPO: frozenset[tuple[str, str]] = frozenset(
         ("DELETE", "/gestao/produtos/{id}"),
         ("DELETE", "/gestao/eventos/{id}"),
         ("DELETE", "/gestao/clientes/{id}"),
+        ("DELETE", "/gestao/fotos/{id}"),
         ("POST", "/gestao/eventos/{id}/duplicar"),
         ("POST", "/gestao/fotos/{id}/aprovar"),
         ("POST", "/gestao/fotos/{id}/rejeitar"),
@@ -537,7 +538,7 @@ def fixar_relogio_gestao(monkeypatch: pytest.MonkeyPatch, instante: datetime) ->
 def fotografia(motor: Engine) -> dict[str, list[tuple[Any, ...]]]:
     """Todas as linhas das tabelas que a gestão escreve, lidas por uma ligação nova.
 
-    `categorias`, `produtos`, `eventos` e, desde a F2-05c, `clientes`,
+    `categorias`, `produtos`, `eventos`, `fotos` (desde a F4-04b) e, desde a F2-05c, `clientes`,
     `definicoes` e `admins` (o hash e o bloqueio: é o que prova que uma
     mudança de password recusada não mudou nada).
 
@@ -551,6 +552,7 @@ def fotografia(motor: Engine) -> dict[str, list[tuple[Any, ...]]]:
             ("produtos", "id"),
             ("eventos", "id"),
             ("clientes", "id"),
+            ("fotos", "id"),
             ("admins", "id"),
             ("definicoes", "chave"),
         ):

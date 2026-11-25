@@ -190,7 +190,7 @@ def test_sem_ficheiro_e_corrida_perdida_nao_tenta_mover_de_volta(
         original_replace(origem, destino)
 
     monkeypatch.setattr(servico.os, "replace", espia_replace)
-    monkeypatch.setattr(servico, "_rowcount_do_update", lambda sessao_, instrucao: 0)
+    monkeypatch.setattr(servico, "_rowcount_de", lambda sessao_, instrucao: 0)
 
     with pytest.raises(ErroDaApi) as excinfo:
         servico.aprovar(sessao, 9010)

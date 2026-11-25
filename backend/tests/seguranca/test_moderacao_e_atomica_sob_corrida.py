@@ -90,7 +90,7 @@ def test_rejeitar_perde_a_corrida_e_devolve_409_sem_apagar_bytes(
     `tests/fotos/test_moderacao.py` já prende, numa segunda chamada
     **sequencial**. Para provar a condição do `UPDATE` em si, a "corrida"
     tem de acontecer **depois** de o pré-exame desta chamada já ter visto
-    `pendente` — por isso o gancho é `_rowcount_do_update`, chamado
+    `pendente` — por isso o gancho é `_rowcount_de`, chamado
     exatamente a seguir ao pré-exame.
     """
     from app.erros import ErroDaApi
@@ -99,7 +99,7 @@ def test_rejeitar_perde_a_corrida_e_devolve_409_sem_apagar_bytes(
 
     id_foto, nome_ficheiro = _enviar_e_obter_id_e_nome(cliente, sessao)
 
-    original_rowcount = servico._rowcount_do_update
+    original_rowcount = servico._rowcount_de
 
     def rowcount_com_corrida(sessao_: Session, instrucao: object) -> int:
         # Esta chamada já passou o pré-exame (`foto.estado == PENDENTE`).
@@ -112,7 +112,7 @@ def test_rejeitar_perde_a_corrida_e_devolve_409_sem_apagar_bytes(
         sessao_.commit()
         return original_rowcount(sessao_, instrucao)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(servico, "_rowcount_do_update", rowcount_com_corrida)
+    monkeypatch.setattr(servico, "_rowcount_de", rowcount_com_corrida)
 
     with pytest.raises(ErroDaApi) as excinfo:
         servico.rejeitar(sessao, id_foto)

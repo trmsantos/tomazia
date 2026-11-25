@@ -40,6 +40,8 @@ NOVAS: tuple[tuple[str, str], ...] = (
     ("PUT", "/gestao/definicoes"),
     ("DELETE", "/gestao/clientes/{id}"),
     ("POST", "/gestao/conta/password"),
+    # F4-04b
+    ("DELETE", "/gestao/fotos/{id}"),
 )
 
 

@@ -10,7 +10,8 @@
  * `obterFilaDeModeracao` **recusa** um corpo que não sabe ler com um `ErroDaApi` de estado 200:
  * o ecrã mostra o erro de carregar e nunca «não há fotos» (regra 10).
  *
- * A superfície não é fechada: a F4-04b junta aqui `obterAprovadas` e `eliminarFoto`.
+ * A F4-04b juntou `obterAprovadas` (também recusa um corpo ilegível, como a fila) e
+ * `eliminarFoto` (`DELETE`, 204 sem corpo; nunca repete: um `DELETE` sem resposta é «não sei»).
  */
 import { CAMINHO_BASE, ErroDaApi, type OpcoesDePedido, pedir } from "./cliente";
 import type { components, paths } from "./gerado/esquema";
@@ -19,10 +20,14 @@ const CAMINHO_FILA = "/gestao/fotos" satisfies keyof paths;
 const CAMINHO_APROVAR = "/gestao/fotos/{id}/aprovar" satisfies keyof paths;
 const CAMINHO_REJEITAR = "/gestao/fotos/{id}/rejeitar" satisfies keyof paths;
 const CAMINHO_IMAGEM = "/gestao/fotos/{id}/imagem" satisfies keyof paths;
+const CAMINHO_APROVADAS = "/gestao/fotos/aprovadas" satisfies keyof paths;
+const CAMINHO_ELIMINAR = "/gestao/fotos/{id}" satisfies keyof paths;
 
 export type FotoPendente = components["schemas"]["FotoPendente"];
 export type FilaDeModeracao = components["schemas"]["RespostaFilaDeModeracao"];
 export type RespostaModeracao = components["schemas"]["RespostaModeracao"];
+export type FotoAprovada = components["schemas"]["FotoAprovada"];
+export type FotosAprovadas = components["schemas"]["RespostaFotosAprovadas"];
 
 const ILEGIVEL = "As fotos chegaram num formato que não se sabe ler.";
 
@@ -60,6 +65,29 @@ function lerFila(corpo: unknown): FilaDeModeracao {
   return corpo as FilaDeModeracao;
 }
 
+/**
+ * Uma aprovada: como a pendente, mais `moderada_em`, que é um instante legível **ou `null`** (o
+ * modelo e o backend aceitam `null` e ordenam-na no fim: uma foto sem data não parte a lista).
+ */
+function eAprovadaLegivel(valor: unknown): boolean {
+  return (
+    eFotoLegivel(valor) &&
+    (valor as Record<string, unknown>)["moderada_em"] !== undefined &&
+    ((valor as Record<string, unknown>)["moderada_em"] === null ||
+      eInstanteLegivel((valor as Record<string, unknown>)["moderada_em"]))
+  );
+}
+
+/** Lança se o corpo não for a lista de aprovadas que o contrato descreve. */
+function lerAprovadas(corpo: unknown): FotosAprovadas {
+  if (!eObjeto(corpo)) throw new ErroDaApi(ILEGIVEL, { estado: 200, codigo: null });
+  const fotos = corpo["fotos"];
+  if (!Array.isArray(fotos) || !fotos.every(eAprovadaLegivel)) {
+    throw new ErroDaApi(ILEGIVEL, { estado: 200, codigo: null });
+  }
+  return corpo as FotosAprovadas;
+}
+
 /** Só um inteiro positivo entra num caminho: nada de `../` nem de `NaN` num endereço. */
 function exigirId(id: number): string {
   if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) {
@@ -89,6 +117,21 @@ export function rejeitarFoto(id: number, opcoes?: OpcoesDePedido): Promise<Respo
   });
 }
 
+/** `GET /api/gestao/fotos/aprovadas` — todas as aprovadas, sem paginação. */
+export async function obterAprovadas(opcoes?: OpcoesDePedido): Promise<FotosAprovadas> {
+  return lerAprovadas(await pedir<unknown>(CAMINHO_APROVADAS, opcoes));
+}
+
+/** `DELETE /api/gestao/fotos/{id}` — 204 sem corpo; 404, 409 (não aprovada) ou 500. Não repete. */
+export function eliminarFoto(id: number, opcoes?: OpcoesDePedido): Promise<void> {
+  // Sem `async`: um id mau lança já, antes de qualquer pedido.
+  return pedir<undefined>(CAMINHO_ELIMINAR.replace("{id}", exigirId(id)), {
+    ...opcoes,
+    metodo: "DELETE",
+    semCorpo: true,
+  }).then(() => undefined);
+}
+
 /**
  * O endereço da imagem, para um `<img src>`: leva a sessão (cookie, mesma origem). Não se vai
  * buscar como `blob:` (a CSP de produção é `img-src 'self' data:`) nem passa pelo `pedir`, que
@@ -96,4 +139,12 @@ export function rejeitarFoto(id: number, opcoes?: OpcoesDePedido): Promise<Respo
  */
 export function enderecoDaImagem(id: number): string {
   return `${CAMINHO_BASE}${CAMINHO_IMAGEM.replace("{id}", exigirId(id))}`;
+}
+
+/**
+ * O endereço da miniatura de uma foto **aprovada**: `/media/<ficheiro>`, público (o Apache serve-o
+ * sem sessão), como na galeria do site. Nunca `/gestao/fotos/{id}/imagem`, que é só das pendentes.
+ */
+export function enderecoDaMiniatura(ficheiro: string): string {
+  return `/media/${ficheiro}`;
 }

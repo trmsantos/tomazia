@@ -86,7 +86,9 @@ def test_toda_a_operacao_de_gestao_documenta_o_401() -> None:
         for metodo, caminho, operacao in _operacoes()
         if caminho.startswith("/gestao")
     ]
-    assert len(de_gestao) >= 19, "as 4 de fotos, as 9 da F2-05a e as 6 da F2-05b"
+    assert len(de_gestao) >= 21, (
+        "as 4 de fotos, as 9 da F2-05a, as 6 da F2-05b e as 2 da F4-04b"
+    )
     for metodo, caminho, operacao in de_gestao:
         respostas = operacao["responses"]
         assert "401" in respostas, f"{metodo.upper()} {caminho} não documenta 401"
@@ -111,6 +113,9 @@ CODIGOS_DOCUMENTADOS: dict[tuple[str, str], set[str]] = {
     ("delete", "/gestao/eventos/{id}"): {"204", "404", "422"},
     ("post", "/gestao/eventos/{id}/duplicar"): {"201", "404", "422"},
     ("get", "/gestao/resumo"): {"200"},
+    # F4-04b
+    ("get", "/gestao/fotos/aprovadas"): {"200"},
+    ("delete", "/gestao/fotos/{id}"): {"204", "401", "404", "409", "422", "500"},
 }
 
 
