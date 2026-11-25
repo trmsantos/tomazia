@@ -11,10 +11,16 @@
  */
 export const PRAZO_DO_PEDIDO_MS = 10_000;
 
-export function armarPrazo(controlador: AbortController): () => void {
+/** O CSV dos clientes pode ser grande e a rede é móvel: 20 s (F4-05b, secção 2). */
+export const PRAZO_DO_FICHEIRO_MS = 20_000;
+
+export function armarPrazo(
+  controlador: AbortController,
+  prazoMs: number = PRAZO_DO_PEDIDO_MS,
+): () => void {
   const temporizador = setTimeout(() => {
     controlador.abort(new DOMException("O pedido demorou demasiado.", "TimeoutError"));
-  }, PRAZO_DO_PEDIDO_MS);
+  }, prazoMs);
   return () => {
     clearTimeout(temporizador);
   };

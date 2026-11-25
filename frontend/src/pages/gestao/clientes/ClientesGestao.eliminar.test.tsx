@@ -309,11 +309,18 @@ describe("a eliminar (7.2, critérios 9)", () => {
     await avancar(9_999);
     expect(haFolhaDeEliminar(), "ainda à espera").toBe(true);
 
+    const verificacao = pendente<{ clientes: ClienteGestao[] }>();
+    obterFalso.mockReturnValueOnce(verificacao.promessa);
+
     await avancar(1);
 
     expect(haFolhaDeEliminar()).toBe(false);
     expect(haItemDe(ANA), "sem palpites: o cliente fica").toBe(true);
     expect(linhaDeEstado(T.aVerificar)).not.toBeNull();
+
+    verificacao.resolver(semOCliente(101));
+    await assentar();
+    expect(haItemDe(ANA)).toBe(false);
   });
 
   it("desmontar a meio aborta o DELETE e NÃO dispara uma verificação", async () => {

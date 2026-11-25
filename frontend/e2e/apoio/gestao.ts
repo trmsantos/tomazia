@@ -90,6 +90,19 @@ export async function fingirApiDeSessao(
     await responder(rota, 200, ementaDeGestaoDeTeste());
   });
 
+  // F4-05b: o Início pede o resumo. Quem o controla usa `fingirApiDeClientes` (regista depois e ganha).
+  await pagina.route("**/api/gestao/resumo", async (rota) => {
+    if (!servidor.sessaoAberta) {
+      await responder(rota, 401, { erro: "sessao_em_falta", mensagem: "Precisas de entrar." });
+      return;
+    }
+    await responder(rota, 200, {
+      fotos_pendentes: 0,
+      proximos_eventos: [],
+      novos_registos: 0,
+    });
+  });
+
   // Os ficheiros da gestão, para provar que o público nunca os pede. No servidor
   // de desenvolvimento o módulo chama-se `…/pages/gestao/AppGestao.tsx`.
   pagina.on("request", (pedido) => {

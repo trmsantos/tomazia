@@ -101,6 +101,8 @@ const SIGLAS_PERMITIDAS = new Set([
   // F4-02: «Preço, em euros, com IVA» (a etiqueta da folha) e a mensagem do cliente
   // sobre um corpo que não era JSON, agora que `src/lib/api/` também se varre.
   "IVA",
+  // F4-05b: «Exportar CSV» (a spec obriga).
+  "CSV",
   "JSON",
 ]);
 

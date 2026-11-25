@@ -102,6 +102,7 @@ export const ROTAS_DOS_DESTINOS: ReadonlySet<string> = new Set(
  */
 export const TITULOS_DAS_SUBROTAS: Readonly<Record<string, string>> = {
   "/gestao/mais/definicoes": "Definições",
+  "/gestao/mais/clientes": "Clientes",
 };
 
 /**
