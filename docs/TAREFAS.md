@@ -8,7 +8,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
-1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Início e Clientes → F4-05c Conta → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado.
+1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Início e Clientes → F4-05c Conta → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado → F4-09 Manutenção da galeria da gestão → F4-10 Folha e aviso partilhados.
 2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
@@ -395,6 +395,28 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Faz:** o dono marca um evento como «Cancelado» ou «Adiado» e o cartão público mostra um selo, em vez de o evento desaparecer sem explicação.
 - **Feito quando:** um evento publicado marcado como cancelado continua no site com o selo e sai sozinho depois da data.
 - **Ao planear:** precisa de ADR (o estado do evento e o que o público vê) e de migração aditiva (regra 7).
+
+### F4-09 Manutenção da galeria da gestão
+
+- **Agentes:** arquiteto, frontend, qa.
+- **Depende de:** F4-04b.
+- **Porquê, das revisões da F4-04 e da F4-04b (2026-11-25):** três pontos que ficaram de fora por não caberem numa tarefa de funcionalidade.
+- **Faz:**
+  - extrai a moderação e a verificação da fila de `GaleriaGestao.tsx` (mais de 700 linhas, uma dezena de `useState`/`useRef` paralelos) para um hook (`useModeracao`) ou um reducer, **sem mudar comportamento**;
+  - um sinal de reler da fila que chega com um `DELETE` ou uma verificação a meio em "Fotos no site" passa a esperar que acabem. A primeira tentativa foi revertida no #81: corria num efeito sobre `aEliminar`/`verificacao`, apagava a linha de estado de um 404, 409 ou verificação e, num 401, perdia a sessão duas vezes. A decisão tem de ser tomada no fim de cada ramo;
+  - `enderecoDaMiniatura` valida o nome contra o padrão do backend (`^[0-9a-f]{32}\.webp$`) e, se não bater, mostra "Sem imagem" sem pedir nada. É defesa em profundidade, sugerida pelo revisor de segurança. Os dados de teste (`src/testes/gestao.ts`, `e2e/apoio/gestao-fotos*.ts`) passam a usar nomes no padrão.
+- **Feito quando:** os testes da F4-04 e da F4-04b passam sem alterações na extração; há testes para 404, 409, 401 e verificação com o sinal de reler a chegar a meio de um `DELETE`, e cada um conta os pedidos; um nome fora do padrão nunca chega a um `<img src>`.
+
+### F4-10 Folha e aviso partilhados
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** F4-04b.
+- **Porquê, das revisões da F4-04 e da F4-04b (2026-11-25):** três defeitos ou lacunas em `src/components/ui/`, que as tarefas de ecrã não podiam tocar.
+- **Faz:**
+  - a `Folha` aceita uma propriedade para pôr o "×" inerte (`aria-disabled`) durante um pedido, e a `FolhaEliminarFoto` deixa de o fazer pelo DOM;
+  - o `AvisoTemporario` fica numa só linha, com o "×" à direita (a 390 px ocupa hoje cerca de 113 px, com o "×" numa segunda linha);
+  - com duas folhas abertas (enviar e sair, em `FolhaEnviarFotoDoDono`), fechar a de cima já não tira o `sem-deslizar` do `<body>` enquanto a de baixo continua aberta.
+- **Feito quando:** há testes para as três; capturas do aviso a 390×844; os ecrãs que usam a `Folha` e o `AvisoTemporario` (Ementa, Eventos, Definições, Galeria) continuam verdes.
 
 ### F4-03 Eventos na gestão
 
