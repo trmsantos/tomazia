@@ -49,6 +49,7 @@ import {
   FICHEIROS_DA_F4_03,
   FICHEIROS_DA_F4_04,
   FICHEIROS_DA_F4_05A,
+  FICHEIROS_DA_F4_05B,
 } from "./testes/ecras";
 import {
   RAIZ_FRONTEND,
@@ -177,6 +178,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F4_05A,
   ...FICHEIROS_DA_F4_03,
   ...FICHEIROS_DA_F4_04,
+  ...FICHEIROS_DA_F4_05B,
 ];
 
 describe("texto visível em português de Portugal", () => {

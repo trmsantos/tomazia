@@ -83,6 +83,20 @@ vi.mock("../../lib/api/gestao-fotos", async (importOriginal) => ({
   eliminarFoto: vi.fn(),
 }));
 
+// F4-05b: o Início pede `GET /gestao/resumo` e os Clientes `GET /gestao/clientes`. Aqui (a guarda, os
+// destinos e as rotas) respondem sempre com «nada de especial»; os ecrãs têm os seus testes e a
+// integração com o `AppGestao` está em `AppGestao.clientes.test.tsx`.
+vi.mock("../../lib/api/gestao-resumo", () => ({
+  obterResumo: vi.fn(() =>
+    Promise.resolve({ fotos_pendentes: 0, proximos_eventos: [], novos_registos: 0 }),
+  ),
+}));
+vi.mock("../../lib/api/gestao-clientes", () => ({
+  obterClientes: vi.fn(() => Promise.resolve({ clientes: [] })),
+  eliminarCliente: vi.fn(),
+  descarregarClientesCsv: vi.fn(),
+}));
+
 const obterEventosFalso = vi.mocked(obterEventosGestao);
 const obterFilaFalsa = vi.mocked(obterFilaDeModeracao);
 const obterDefinicoesFalso = vi.mocked(obterDefinicoes);
@@ -484,19 +498,14 @@ describe("mudar de destino (5.5)", () => {
   });
 });
 
-describe("os destinos que continuam vazios (7.1; a Ementa deixou de o ser na F4-02, os Eventos na F4-03 e a Galeria na F4-04)", () => {
-  it.each([["/gestao", T.vazioInicio]])(
-    "%s: o título comum, a linha própria e nenhum botão",
-    async (caminho, linha) => {
-      await abrir(caminho);
-      const principal = screen.getByRole("main");
-
-      expect(within(principal).getByText(T.vazioTitulo)).toBeInTheDocument();
-      expect(within(principal).getByText(linha)).toBeInTheDocument();
-      expect(within(principal).queryAllByRole("button")).toHaveLength(0);
-    },
-  );
-
+/*
+ * F4-05b — ATUALIZADO DE PROPÓSITO. Este bloco dizia que `/gestao` era o único destino ainda vazio
+ * («Ainda não há nada aqui.» + «Esta página não tem conteúdo nesta versão.», sem botões). Deixou de
+ * ser verdade: o Início tem o resumo (`InicioGestao`), e o que ele mostra tem os seus testes em
+ * `inicio/InicioGestao.test.tsx` e a integração em `AppGestao.clientes.test.tsx`. O que continua a
+ * valer — nenhum destino promete datas — fica abaixo; já não há nenhum destino vazio.
+ */
+describe("já não há destinos vazios (a Ementa deixou de o ser na F4-02, os Eventos na F4-03, a Galeria na F4-04 e o Início na F4-05b)", () => {
   it("nenhum promete datas nem funcionalidades: não dizem «em breve»", async () => {
     await abrir("/gestao");
     expect(screen.getByRole("main").textContent).not.toMatch(/em breve|brevemente|vai/i);
