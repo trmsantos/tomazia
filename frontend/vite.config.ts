@@ -146,13 +146,57 @@ function servirMediaEmDesenvolvimento(): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => {
+/**
+ * O endereço público do site, para o `og:image` absoluto (F3-08, secção 5).
+ *
+ * O `index.html` traz `%URL_PUBLICA%` e **não** o domínio escrito: o domínio
+ * muda no corte (F5-02) e vive só na variável do CI, `VITE_URL_PUBLICA`.
+ *
+ * **Em produção, variável em falta ou vazia faz o build falhar**, com o nome
+ * dela na mensagem. Regra 10: "sem domínio" nunca pode dar o mesmo que um
+ * `og:image` relativo em silêncio. Em desenvolvimento (`vite` a servir) usa
+ * `http://localhost:5173`; o `og:image` não se testa ao vivo.
+ *
+ * Lê-se do ambiente do processo e **não** de `.env*` (não os há em
+ * `frontend/`, e o teste verifica-o). Uma barra final tira-se, para que o
+ * endereço nunca fique com `//`.
+ */
+const VARIAVEL_URL_PUBLICA = "VITE_URL_PUBLICA";
+const URL_EM_DESENVOLVIMENTO = "http://localhost:5173";
+
+function resolverUrlPublica(command: "build" | "serve", mode: string): string {
+  const valor = (process.env[VARIAVEL_URL_PUBLICA] ?? "").trim();
+  if (valor === "") {
+    if (command === "build" && mode === "production") {
+      throw new Error(
+        `${VARIAVEL_URL_PUBLICA} não está definida (ou está vazia): o og:image do index.html ` +
+          "precisa de um endereço absoluto. Define-a, por exemplo " +
+          `${VARIAVEL_URL_PUBLICA}=https://novo.bardatomazia.pt, e volta a construir.`,
+      );
+    }
+    return URL_EM_DESENVOLVIMENTO;
+  }
+  return valor.replace(/\/+$/, "");
+}
+
+function urlPublicaNoIndex(command: "build" | "serve", mode: string): Plugin {
+  const url = resolverUrlPublica(command, mode);
+  return {
+    name: "tomazia-url-publica-no-index",
+    transformIndexHtml: {
+      order: "pre",
+      handler: (html) => html.replaceAll("%URL_PUBLICA%", url),
+    },
+  };
+}
+
+export default defineConfig(({ command, mode }) => {
   if (command === "build") {
     process.env[MARCA_DE_BUILD_PUBLICO] = "1";
   }
 
   return {
-    plugins: [react(), servirMediaEmDesenvolvimento()],
+    plugins: [react(), urlPublicaNoIndex(command, mode), servirMediaEmDesenvolvimento()],
     server: {
       proxy: {
         // F2-09: em desenvolvimento, `/api/…` vai para o uvicorn da porta

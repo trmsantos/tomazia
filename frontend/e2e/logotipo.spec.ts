@@ -143,7 +143,8 @@ test.describe("o <h1> é o logótipo", () => {
           return `${ativo.tagName.toLowerCase()}|${(ativo.textContent ?? "").trim()}|${String(dentroDaBarra)}`;
         }),
       );
-      await page.keyboard.press("Tab");
+      // Só avança entre leituras: o `Tab` depois da última deixava o foco na 4.ª paragem.
+      if (i < 2) await page.keyboard.press("Tab");
     }
     expect(nomes[0]).toBe(`a|${TEXTOS_DO_WIFI.saltar}|false`);
     expect(nomes[1]).toBe(`button|${TEXTOS_DO_WIFI.wifi}|false`);
@@ -171,7 +172,9 @@ test.describe("o srcset serve o ficheiro certo para cada densidade", () => {
         await abrirAPaginaPublica(page);
         const lido = await carregado(logotipo(page));
         expect(lido.atual.endsWith(`/marca/${ficheiro}`)).toBe(true);
-        expect(lido.natural).toBe(lado);
+        // Com descritor de densidade, `naturalWidth` é a largura real a dividir
+        // pela densidade (88 px a 2x dá 44): o que se verifica é o produto.
+        expect(lido.natural * densidade).toBe(lado);
       });
     });
   }

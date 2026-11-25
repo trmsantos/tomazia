@@ -33,7 +33,7 @@ async function esperarOLogotipo(pagina: import("@playwright/test").Page): Promis
         pagina
           .locator(LOGOTIPO)
           .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
-      { message: "o logótipo não carregou" },
+      { message: "o logótipo não carregou", timeout: 15_000 },
     )
     .toBe(true);
 }

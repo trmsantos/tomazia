@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
@@ -63,31 +65,147 @@ function perto(a: readonly number[], b: readonly number[], tolerancia: number): 
   return [0, 1, 2].every((k) => Math.abs((a[k] ?? 999) - (b[k] ?? -999)) <= tolerancia);
 }
 
+const CAMINHO_DO_ORIGINAL = fileURLToPath(
+  new URL("../../docs/marca/tomazia-original.png", import.meta.url),
+);
+
+type MapaDaFaixa = {
+  vazios: number;
+  cremeEmVazios: number;
+  tinta: number;
+  cremeEmTinta: number;
+};
+
 /**
- * A fração de pixéis, no anel de raios [r0, r1] à volta de (cx, cy), que
- * são opacos e creme.
+ * Compara, pixel a pixel, a faixa do ficheiro gerado com a do original.
+ *
+ * No anel de raios 78 a 93,5 (em px do original, centro 111,5 × 114) só 61,9%
+ * dos pixéis do original são transparentes; o resto é o arco dourado, que a
+ * especificação manda não mexer. Por isso a pergunta não é "que fração da
+ * faixa é creme", é: (a) dos pixéis que eram **transparentes** no original,
+ * quantos são creme agora (tem de ser quase todos) e (b) dos que eram **tinta**
+ * (o arco), quantos continuam a não ser creme (tem de ser quase todos).
+ *
+ * Cada pixel do ficheiro mapeia-se para o original pela escala e pelo centro
+ * do círculo (`escala` = px do ficheiro por px do original; `cx`,`cy` = centro
+ * do círculo no ficheiro). Só entram pixéis cuja vizinhança de 2 px do original
+ * é toda transparente ou toda opaca: nas fronteiras o reamostrar mistura, e aí
+ * não há "resposta certa" por pixel.
  */
-function fracaoDeCreme(
-  p: Pixeis,
+async function compararAFaixa(
+  pagina: Page,
+  caminho: string,
+  escala: number,
   cx: number,
   cy: number,
-  r0: number,
-  r1: number,
   tolerancia: number,
-): number {
-  let total = 0;
-  let creme = 0;
-  for (let y = 0; y < p.altura; y += 1) {
-    for (let x = 0; x < p.largura; x += 1) {
-      const r = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      if (r < r0 || r > r1) continue;
-      total += 1;
-      const [R, G, B, A] = px(p, x, y);
-      if (A >= 250 && perto([R, G, B], CREME_PAPEL, tolerancia)) creme += 1;
-    }
-  }
-  expect(total, "guarda: o anel de amostra tem de ter pixéis").toBeGreaterThan(50);
-  return creme / total;
+): Promise<MapaDaFaixa> {
+  await pagina.route("**/__original.png", (rota) =>
+    rota.fulfill({ path: CAMINHO_DO_ORIGINAL, contentType: "image/png" }),
+  );
+  // Só o guarda do tipo de conteúdo: os pixéis lêem-se dentro do browser, sem
+  // atravessar 3 milhões de números para o Node (a og-image tem 756 mil px).
+  const resposta = await pagina.request.get(caminho);
+  expect(
+    resposta.ok() && (resposta.headers()["content-type"] ?? "").startsWith("image/"),
+    `${caminho}: o ficheiro não existe`,
+  ).toBe(true);
+  return pagina.evaluate(
+    async ({ caminho, escala, cx, cy, tolerancia, creme }) => {
+      const original = new Image();
+      original.src = "/__original.png";
+      await original.decode();
+      const tela = document.createElement("canvas");
+      tela.width = original.naturalWidth;
+      tela.height = original.naturalHeight;
+      const contexto = tela.getContext("2d");
+      if (contexto === null) throw new Error("sem contexto 2d");
+      contexto.drawImage(original, 0, 0);
+      const o = contexto.getImageData(0, 0, tela.width, tela.height);
+
+      const gerado = new Image();
+      gerado.src = caminho;
+      await gerado.decode();
+      const telaG = document.createElement("canvas");
+      telaG.width = gerado.naturalWidth;
+      telaG.height = gerado.naturalHeight;
+      const contextoG = telaG.getContext("2d");
+      if (contextoG === null) throw new Error("sem contexto 2d");
+      contextoG.drawImage(gerado, 0, 0);
+      const alvo = {
+        largura: telaG.width,
+        altura: telaG.height,
+        dados: contextoG.getImageData(0, 0, telaG.width, telaG.height).data,
+      };
+      const alcance = Math.ceil(93.5 * escala) + 1;
+      const alfaOriginal = (x: number, y: number): number =>
+        x < 0 || y < 0 || x >= o.width || y >= o.height
+          ? 0
+          : (o.data[(y * o.width + x) * 4 + 3] ?? 0);
+
+      let vazios = 0;
+      let cremeEmVazios = 0;
+      let tinta = 0;
+      let cremeEmTinta = 0;
+      for (
+        let y = Math.max(0, Math.floor(cy - alcance));
+        y < Math.min(alvo.altura, cy + alcance);
+        y += 1
+      ) {
+        for (
+          let x = Math.max(0, Math.floor(cx - alcance));
+          x < Math.min(alvo.largura, cx + alcance);
+          x += 1
+        ) {
+          const dx = (x + 0.5 - cx) / escala;
+          const dy = (y + 0.5 - cy) / escala;
+          const r = Math.hypot(dx, dy);
+          if (r < 78 + 3 || r > 93.5 - 3) continue;
+          const ox = Math.floor(111.5 + dx);
+          const oy = Math.floor(114 + dy);
+          let minimo = 255;
+          let maximo = 0;
+          for (let vy = -2; vy <= 2; vy += 1) {
+            for (let vx = -2; vx <= 2; vx += 1) {
+              const a = alfaOriginal(ox + vx, oy + vy);
+              minimo = Math.min(minimo, a);
+              maximo = Math.max(maximo, a);
+            }
+          }
+          const i = (y * alvo.largura + x) * 4;
+          const d = alvo.dados;
+          const eCreme =
+            (d[i + 3] ?? 0) >= 250 &&
+            [0, 1, 2].every((k) => Math.abs((d[i + k] ?? 999) - (creme[k] ?? -999)) <= tolerancia);
+          if (maximo < 10) {
+            vazios += 1;
+            if (eCreme) cremeEmVazios += 1;
+          } else if (minimo >= 250) {
+            tinta += 1;
+            if (eCreme) cremeEmTinta += 1;
+          }
+        }
+      }
+      return { vazios, cremeEmVazios, tinta, cremeEmTinta };
+    },
+    { caminho, escala, cx, cy, tolerancia, creme: [...CREME_PAPEL] },
+  );
+}
+
+function exigirFaixaCreme(mapa: MapaDaFaixa, onde: string): void {
+  expect(
+    mapa.vazios,
+    `${onde}: guarda, a amostra da faixa vazia tem de ter pixéis`,
+  ).toBeGreaterThan(20);
+  expect(
+    mapa.cremeEmVazios / mapa.vazios,
+    `${onde}: os pixéis que eram transparentes no original, na faixa, têm de ser creme #f5e6d3`,
+  ).toBeGreaterThan(0.8);
+  expect(mapa.tinta, `${onde}: guarda, a amostra do arco tem de ter pixéis`).toBeGreaterThan(5);
+  expect(
+    mapa.cremeEmTinta / mapa.tinta,
+    `${onde}: o arco dourado (tinta do original) não pode ter sido pintado de creme`,
+  ).toBeLessThan(0.2);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -95,10 +213,6 @@ test.beforeEach(async ({ page }) => {
   // `/api` a responder, o importante é só estar na origem certa.
   await page.goto("/demonstracao.html");
 });
-
-/** A faixa vai de 78/105,5 a 93,5/105,5 do raio do círculo. */
-const FAIXA = { de: 78 / 105.5, ate: 93.5 / 105.5 };
-const MARGEM = 3;
 
 for (const lado of [44, 88, 132]) {
   test(`logo-${String(lado)}.webp: círculo transparente por fora, faixa de creme por dentro`, async ({
@@ -117,23 +231,19 @@ for (const lado of [44, 88, 132]) {
     }
 
     const centro = lado / 2;
-    const raio = (lado / 2) * (105.5 / 107.5);
     expect(px(p, Math.floor(centro), Math.floor(centro))[3], "o centro é opaco").toBe(255);
 
-    const margem = (MARGEM * lado) / 132;
-    const fracao = fracaoDeCreme(
-      p,
-      centro,
-      centro,
-      raio * FAIXA.de + margem,
-      raio * FAIXA.ate - margem,
-      lado === 44 ? 20 : 12,
+    exigirFaixaCreme(
+      await compararAFaixa(
+        page,
+        `/marca/logo-${String(lado)}.webp`,
+        lado / 215,
+        centro,
+        centro,
+        lado === 44 ? 20 : 12,
+      ),
+      `logo-${String(lado)}`,
     );
-    expect(
-      fracao,
-      "a faixa entre o aro e o disco tem de estar cheia de creme #f5e6d3 (o arco dourado " +
-        "toca a faixa, daí não ser 100%)",
-    ).toBeGreaterThan(0.8);
   });
 }
 
@@ -154,9 +264,10 @@ test("apple-touch-icon: opaco, bordo-noite nos cantos, logótipo de 144 px ao ce
       true,
     );
   }
-  const raio = (144 / 2) * (105.5 / 107.5);
-  const fracao = fracaoDeCreme(p, 90, 90, raio * FAIXA.de + 2, raio * FAIXA.ate - 2, 14);
-  expect(fracao, "a faixa de creme está lá, à escala de 144 px").toBeGreaterThan(0.8);
+  exigirFaixaCreme(
+    await compararAFaixa(page, "/apple-touch-icon.png", 144 / 215, 90, 90, 14),
+    "apple-touch-icon",
+  );
   expect(
     perto(px(p, 90, 5), BORDO_NOITE, 2),
     "margem de 18 px acima do logótipo: ainda bordo-noite",
@@ -179,9 +290,10 @@ test("og-image: bordo-noite liso, logótipo de 420 px centrado", async ({ page }
       `(${String(x)}, ${String(y)}) é bordo-noite (JPEG, tolerância 8)`,
     ).toBe(true);
   }
-  const raio = (420 / 2) * (105.5 / 107.5);
-  const fracao = fracaoDeCreme(p, 600, 315, raio * FAIXA.de + 4, raio * FAIXA.ate - 4, 24);
-  expect(fracao, "a faixa de creme está lá, à escala de 420 px").toBeGreaterThan(0.8);
+  exigirFaixaCreme(
+    await compararAFaixa(page, "/og-image.jpg", 420 / 215, 600, 315, 24),
+    "og-image",
+  );
 });
 
 test("favicon-32.png: círculo com fora transparente", async ({ page }) => {

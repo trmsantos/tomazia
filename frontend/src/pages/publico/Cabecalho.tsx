@@ -10,8 +10,7 @@ import { FolhaWifi } from "./FolhaWifi";
  * O cabeçalho fixo da página pública (`docs/ecras/F3-03.md`, secções 2 a 6).
  *
  * Duas coisas lá dentro e não cinco, porque ele custa 61 px de ecrã em todas
- * as páginas e a cada momento: o nome do bar — que é também o logótipo, porque
- * a marca é a palavra em Playfair — e o botão "WiFi".
+ * as páginas e a cada momento: o logótipo, que é o nome do bar, e o botão "WiFi".
  *
  * **O cabeçalho não tem estados.** É o mesmo desenho nas cinco leituras do
  * `/info`: nada aparece, nada desaparece, nada se mexe para o lado depois da
@@ -128,29 +127,29 @@ export function Cabecalho({ info }: { info: EstadoDoInfo }): ReactElement {
          */}
         <div className="mx-auto flex h-full max-w-coluna items-center justify-between gap-4 px-4">
           {/*
-           * O logótipo **não é uma ligação**: uma ligação para o topo de uma
-           * página que é uma só seria uma paragem de `Tab` a não fazer nada.
+           * O logótipo (F3-08) **substitui o texto**: o nome acessível do `<h1>`
+           * é o `alt` da imagem, sem texto escondido nem `aria-label`. Não é
+           * uma ligação nem é focável: uma ligação para o topo de uma página
+           * que é uma só seria uma paragem de `Tab` a não fazer nada.
            *
-           * 27 px e não 34 (secção 3). Medido na página desenhada, a 360 px,
-           * que é o ecrã mais estreito suportado: a linha gasta 32 de `px-4`
-           * e 16 de `gap-4` de folga obrigatória, e o botão mede 79,19 —
-           * sobram **232,81** para o nome. A 34 px o nome pede **241,81** e
-           * **não cabe**: o que se via era o nome cortado com reticências
-           * logo na primeira visita, sem ninguém ter pedido nada. A 27 px
-           * pede **192,03** e sobram 40,78.
-           *
-           * Os três números são de uma medição na página e não da previsão
-           * que a especificação trazia (182,58 / 229,91 / 84,55): as caixas
-           * de linha da Playfair não são a tinta, e a previsão errava os
-           * três para o lado otimista. A conclusão é a mesma; os números é
-           * que passaram a ser verdade.
-           *
-           * O `truncate` continua cá para o caso que sobra: com o tamanho de
-           * letra do sistema no dobro já não há folga nenhuma, e quem cede é
-           * o nome — cortado no ecrã, inteiro no nome acessível — e nunca a
-           * ação nem o alvo de toque.
+           * 44 x 44 é o `--alvo-toque`, a altura da linha: o cabeçalho continua
+           * com 61 px e as âncoras da ementa não se mexem. O tamanho vem dos
+           * atributos `width` e `height` e do `block shrink-0` (sem `style`, CSP e ADR 0008), e
+           * reserva o lugar antes de a imagem chegar. Sem `lazy`: está acima
+           * da dobra. Os ficheiros são de `public/`, referidos por caminho e
+           * **não importados**, para não entrarem no JS (Q-02).
            */}
-          <h1 className="truncate font-titulo text-titulo text-texto">{TEXTOS.nome}</h1>
+          <h1>
+            <img
+              src="/marca/logo-88.webp"
+              srcSet="/marca/logo-44.webp 1x, /marca/logo-88.webp 2x, /marca/logo-132.webp 3x"
+              alt={TEXTOS.nome}
+              width={44}
+              height={44}
+              decoding="async"
+              className="block shrink-0"
+            />
+          </h1>
 
           {/*
            * O único retângulo dourado **utilizável** da página. Com a Folha

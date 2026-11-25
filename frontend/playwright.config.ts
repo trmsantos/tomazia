@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { defineConfig } from "@playwright/test";
 
+import { URL_PUBLICA_DE_TESTE } from "./src/testes/marca";
+
 /**
  * Onde se constrói o pacote servido ao `e2e/csp-producao.spec.ts`. Fora do
  * repositório (como em `src/orcamento-q02.test.ts`): dentro de `test-results/`
@@ -97,6 +99,8 @@ export default defineConfig({
       command: `npx vite build --outDir ${JSON.stringify(PASTA_DO_BUILD_CSP)} --emptyOutDir && npx vite preview --outDir ${JSON.stringify(PASTA_DO_BUILD_CSP)} --port 8076 --strictPort`,
       url: "http://localhost:8076/",
       reuseExistingServer: false,
+      // O build de produção exige VITE_URL_PUBLICA (F3-08).
+      env: { VITE_URL_PUBLICA: URL_PUBLICA_DE_TESTE },
       timeout: 180_000,
     },
   ],

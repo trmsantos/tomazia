@@ -39,4 +39,10 @@ export const FICHEIROS_GERADOS = [
 /** O que as decisões do Tomás (2026-11-25) dizem sobre a variável. */
 export const URL_PUBLICA_PROVISORIA = "https://novo.bardatomazia.pt";
 export const URL_PUBLICA_FINAL = "https://bardatomazia.pt";
+/**
+ * O valor que os testes que constroem (`vite build`) dão à variável: o build
+ * de produção exige-a, e quem corre `npm test` ou `npx playwright test` não
+ * tem de a exportar. `.invalid` nunca resolve (RFC 2606).
+ */
+export const URL_PUBLICA_DE_TESTE = "https://teste.invalid";
 export const NOME_DA_VARIAVEL = "VITE_URL_PUBLICA";

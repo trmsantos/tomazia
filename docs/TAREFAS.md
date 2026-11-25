@@ -488,3 +488,4 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Depende de:** todas as anteriores (incluindo a F4-02b).
 - **Faz:** congelar o admin antigo; importação final; guardar cópia do PHP; apontar `WEB` para o `public_html`; atualizar o `.htaccess`; apagar os ficheiros PHP.
 - **Feito quando:** os QR codes impressos abrem a ementa nova; `/api/health` responde no domínio principal.
+- **F3-08:** no corte, `VITE_URL_PUBLICA` passa de `https://novo.bardatomazia.pt` para `https://bardatomazia.pt` nos workflows (`ci.yml` e `deploy.yml`) e volta-se a publicar; o endereço provisório não se partilha antes do corte (a pré-visualização ficaria em cache com ele).
