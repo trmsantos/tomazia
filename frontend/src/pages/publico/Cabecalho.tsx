@@ -89,10 +89,11 @@ export function Cabecalho({ info }: { info: EstadoDoInfo }): ReactElement {
        * por cima do cabeçalho, sem foco nenhum. A partir de `top-0` a conta
        * fecha: escondida vai de −44 a 0, com foco vai de 8 a 52.
        *
-       * O `px-6` leva-a de 182,98 a **198,98** px de largura (medido na página
-       * desenhada), e é isso que tapa o logótipo de 44 px, que ocupa o x de 16
-       * a 60: a ligação vai de 16 a 214,98. Com `px-4` ficava mais curta e o
-       * aro do círculo podia espreitar por trás dela. Mantém-se o `px-6`.
+       * Com o `px-6` mede **198,98** px (de 16 a 214,98, medido na página
+       * desenhada) e tapa o logótipo de 44 px, que ocupa o x de 16 a 60. Com
+       * `px-4` (182,98 px) também o tapava: o `px-6` vem da F3-03, quando o
+       * que havia a tapar era o nome em texto, e fica só porque mudar o
+       * espaçamento não é desta tarefa.
        *
        * **`:focus` e não `:focus-visible`**, ao contrário do que a 5.3 escreve.
        * A razão que a 5.3 dá para o `:focus-visible` é "não aparece a quem

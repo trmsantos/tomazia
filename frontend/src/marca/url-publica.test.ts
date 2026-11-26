@@ -16,6 +16,8 @@ describe("resolverUrlPublica", () => {
     expect(resolverUrlPublica("build", com("https://novo.bardatomazia.pt/"))).toBe(
       "https://novo.bardatomazia.pt",
     );
+    // Várias barras finais também saem todas, e o que fica é válido.
+    expect(resolverUrlPublica("build", com("https://a.pt//"))).toBe("https://a.pt");
   });
 
   it.each([
@@ -28,13 +30,7 @@ describe("resolverUrlPublica", () => {
     "https://a.pt/caminho",
     "https://a b.pt",
     'https://a.pt"x',
-    "https://a.pt//",
   ])("em build recusa %j, e a mensagem nomeia a variável", (valor) => {
-    // `https://a.pt//` perde as barras finais e é válido: o caso fica de fora.
-    if (valor === "https://a.pt//") {
-      expect(resolverUrlPublica("build", com(valor))).toBe("https://a.pt");
-      return;
-    }
     expect(() => resolverUrlPublica("build", com(valor))).toThrow(/VITE_URL_PUBLICA/);
   });
 
