@@ -10,14 +10,15 @@ import type { DiaDaSemana } from "./horario-do-formulario";
 
 /**
  * O que dizem «onde aparece» os painéis do horário (singular) e dos contactos
- * (plural) enquanto a página Visita-nos (F3-06a) não existir: «Aparece no site»
- * seria falso no dia do merge. São **duas frases completas**, e não uma cauda
- * comum, para a F3-06a as trocar sem refatorar.
+ * (plural). Duas frases completas, e não uma cauda comum.
+ *
+ * Dizem «secção» e não «página» (está na mesma página que a ementa) e não dizem
+ * onde ela está: as secções podem mudar de ordem e «no fim da página» passava a
+ * ser falso (F3-06a, 9.1).
  */
 export const ONDE_APARECE_VISITA_NOS = {
-  singular: "Vai aparecer na página Visita-nos, que ainda não existe no site.",
-  plural:
-    "Vão aparecer na página Visita-nos, que ainda não existe no site. Deixa um campo vazio para o esconder.",
+  singular: "Aparece na secção Visita-nos do site.",
+  plural: "Aparecem na secção Visita-nos do site. Deixa um campo vazio para o esconder.",
 } as const;
 
 export const TEXTOS = {

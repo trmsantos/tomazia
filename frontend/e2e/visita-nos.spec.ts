@@ -416,12 +416,17 @@ test.describe("os estados no browser (regra 10)", () => {
   test("falhou: o título fica, e «Tentar outra vez» recupera a secção sem a esconder", async ({
     page,
   }) => {
-    const contador = await abrirComVisitaNos(page, (numero) =>
-      numero === 1 ? { tipo: "falha" } : { tipo: "info", corpo: infoCompleta(), atrasoMs: 300 },
+    // Falha **até** o teste a mandar parar, e não «no pedido número 1»: o servidor de
+    // desenvolvimento corre em StrictMode e faz dois pedidos ao arrancar (o primeiro
+    // abortado), por isso contar pedidos deixava o erro nunca aparecer.
+    let aFalhar = true;
+    const contador = await abrirComVisitaNos(page, () =>
+      aFalhar ? { tipo: "falha" } : { tipo: "info", corpo: infoCompleta(), atrasoMs: 300 },
     );
     await expect(tituloDaVisita(page)).toBeVisible();
     await expect(seccaoDaVisita(page).getByText(T.erroSemResposta)).toBeVisible();
     const antes = contador.total;
+    aFalhar = false;
 
     await botaoDeTentarOutraVez(page).click();
 

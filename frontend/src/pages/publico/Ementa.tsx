@@ -235,7 +235,7 @@ function CartaoDeCategoria({ categoria }: { categoria: CategoriaPublica }): Reac
         aria-labelledby={`titulo-${ancora}`}
         className="superficie-creme rounded-cartao border border-contorno-superficie p-4"
       >
-        <h3 id={`titulo-${ancora}`} className="font-titulo text-titulo text-texto">
+        <h3 id={`titulo-${ancora}`} className="break-words font-titulo text-titulo text-texto">
           {categoria.nome}
         </h3>
         <ul className="mt-3 flex flex-col gap-3">

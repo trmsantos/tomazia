@@ -287,6 +287,15 @@ describe("pronta", () => {
     expect(screen.getByRole("heading", { name: "Cafés", level: 3 })).toBeInTheDocument();
   });
 
+  it("o título de cada categoria quebra palavras longas (a 200% de texto não empurra o cartão)", async () => {
+    await desenharComEmenta();
+
+    const titulos = screen.getAllByRole("heading", { level: 3 });
+
+    expect(titulos.length).toBeGreaterThan(0);
+    for (const titulo of titulos) expect(titulo.className).toMatch(/\bbreak-words\b/);
+  });
+
   it("o preço 0 sai como «Oferta», num cartão onde há preço a pagar ao lado", async () => {
     await desenharComEmenta();
 
