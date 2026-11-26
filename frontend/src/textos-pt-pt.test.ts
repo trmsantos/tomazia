@@ -44,6 +44,7 @@ import {
   FICHEIROS_DA_F3_03,
   FICHEIROS_DA_F3_04,
   FICHEIROS_DA_F3_05,
+  FICHEIROS_DA_F3_06A,
   FICHEIROS_DA_F4_01,
   FICHEIROS_DA_F4_02,
   FICHEIROS_DA_F4_03,
@@ -152,6 +153,16 @@ function ficheirosDaInterface(): string[] {
     ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "imagens"), {
       extensoes: [".ts", ".tsx"],
     }),
+    // `src/lib/horario/` e `src/lib/ligacoes/` entram na F3-06a: é em
+    // `nomes-e-textos.ts` que se escreve «Aberto até à meia-noite» e «Fechado ·
+    // Abre na próxima quinta» por concatenação, e nenhuma outra varredura de
+    // texto lá chegava (F3-06a, 9, Q-05).
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "horario"), {
+      extensoes: [".ts", ".tsx"],
+    }),
+    ...listarFicheiros(join(RAIZ_FRONTEND, "src", "lib", "ligacoes"), {
+      extensoes: [".ts", ".tsx"],
+    }),
   ].filter((ficheiro) => !/\.test\.tsx?$/.test(ficheiro));
 }
 
@@ -175,6 +186,7 @@ const SENTINELAS = [
   ...FICHEIROS_DA_F3_03,
   ...FICHEIROS_DA_F3_04,
   ...FICHEIROS_DA_F3_05,
+  ...FICHEIROS_DA_F3_06A,
   ...FICHEIROS_DA_F4_01,
   ...FICHEIROS_DA_F4_02,
   ...FICHEIROS_DA_F4_05A,
