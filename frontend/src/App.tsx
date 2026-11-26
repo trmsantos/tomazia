@@ -103,6 +103,8 @@ function App(): ReactElement {
   const tentarOutraVez = useCallback(
     () =>
       new Promise<void>((cumprir) => {
+        // Cumpre a promessa anterior antes de a substituir: ninguém fica à espera para sempre.
+        aoAcabar.current?.();
         aoAcabar.current = cumprir;
         setTentativa((anterior) => anterior + 1);
       }),

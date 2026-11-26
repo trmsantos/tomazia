@@ -240,6 +240,22 @@ export function esperaAteAProximaMudanca(periodosDaData: PeriodosDaData, agora: 
     chegada.minuto;
   instante -= (chegadaEmMinutos - alvo) * MS_DO_MINUTO;
 
-  const espera = instante - agora.getTime() + FOLGA_EM_MS;
+  /*
+   * Nunca se espera para lá da próxima hora UTC inteira. As mudanças de hora de
+   * Lisboa são às 01:00 UTC, e o relógio da parede salta por horas inteiras:
+   * acordar nas horas UTC cheias é acordar do lado certo de cada salto.
+   *
+   * - Em março, uma fronteira entre 01:00 e 01:59 de relógio não existe, e a
+   *   correção acima recua-a para «agora»: sem isto a espera caía no mínimo de
+   *   1 s durante uma hora. Aqui vai para a hora cheia seguinte.
+   * - Em outubro a hora 01:xx de relógio passa duas vezes. Quem acordasse só
+   *   uma hora depois via «Fechado» na segunda passagem de um fecho às 01:30,
+   *   quando o `estadoDoHorario` já diz «aberto» (01:00 de inverno).
+   */
+  const agoraEmMs = agora.getTime();
+  const proximaHoraCheia = (Math.floor(agoraEmMs / UMA_HORA_EM_MS) + 1) * UMA_HORA_EM_MS;
+  const quando = instante <= agoraEmMs ? proximaHoraCheia : Math.min(instante, proximaHoraCheia);
+
+  const espera = quando - agoraEmMs + FOLGA_EM_MS;
   return Math.min(Math.max(espera, PRAZO_MINIMO_EM_MS), UMA_HORA_EM_MS);
 }
