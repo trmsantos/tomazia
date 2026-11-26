@@ -33,6 +33,7 @@ import {
   FICHEIROS_DA_F4_02,
   FICHEIROS_DA_F4_03,
   FICHEIROS_DA_F4_04,
+  FICHEIROS_DA_F4_05B,
   FICHEIROS_DA_F4_05A,
 } from "../testes/ecras";
 import {
@@ -120,6 +121,7 @@ describe("varredura em disco, que nenhum eslint-disable desliga", () => {
         ...FICHEIROS_DA_F4_05A,
         ...FICHEIROS_DA_F4_03,
         ...FICHEIROS_DA_F4_04,
+        ...FICHEIROS_DA_F4_05B,
       ],
       "style inline",
     );

@@ -34,7 +34,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DESTINOS_MALICIOSOS } from "../../testes/gestao";
-import { destinoDepoisDeEntrar } from "./destino-depois-de-entrar";
+import { destinoDepoisDeEntrar, destinoParaLembrar } from "./destino-depois-de-entrar";
 import { ROTAS_DOS_DESTINOS } from "./navegacao";
 
 const INICIO = "/gestao";
@@ -150,5 +150,44 @@ describe("destinoDepoisDeEntrar: a subrota das definições (F4-05a)", () => {
 
   it("continua a recusar o login", () => {
     expect(destinoDepoisDeEntrar({ voltar: "/gestao/entrar" })).toBe(INICIO);
+  });
+});
+
+/**
+ * F4-05b — a lista branca ganha `/gestao/mais/clientes` (e só essa subrota nova). O 401 a meio dos
+ * clientes volta aqui depois do login; `/gestao/mais/x` continua a cair no Início.
+ */
+describe("destinoDepoisDeEntrar: a subrota dos clientes (F4-05b)", () => {
+  it("{ voltar: '/gestao/mais/clientes' } é aceite", () => {
+    expect(destinoDepoisDeEntrar({ voltar: "/gestao/mais/clientes" })).toBe(
+      "/gestao/mais/clientes",
+    );
+  });
+
+  it("as duas subrotas conhecidas convivem; a de definições continua aceite", () => {
+    expect(destinoDepoisDeEntrar({ voltar: "/gestao/mais/definicoes" })).toBe(
+      "/gestao/mais/definicoes",
+    );
+  });
+
+  it.each([
+    ["barra final", "/gestao/mais/clientes/"],
+    ["query", "/gestao/mais/clientes?x=1"],
+    ["fragmento", "/gestao/mais/clientes#x"],
+    ["maiúscula", "/gestao/mais/Clientes"],
+    ["subrota por baixo", "/gestao/mais/clientes/101"],
+    ["o id de um cliente", "/gestao/mais/clientes/101/eliminar"],
+    ["barras duplas", "/gestao/mais//clientes"],
+    ["contrabarra", "/gestao/mais\\clientes"],
+    ["codificada", "/gestao/mais/client%65s"],
+    ["a subrota inventada", "/gestao/mais/x"],
+    ["o ficheiro CSV (nunca é um destino)", "/gestao/mais/clientes.csv"],
+  ])("%s → Início", (_nome, voltar) => {
+    expect(destinoDepoisDeEntrar({ voltar })).toBe(INICIO);
+  });
+
+  it("destinoParaLembrar guarda /gestao/mais/clientes (e só ela, sem query)", () => {
+    expect(destinoParaLembrar("/gestao/mais/clientes")).toBe("/gestao/mais/clientes");
+    expect(destinoParaLembrar("/gestao/mais/clientes?x=1")).toBeUndefined();
   });
 });

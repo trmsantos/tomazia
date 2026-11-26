@@ -9,6 +9,7 @@ import { guardar } from "./apoio/capturas";
 import { fingirEmentaFixa } from "./apoio/ementa";
 import { fingirEventosFixos } from "./apoio/eventos";
 import { RESPOSTA_400, fingirApiDeSessao, resposta429 } from "./apoio/gestao";
+import { fingirApiDeEventos } from "./apoio/gestao-eventos";
 import { fingirApiDasFotos } from "./apoio/gestao-fotos";
 import { SEM_EVENTOS } from "../src/testes/eventos";
 
@@ -145,6 +146,8 @@ test.describe("a moldura, a 390 × 844", () => {
   });
 
   test("tocar em Eventos muda o endereço e o aria-current; o Recuar volta", async ({ page }) => {
+    // Eventos pede a sua API: fingida, para não depender de um backend real na 8070.
+    await fingirApiDeEventos(page);
     await page.goto("/gestao");
     await navegacao(page).getByRole("link", { name: "Eventos" }).click();
 

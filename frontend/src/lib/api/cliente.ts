@@ -245,20 +245,11 @@ function mensagemPorEstado(estado: number): string {
 }
 
 /**
- * Faz um pedido a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
- *
- * Por omissão é um GET, sem corpo — ainda é o único método que a maioria
- * das chamadas deste cliente precisa. `opcoes.metodo` e `opcoes.corpo`
- * chegaram com a F3-05 (o primeiro `POST`, `POST /fotos`, herança da
- * F2-06): é o que o ADR 0012 previu — "quem acrescentar o primeiro `POST`
- * acrescenta o método e o corpo com o teste que os prova" — e esse teste é
- * `cliente.test.ts`. Ver `OpcoesDePedido` para o que cada um faz.
- *
- * O `T` não é verificado em tempo de execução — nem com `zod` nem com nada:
- * quem o fixa é o `src/lib/api/publico.ts`, que o tira dos tipos gerados a
- * partir do OpenAPI do próprio backend.
+ * Faz o `fetch` com os cabeçalhos e as credenciais de sempre e devolve a resposta (de qualquer
+ * estado). Rede, DNS e prazo esgotado viram `ErroDaApi` com `estado: null`; o cancelamento de quem
+ * chamou sai tal como veio. É partilhado por `pedir` (JSON) e `pedirBytes` (ficheiros).
  */
-export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promise<T> {
+async function enviar(caminho: string, opcoes: OpcoesDePedido | undefined): Promise<Response> {
   const sinal = opcoes?.sinal;
   const corpoPedido = opcoes?.corpo;
 
@@ -281,9 +272,8 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
     corpoHttp = JSON.stringify(corpoPedido);
   }
 
-  let resposta: Response;
   try {
-    resposta = await fetch(`${CAMINHO_BASE}${caminho}`, {
+    return await fetch(`${CAMINHO_BASE}${caminho}`, {
       method: opcoes?.metodo ?? "GET",
       headers: cabecalhosDoPedido,
       credentials: "include",
@@ -299,10 +289,12 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
       { estado: null, codigo: null, causa: erro },
     );
   }
+}
 
-  let texto: string;
+/** O corpo da resposta como texto. Um corte a meio é `ErroDaApi` com o estado que já se tinha. */
+async function lerTexto(resposta: Response, sinal: AbortSignal | undefined): Promise<string> {
   try {
-    texto = await resposta.text();
+    return await resposta.text();
   } catch (erro) {
     if (foiCancelado(erro, sinal)) throw erro;
     // Houve resposta (temos `status`), mas o corpo cortou-se a meio. Não é
@@ -316,22 +308,41 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
       cabecalhos: cabecalhosDaResposta(resposta.headers),
     });
   }
+}
 
+/** O `ErroDaApi` de uma resposta que não é 2xx, com o envelope do backend se o houver. */
+function erroDeRecusa(resposta: Response, corpo: Interpretacao): ErroDaApi {
+  const envelope = corpo.interpretou ? lerEnvelopeDeErro(corpo.valor) : null;
+  const extra = corpo.interpretou && envelope !== null ? extraDoEnvelope(corpo.valor) : {};
+  return new ErroDaApi(envelope?.mensagem ?? mensagemPorEstado(resposta.status), {
+    estado: resposta.status,
+    codigo: envelope?.codigo ?? null,
+    extra,
+    cabecalhos: cabecalhosDaResposta(resposta.headers),
+  });
+}
+
+/**
+ * Faz um pedido a `CAMINHO_BASE + caminho` e devolve o JSON já interpretado.
+ *
+ * Por omissão é um GET, sem corpo — ainda é o único método que a maioria
+ * das chamadas deste cliente precisa. `opcoes.metodo` e `opcoes.corpo`
+ * chegaram com a F3-05 (o primeiro `POST`, `POST /fotos`, herança da
+ * F2-06): é o que o ADR 0012 previu — "quem acrescentar o primeiro `POST`
+ * acrescenta o método e o corpo com o teste que os prova" — e esse teste é
+ * `cliente.test.ts`. Ver `OpcoesDePedido` para o que cada um faz.
+ *
+ * O `T` não é verificado em tempo de execução — nem com `zod` nem com nada:
+ * quem o fixa é o `src/lib/api/publico.ts`, que o tira dos tipos gerados a
+ * partir do OpenAPI do próprio backend.
+ */
+export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promise<T> {
+  const sinal = opcoes?.sinal;
+  const resposta = await enviar(caminho, opcoes);
+  const texto = await lerTexto(resposta, sinal);
   const corpoDaResposta = interpretarJson(texto);
 
-  if (!resposta.ok) {
-    const envelope = corpoDaResposta.interpretou ? lerEnvelopeDeErro(corpoDaResposta.valor) : null;
-    const extra =
-      corpoDaResposta.interpretou && envelope !== null
-        ? extraDoEnvelope(corpoDaResposta.valor)
-        : {};
-    throw new ErroDaApi(envelope?.mensagem ?? mensagemPorEstado(resposta.status), {
-      estado: resposta.status,
-      codigo: envelope?.codigo ?? null,
-      extra,
-      cabecalhos: cabecalhosDaResposta(resposta.headers),
-    });
-  }
+  if (!resposta.ok) throw erroDeRecusa(resposta, corpoDaResposta);
 
   // Um 204 não tem corpo por definição (`POST /auth/logout`): o corpo vazio é
   // o que ele diz, não um JSON em falta — mas só para quem o pediu (`semCorpo`).
@@ -348,4 +359,57 @@ export async function pedir<T>(caminho: string, opcoes?: OpcoesDePedido): Promis
   }
 
   return corpoDaResposta.valor as T;
+}
+
+/**
+ * `DELETE` sem corpo de resposta (204). Existe para quem elimina (F4-05b: os clientes) não ter de
+ * escrever o método à mão, e fica aqui com o resto dos verbos do cliente. Não repete: um `DELETE`
+ * sem resposta é «não sei se foi eliminado», e decidir o que fazer é de quem chama.
+ */
+export async function pedirEliminacao(
+  caminho: string,
+  opcoes?: Pick<OpcoesDePedido, "sinal">,
+): Promise<void> {
+  await pedir<undefined>(caminho, { ...opcoes, metodo: "DELETE", semCorpo: true });
+}
+
+/** O que `pedirBytes` devolve: os bytes **tal como vieram** e os cabeçalhos da resposta. */
+export type RespostaEmBytes = {
+  estado: number;
+  bytes: Uint8Array;
+  cabecalhos: Headers;
+};
+
+/**
+ * Como `pedir`, mas para um ficheiro (F4-05b, o CSV dos clientes): um `200` resolve com os
+ * **bytes**, lidos por `arrayBuffer()` e nunca por `text()` — o descodificador de texto tira a BOM
+ * UTF-8, e o Excel português só abre bem os acentos com ela. Os mesmos três estados de `pedir`
+ * (sem resposta, o servidor recusou, cancelado); uma recusa lê o corpo como texto só para o
+ * envelope de erro. Quem chama decide se os bytes são o que esperava (tipo, tamanho, BOM).
+ */
+export async function pedirBytes(
+  caminho: string,
+  opcoes?: Pick<OpcoesDePedido, "sinal">,
+): Promise<RespostaEmBytes> {
+  const sinal = opcoes?.sinal;
+  const resposta = await enviar(caminho, opcoes);
+
+  if (!resposta.ok) {
+    throw erroDeRecusa(resposta, interpretarJson(await lerTexto(resposta, sinal)));
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await resposta.arrayBuffer());
+  } catch (erro) {
+    if (foiCancelado(erro, sinal)) throw erro;
+    // O prazo a meio do ficheiro: o ficheiro não chegou, é «sem resposta».
+    throw new ErroDaApi("A resposta do servidor cortou-se a meio. Tenta outra vez.", {
+      estado: foiPrazoEsgotado(erro, sinal) ? null : resposta.status,
+      codigo: null,
+      causa: erro,
+      cabecalhos: cabecalhosDaResposta(resposta.headers),
+    });
+  }
+  return { estado: resposta.status, bytes, cabecalhos: resposta.headers };
 }

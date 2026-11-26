@@ -2,28 +2,25 @@ import type { ReactElement } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Botao } from "../../components/ui/Botao";
-import { EstadoVazio } from "../../components/ui/EstadoVazio";
 import { sair } from "../../lib/api/auth";
 import { ErroDaApi } from "../../lib/api/cliente";
+import { ClientesGestao } from "./clientes/ClientesGestao";
+import { TEXTOS as TEXTOS_DOS_CLIENTES } from "./clientes/textos";
 import { DefinicoesGestao } from "./definicoes/DefinicoesGestao";
 import { TEXTOS as TEXTOS_DAS_DEFINICOES } from "./definicoes/textos";
 import { EmentaGestao } from "./ementa/EmentaGestao";
 import { EventosGestao } from "./eventos/EventosGestao";
 import { GaleriaGestao } from "./galeria/GaleriaGestao";
-import { DESTINOS, eCliqueSimples, navegar } from "./navegacao";
+import { InicioGestao } from "./inicio/InicioGestao";
+import { eCliqueSimples, navegar } from "./navegacao";
 import { armarPrazo } from "./prazo";
 
 /**
- * O conteúdo de cada destino (F4-01, secções 6 e 7).
- *
- * Nesta altura só o Início é vazio (a F4-05b preenche-o), e «Mais» tem «Definições» e «Sair».
- * Quando um destino ganha o seu ecrã, perde o `EstadoVazio` e fica só o `<h1>`. O `<h1>` é de
- * cada destino (`tabindex="-1"`, para receber o
- * foco ao mudar de destino — quem o move é o `AppGestao`).
+ * O conteúdo de cada destino (F4-01, secções 6 e 7). Todos os destinos têm já o seu ecrã (o
+ * Início, na F4-05b); «Mais» tem «Definições», «Clientes» e «Sair». O `<h1>` é de cada destino
+ * (`tabindex="-1"`, para receber o foco ao mudar de destino — quem o move é o `AppGestao`).
  */
 const TEXTOS = {
-  vazioTitulo: "Ainda não há nada aqui.",
-  vazioInicio: "Esta página não tem conteúdo nesta versão.",
   sair: "Sair",
   aSair: "A sair…",
   saiuSemResposta:
@@ -31,10 +28,6 @@ const TEXTOS = {
   saiuServidor:
     "Não consegui sair, por isso a sessão continua aberta. O problema é nosso, não da tua ligação. Tenta outra vez daqui a pouco.",
 } as const;
-
-const LINHA_DO_VAZIO: Record<string, string> = {
-  "/gestao": TEXTOS.vazioInicio,
-};
 
 function Titulo({ children }: { children: string }): ReactElement {
   return (
@@ -100,8 +93,8 @@ function Mais(): ReactElement {
     <>
       <Titulo>Mais</Titulo>
       <div className="flex flex-col items-start gap-4">
-        {/* A lista de «Mais» (F4-05a): a F4-05b junta-lhe «Clientes» e «Conta», e o
-            «Sair» passa então para «Conta». Uma linha inteira é a ligação. */}
+        {/* A lista de «Mais»: Definições (F4-05a) e Clientes (F4-05b); a F4-05c junta-lhe «Conta»
+            e o «Sair» passa então para lá. Uma linha inteira é a ligação. */}
         <ul className="superficie-painel w-full divide-y divide-fio-interno rounded-cartao border border-contorno-superficie">
           <li>
             <a
@@ -118,6 +111,24 @@ function Mais(): ReactElement {
               </span>
               <span className="text-nota text-texto-suave">
                 {TEXTOS_DAS_DEFINICOES.linhaDaLigacaoNoMais}
+              </span>
+            </a>
+          </li>
+          <li>
+            <a
+              href="/gestao/mais/clientes"
+              onClick={(evento) => {
+                if (!eCliqueSimples(evento)) return;
+                evento.preventDefault();
+                navegar("/gestao/mais/clientes");
+              }}
+              className="flex min-h-toque flex-col justify-center px-4 py-3"
+            >
+              <span className="text-corpo font-forte text-texto">
+                {TEXTOS_DOS_CLIENTES.linhaNoMais}
+              </span>
+              <span className="text-nota text-texto-suave">
+                {TEXTOS_DOS_CLIENTES.descricaoNoMais}
               </span>
             </a>
           </li>
@@ -147,18 +158,10 @@ function Mais(): ReactElement {
 export function Destino({ caminho }: { caminho: string }): ReactElement {
   if (caminho === "/gestao/mais") return <Mais />;
   if (caminho === "/gestao/mais/definicoes") return <DefinicoesGestao />;
+  if (caminho === "/gestao/mais/clientes") return <ClientesGestao />;
   if (caminho === "/gestao/ementa") return <EmentaGestao />;
   if (caminho === "/gestao/eventos") return <EventosGestao />;
   if (caminho === "/gestao/galeria") return <GaleriaGestao />;
 
-  const titulo = DESTINOS.find((destino) => destino.caminho === caminho)?.rotulo ?? "Início";
-  return (
-    <>
-      <Titulo>{titulo}</Titulo>
-      <EstadoVazio
-        titulo={TEXTOS.vazioTitulo}
-        linha={LINHA_DO_VAZIO[caminho] ?? TEXTOS.vazioInicio}
-      />
-    </>
-  );
+  return <InicioGestao />;
 }

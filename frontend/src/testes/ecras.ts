@@ -168,3 +168,24 @@ export const FICHEIROS_DA_F4_04 = [
   "src/pages/gestao/galeria/textos.ts",
   "src/lib/api/gestao-fotos.ts",
 ];
+
+/**
+ * O Início e os Clientes na gestão (F4-05b). Sentinelas: uma varredura que olha para pastas e não
+ * encontra os ficheiros novos devolve zero violações e passa (regra 10 do `CLAUDE.md`) — e
+ * `src/pages/gestao/inicio/` e `src/pages/gestao/clientes/` são pastas que ainda não existem, o
+ * caso exato. Entra nas varreduras de textos PT-PT (a palavra é «eliminar», nunca «apagar»;
+ * «ficheiro» e «descargas», nunca «arquivo» nem «downloads»), de build de produção («o público
+ * não importa a gestão»), de `sem-estilo-inline` e na do `fetch` só dentro do cliente. Quem
+ * acrescentar um ficheiro a estas pastas acrescenta-o aqui (é uma linha, e é a linha que faz as
+ * varreduras passarem a vê-lo).
+ */
+export const FICHEIROS_DA_F4_05B = [
+  "src/pages/gestao/inicio/InicioGestao.tsx",
+  "src/pages/gestao/inicio/textos.ts",
+  "src/pages/gestao/clientes/ClientesGestao.tsx",
+  "src/pages/gestao/clientes/LinhaDoCliente.tsx",
+  "src/pages/gestao/clientes/FolhaEliminarCliente.tsx",
+  "src/pages/gestao/clientes/textos.ts",
+  "src/lib/api/gestao-resumo.ts",
+  "src/lib/api/gestao-clientes.ts",
+];

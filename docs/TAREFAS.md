@@ -8,7 +8,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
-1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Clientes, conta e Início → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado → F4-09 Manutenção da galeria da gestão → F4-10 Folha e aviso partilhados.
+1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Início e Clientes → F4-05c Conta → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado → F4-09 Manutenção da galeria da gestão → F4-10 Folha e aviso partilhados.
 2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
@@ -455,13 +455,29 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Faz:** "Mais › Definições": rede e password do WiFi, horário por dia, morada, telefone, Instagram e link do Google Maps, com "Guardar alterações". Herda o contrato escrito na F2-05c (`PUT` com os sete campos numa só transação, `horario_estado`, `https://` no Maps e no Instagram, WiFi sem aparar as pontas).
 - **Feito quando:** mudar o WiFi aparece no site público sem deploy (e2e); um horário `invalido` (ADR 0011) é mostrado como tal e não como vazio; os erros aparecem junto do campo (`campo` do envelope); Q-04, Q-05.
 
-### F4-05b Clientes, conta e Início
+### F4-05b Início e Clientes
+
+**Decidido pelo Tomás em 2026-11-25:** a antiga "F4-05b Clientes, conta e Início" parte-se em F4-05b (Início e Clientes, que partilham o vazio até à F2-07) e F4-05c (Conta). Cada metade tem a sua superfície sensível e a sua revisão de segurança.
 
 - **Agentes:** ui-ux, dominio-bar, frontend, qa; revisor-seguranca obrigatório.
 - **Depende de:** F2-05 (F2-05b e F2-05c), F4-01.
-- **Faz:** clientes com exportar CSV e eliminar; "Mais › Conta" com mudar password (ADR 0019) e sair; ecrã Início com o resumo (fotos à espera, próximos eventos, novos registos dos últimos 7 dias).
-- **Feito quando:** eliminar um cliente pede confirmação numa folha; mudar a password termina as outras sessões e mantém esta; o Início leva à fila de fotos.
+- **Faz:** "Mais › Clientes" com a lista, exportar CSV e eliminar; ecrã Início com o resumo (fotos à espera, próximos eventos, novos registos dos últimos 7 dias). Só frontend: os endpoints e os testes de segurança já existem.
+- **Decidido pelo Tomás em 2026-11-25:**
+  - cada cliente mostra nome, email, telemóvel e data de consentimento; a versão dos termos e a data de inscrição ficam só no CSV;
+  - o vazio dos clientes e dos "novos registos" é uma frase que continua verdade depois da F2-07 (não diz que o formulário ainda não existe);
+  - no Início, os próximos eventos levam a Eventos, os novos registos a Clientes, e "Ir para a fila de fotos" só aparece com fotos à espera;
+  - a folha de eliminar cliente diz, numa linha, que um CSV já descarregado continua a ter o cliente;
+  - o CSV descarrega-se por um link `data:` com `download` (a CSP proíbe `blob:`), e o Tomás confirma a descarga num iPhone real antes do merge.
+- **Feito quando:** eliminar um cliente pede confirmação numa folha; o CSV descarregado tem os mesmos bytes que o servidor enviou (BOM incluída); o Início leva à fila de fotos.
 - **Nota:** sem a F2-07 não há inscritos, por isso a lista de clientes e os "novos registos" estão vazios até lá. O estado vazio tem de o dizer sem parecer avaria.
+
+### F4-05c Conta
+
+- **Agentes:** ui-ux, dominio-bar, frontend, qa; revisor-seguranca obrigatório.
+- **Depende de:** F4-05b (o ecrã "Mais"), F4-01.
+- **Faz:** "Mais › Conta" com o utilizador, mudar a password (ADR 0019) e sair. O "Sair" passa do "Mais" para a Conta, como a F4-01 previa. A regra do bloqueio (429) passa a ser partilhada com o Entrar.
+- **Decidido pelo Tomás em 2026-11-25:** a password nova pede-se num só campo com "Mostrar"; o ADR 0019 passa a aceite.
+- **Feito quando:** mudar a password termina as outras sessões e mantém esta, sem voltar ao login; uma resposta que não chega diz que a pessoa pode ter de entrar com a nova ou com a antiga.
 
 ### F4-06 Exceções ao horário
 
