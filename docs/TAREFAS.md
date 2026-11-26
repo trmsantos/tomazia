@@ -12,6 +12,8 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
+**Mudança decidida pelo Tomás em 2026-11-25:** o público passa à frente do resto da gestão. Depois da F4-05b (Início e Clientes), a ordem é F3-08 Logótipo e ícones → F3-06a Visita-nos → F3-09 Atalhos → F3-10 Galeria em slide, e só então a F4-05c Conta e o resto da gestão (F4-02b, F4-07, F4-08, F4-09, F4-10). O resto do público (F4-06, F3-07, F3-11, F2-07, F3-06b) mantém a ordem acima.
+
 Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografia real do bar, sem vídeo (ADR 0020); a galeria é um slide passado com o dedo, sem avanço automático (ADR 0021); a localização é um link "Abrir no Google Maps", sem mapa embutido.
 
 ## Fase 0: segurança no site atual (manual)
@@ -502,3 +504,4 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Depende de:** todas as anteriores (incluindo a F4-02b).
 - **Faz:** congelar o admin antigo; importação final; guardar cópia do PHP; apontar `WEB` para o `public_html`; atualizar o `.htaccess`; apagar os ficheiros PHP.
 - **Feito quando:** os QR codes impressos abrem a ementa nova; `/api/health` responde no domínio principal.
+- **F3-08:** no corte, `VITE_URL_PUBLICA` passa de `https://novo.bardatomazia.pt` para `https://bardatomazia.pt` nos workflows (`ci.yml` e `deploy.yml`) e volta-se a publicar; o endereço provisório não se partilha antes do corte (a pré-visualização ficaria em cache com ele).

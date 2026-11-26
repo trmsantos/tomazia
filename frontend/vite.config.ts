@@ -5,6 +5,8 @@ import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 
+import { resolverUrlPublica } from "./url-publica";
+
 /**
  * A marca que diz ao `tailwind.config.ts` que o CSS a ser gerado é o do
  * pacote público — e que, portanto, a página de demonstração fica de fora do
@@ -146,13 +148,24 @@ function servirMediaEmDesenvolvimento(): Plugin {
   };
 }
 
+function urlPublicaNoIndex(command: "build" | "serve"): Plugin {
+  const url = resolverUrlPublica(command);
+  return {
+    name: "tomazia-url-publica-no-index",
+    transformIndexHtml: {
+      order: "pre",
+      handler: (html) => html.replaceAll("%URL_PUBLICA%", url),
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   if (command === "build") {
     process.env[MARCA_DE_BUILD_PUBLICO] = "1";
   }
 
   return {
-    plugins: [react(), servirMediaEmDesenvolvimento()],
+    plugins: [react(), urlPublicaNoIndex(command), servirMediaEmDesenvolvimento()],
     server: {
       proxy: {
         // F2-09: em desenvolvimento, `/api/…` vai para o uvicorn da porta

@@ -71,6 +71,7 @@ import { gzipSync } from "node:zlib";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { RAIZ_FRONTEND, lerTexto } from "./testes/percorrer-arvore";
+import { URL_PUBLICA_DE_TESTE } from "./testes/marca";
 
 /**
  * Pasta própria, **fora do repositório**, e não `dist/`.
@@ -142,7 +143,7 @@ beforeAll(() => {
       timeout: TEMPO_DO_BUILD,
       // Ver o cabeçalho: sem isto, o Vitest empresta o seu `NODE_ENV=test`
       // ao Vite e o que se mede é o React de desenvolvimento.
-      env: { ...process.env, NODE_ENV: "production" },
+      env: { ...process.env, NODE_ENV: "production", VITE_URL_PUBLICA: URL_PUBLICA_DE_TESTE },
     });
   } catch (erro) {
     const detalhe = erro as { stdout?: string; stderr?: string; message?: string };

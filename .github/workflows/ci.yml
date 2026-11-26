@@ -158,6 +158,20 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      # F3-08: `src/marca/gerar-marca.test.ts` corre
+      # `uv run --project ../backend python ferramentas/gerar-marca.py`
+      # (Pillow vem do ambiente do backend). `uv sync --frozen` deixa o
+      # ambiente pronto e o lock intacto: o `uv run` fica sem nada a fazer
+      # e nunca re-resolve a rede a meio do teste.
+      - name: Instalar o uv (para o teste de gerar-marca)
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - name: uv sync --frozen (ambiente do backend, para o gerar-marca)
+        working-directory: backend
+        run: uv sync --frozen
+
       - name: lint
         run: npm run lint
 
@@ -168,6 +182,14 @@ jobs:
         run: npm test -- --run
 
       - name: build
+        env:
+          # F3-08: o build de produção exige o endereço público (o og:image
+          # é absoluto) e falha sem ele. Versionado aqui, e de propósito
+          # SÓ neste passo, não no job: os testes do job provam que o build
+          # falha sem a variável e não a podem herdar do ambiente.
+          # F5-02 (corte): passa de https://novo.bardatomazia.pt para
+          # https://bardatomazia.pt, aqui e no deploy.yml.
+          VITE_URL_PUBLICA: https://novo.bardatomazia.pt
         run: npm run build
 
       # Monta o pacote de deploy a sério (o mesmo deploy/montar.sh que o
