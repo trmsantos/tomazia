@@ -275,6 +275,9 @@ test("apple-touch-icon: opaco, bordo-noite nos cantos, logótipo de 144 px ao ce
 });
 
 test("og-image: bordo-noite liso, logótipo de 420 px centrado", async ({ page }) => {
+  // 1200×630 lidos num canvas: o teste mais pesado do ficheiro, e o único a
+  // passar dos 30 s com a máquina carregada. Triplica-se o prazo só aqui.
+  test.slow();
   const p = await ler(page, "/og-image.jpg");
   expect([p.largura, p.altura]).toEqual([1200, 630]);
   for (const [x, y] of [
