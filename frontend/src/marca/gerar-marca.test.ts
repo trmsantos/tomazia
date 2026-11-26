@@ -6,7 +6,17 @@
  * **Como:** corre o script duas vezes para duas pastas em `tmpdir()` (o script
  * aceita a pasta de saída como argumento; sem argumento escreve em
  * `public/`, como o PR o documenta) e compara os SHA-256 dos sete ficheiros:
- * 1.ª corrida == 2.ª corrida, e ambas == o que está versionado em `public/`.
+ * 1.ª corrida == 2.ª corrida (bytes), e a 1.ª == o que está versionado em
+ * `public/` **pelos píxeis descodificados**, não pelos bytes.
+ *
+ * Porque os bytes não servem para comparar com `public/`: os PNG (e o `.ico`,
+ * que leva PNG lá dentro) saem com bytes diferentes conforme a plataforma, por
+ * causa do zlib (medido: o `apple-touch-icon.png` e o `favicon.ico` gerados no
+ * Linux do CI não têm o SHA-256 dos gerados no macOS, e os três WebP, o
+ * `favicon-32.png` e o JPEG coincidem). Os píxeis é que são o desenho. A
+ * comparação é feita pelo próprio script (`--comparar <a> <b>`, com o Pillow),
+ * que descodifica cada ficheiro e cada imagem do `.ico` e sai com 1 e a lista
+ * do que difere. Duas corridas na mesma máquina continuam a dar bytes iguais.
  * **Nunca escreve em `public/`**: outros testes leem-no e fazem `vite build`
  * (que o copia) em paralelo, e reescrevê-lo daqui dava leituras truncadas.
  *
@@ -16,7 +26,7 @@
  * falhar: não se salta em silêncio.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -46,6 +56,19 @@ function impressoes(pastaBase: string): Record<string, string> {
   return resultado;
 }
 
+function correrScript(argumentos: string[]): { estado: number | null; saida: string } {
+  const resultado = spawnSync(
+    "uv",
+    ["run", "--project", "../backend", "python", "ferramentas/gerar-marca.py", ...argumentos],
+    { cwd: RAIZ_FRONTEND, encoding: "utf-8", timeout: 120_000 },
+  );
+  expect(
+    resultado.error?.message ?? "",
+    "não consegui lançar o `uv` (não está no PATH?): é falha de ambiente, não do script",
+  ).toBe("");
+  return { estado: resultado.status, saida: `${resultado.stdout}\n${resultado.stderr}` };
+}
+
 function correrPara(pasta: string): void {
   const resultado = spawnSync(
     "uv",
@@ -71,7 +94,6 @@ describe("ferramentas/gerar-marca.py", () => {
   it("gera os sete ficheiros com os mesmos bytes que estão versionados, duas vezes seguidas", () => {
     expect(existsSync(SCRIPT), "o script não existe: não há nada para correr").toBe(true);
 
-    const versionado = impressoes(join(RAIZ_FRONTEND, "public"));
     const primeiraPasta = mkdtempSync(join(tmpdir(), "tomazia-marca-1-"));
     const segundaPasta = mkdtempSync(join(tmpdir(), "tomazia-marca-2-"));
     pastas.push(primeiraPasta, segundaPasta);
@@ -87,10 +109,26 @@ describe("ferramentas/gerar-marca.py", () => {
     expect(segunda, "duas corridas deram bytes diferentes: o script não é reprodutível").toEqual(
       primeira,
     );
+
+    const comparacao = correrScript(["--comparar", primeiraPasta, join(RAIZ_FRONTEND, "public")]);
     expect(
-      primeira,
-      "os ficheiros de public/ não são o que o script gera agora: alguém os editou à mão " +
-        "ou esqueceu-se de os voltar a gerar",
-    ).toEqual(versionado);
+      comparacao.estado,
+      "os píxeis de public/ não são o que o script gera agora: alguém os editou à mão " +
+        `ou esqueceu-se de os voltar a gerar:\n${comparacao.saida}`,
+    ).toBe(0);
+  }, 300_000);
+
+  it("o comparador de píxeis vê uma diferença (senão o «igual» não prova nada)", () => {
+    const pasta = mkdtempSync(join(tmpdir(), "tomazia-marca-3-"));
+    pastas.push(pasta);
+    correrPara(pasta);
+    // Um logótipo trocado por outro tamanho de pixéis, e um ficheiro em falta.
+    copyFileSync(join(pasta, "marca", "logo-88.webp"), join(pasta, "marca", "logo-44.webp"));
+    rmSync(join(pasta, "og-image.jpg"));
+
+    const comparacao = correrScript(["--comparar", pasta, join(RAIZ_FRONTEND, "public")]);
+    expect(comparacao.estado).toBe(1);
+    expect(comparacao.saida).toContain("logo-44.webp");
+    expect(comparacao.saida).toContain("og-image.jpg");
   }, 300_000);
 });

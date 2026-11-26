@@ -579,6 +579,19 @@ const SO_OS_TEMPORIZADORES: Parameters<typeof vi.useFakeTimers>[0] = {
   toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
 };
 
+/** Os `setTimeout` vivos no relógio falso (sem o intervalo de desenho do jsdom). */
+function temporizadoresDoTipoTimeout(): { delay: number }[] {
+  const relogio = (
+    globalThis.setTimeout as unknown as {
+      clock?: { timers?: Map<number, { type: string; delay: number }> | null };
+    }
+  ).clock;
+  // `timers` só existe depois do primeiro temporizador; sem `clock` o relógio
+  // não é o falso, e aí falha-se alto em vez de contar zero.
+  if (relogio === undefined) throw new Error("o relógio não é o falso: sem temporizadores a ler");
+  return [...(relogio.timers ?? new Map()).values()].filter((t) => t.type === "Timeout");
+}
+
 describe("429 — o prazo, com relógio falso", () => {
   async function bloqueado(segundos: number): Promise<void> {
     vi.useFakeTimers();
@@ -626,11 +639,20 @@ describe("429 — o prazo, com relógio falso", () => {
     const intervalo = vi.spyOn(globalThis, "setInterval");
     vi.useFakeTimers(SO_OS_TEMPORIZADORES);
     render(<Entrar />);
-    const antes = vi.getTimerCount();
+    const antes = temporizadoresDoTipoTimeout();
 
     await falharCom(erro429({ segundos_em_falta: 900 }));
 
-    expect(vi.getTimerCount() - antes, "um setTimeout para o prazo").toBe(1);
+    // `vi.getTimerCount()` não serve: conta também o intervalo de 16 ms com que
+    // o próprio jsdom desenha (`runAnimationFrameCallbacks`), que arranca com o
+    // primeiro `focus()` e que o jsdom guarda numa referência sua, por isso o
+    // `intervalo` acima não o vê. O relógio falso apanha-o, e conforme o
+    // momento está ou não ativo: daí o «2 em vez de 1», intermitente. O que o
+    // teste prova é sobre o Entrar: um só `setTimeout` vivo, para o prazo, e
+    // nenhum `setInterval` chamado por ele.
+    const depois = temporizadoresDoTipoTimeout();
+    expect(depois.length - antes.length, "um setTimeout para o prazo").toBe(1);
+    expect(depois.at(-1)?.delay, "o do bloqueio, de 900 s").toBe(900_000);
     expect(intervalo).not.toHaveBeenCalled();
   });
 
@@ -654,12 +676,14 @@ describe("429 — o prazo, com relógio falso", () => {
   it("ao desmontar, o temporizador sai", async () => {
     vi.useFakeTimers(SO_OS_TEMPORIZADORES);
     const { unmount } = render(<Entrar />);
-    const antes = vi.getTimerCount();
+    const antes = temporizadoresDoTipoTimeout().length;
     await falharCom(erro429({ segundos_em_falta: 900 }));
+    expect(temporizadoresDoTipoTimeout().length, "guarda: o do bloqueio existe").toBe(antes + 1);
 
     unmount();
 
-    expect(vi.getTimerCount()).toBeLessThanOrEqual(antes);
+    // Só `setTimeout`s: o intervalo de desenho do jsdom (16 ms) não é nosso.
+    expect(temporizadoresDoTipoTimeout().length).toBeLessThanOrEqual(antes);
   });
 });
 

@@ -13,6 +13,7 @@ Especificação: `docs/ecras/F3-08.md`, secções 1 e 3. A faixa transparente en
 o aro e o disco interior enche-se de creme (`creme-papel`), e o logótipo
 recorta-se em círculo de raio 105,5 (um pixel por dentro do aro).
 
+Com `--comparar A B` compara duas pastas pelos píxeis (ver `comparar`).
 Com um argumento escreve nessa pasta (os testes usam-no, para nunca
 reescreverem `public/` enquanto outros testes o leem).
 
@@ -115,8 +116,79 @@ def main(saida: Path) -> None:
     )
 
 
+FICHEIROS = [
+    "marca/logo-44.webp",
+    "marca/logo-88.webp",
+    "marca/logo-132.webp",
+    "favicon.ico",
+    "favicon-32.png",
+    "apple-touch-icon.png",
+    "og-image.jpg",
+]
+
+
+def imagens_de(caminho: Path) -> dict[str, tuple[str, tuple[int, int], bytes]]:
+    """Cada imagem do ficheiro, descodificada: (modo, tamanho, píxeis).
+
+    Um `.ico` tem várias; as chaves são `<nome>` ou `<nome>@LxA`.
+    """
+    resultado: dict[str, tuple[str, tuple[int, int], bytes]] = {}
+    with Image.open(caminho) as aberta:
+        if aberta.format == "ICO":
+            tamanhos = sorted(aberta.ico.sizes())
+            for tamanho in tamanhos:
+                imagem = aberta.ico.getimage(tamanho)
+                resultado[f"{caminho.name}@{tamanho[0]}x{tamanho[1]}"] = (
+                    imagem.mode,
+                    imagem.size,
+                    imagem.tobytes(),
+                )
+        else:
+            aberta.load()
+            resultado[caminho.name] = (aberta.mode, aberta.size, aberta.tobytes())
+    return resultado
+
+
+def comparar(pasta_a: Path, pasta_b: Path) -> int:
+    """Compara os sete ficheiros pelos píxeis. Sai com 1 e a lista do que difere.
+
+    Porquê píxeis e não bytes: o zlib dos PNG (também dentro do `.ico`) comprime
+    de maneira diferente de uma plataforma para outra (macOS e Linux deram
+    bytes diferentes para os mesmos píxeis), e um teste por bytes só passava
+    onde os ficheiros foram gerados. Um ficheiro em falta ou ilegível é uma
+    diferença, nunca um «igual» (regra 10).
+    """
+    diferencas: list[str] = []
+    for nome in FICHEIROS:
+        lidas = []
+        for pasta in (pasta_a, pasta_b):
+            caminho = pasta / nome
+            try:
+                lidas.append(imagens_de(caminho))
+            except Exception as erro:  # noqa: BLE001 - qualquer falha de leitura é diferença
+                diferencas.append(f"{nome}: não consegui ler {caminho}: {erro!r}")
+                lidas.append(None)
+        a, b = lidas
+        if a is None or b is None:
+            continue
+        if a.keys() != b.keys():
+            diferencas.append(f"{nome}: imagens {sorted(a)} != {sorted(b)}")
+            continue
+        for chave in a:
+            if a[chave][:2] != b[chave][:2]:
+                diferencas.append(f"{chave}: modo/tamanho {a[chave][:2]} != {b[chave][:2]}")
+            elif a[chave][2] != b[chave][2]:
+                n = sum(x != y for x, y in zip(a[chave][2], b[chave][2], strict=True))
+                diferencas.append(f"{chave}: {n} bytes de píxeis diferentes")
+    for linha in diferencas:
+        print(linha)
+    return 1 if diferencas else 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "--comparar":
+        raise SystemExit(comparar(Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()))
     # Sem argumentos escreve em `frontend/public/`; com um, na pasta dada.
     if len(sys.argv) > 2:
-        raise SystemExit("uso: gerar-marca.py [pasta-de-saida]")
+        raise SystemExit("uso: gerar-marca.py [pasta-de-saida] | --comparar <pasta-a> <pasta-b>")
     main(Path(sys.argv[1]).resolve() if len(sys.argv) == 2 else PUBLIC)
