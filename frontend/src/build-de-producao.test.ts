@@ -41,6 +41,7 @@ import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { COMPONENTES_DA_F3_01 } from "./testes/componentes";
+import { URL_PUBLICA_DE_TESTE } from "./testes/marca";
 import {
   FICHEIROS_DA_F3_05,
   FICHEIROS_DA_F4_01,
@@ -79,6 +80,9 @@ beforeAll(() => {
       encoding: "utf-8",
       stdio: "pipe",
       timeout: TEMPO_DO_BUILD,
+      // O build de produção exige VITE_URL_PUBLICA (F3-08): quem corre `npm test`
+      // não a exporta, por isso o teste dá-lhe um valor.
+      env: { ...process.env, VITE_URL_PUBLICA: URL_PUBLICA_DE_TESTE },
     });
   } catch (erro) {
     const detalhe = erro as { stdout?: string; stderr?: string; message?: string };

@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { URL_PUBLICA_DE_TESTE } from "../../src/testes/marca";
+
 /**
  * Servir **o build de produção** com **a CSP de produção** (F4-04, decisão D6).
  *
@@ -86,7 +88,7 @@ export async function construirEServir(): Promise<ServidorComCsp> {
   try {
     execFileSync(process.execPath, [vite, "build", "--outDir", pasta, "--emptyOutDir"], {
       cwd: RAIZ_FRONTEND,
-      env: { ...process.env, NODE_ENV: "production" },
+      env: { ...process.env, NODE_ENV: "production", VITE_URL_PUBLICA: URL_PUBLICA_DE_TESTE },
       stdio: "pipe",
       timeout: 180_000,
     });
