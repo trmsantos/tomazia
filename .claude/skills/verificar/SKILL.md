@@ -20,7 +20,7 @@ Frontend, em `frontend/`:
 7. `npm run lint`
 8. `npm run typecheck`
 9. `npm test -- --run`
-10. `npm run build`
+10. `VITE_URL_PUBLICA=https://novo.bardatomazia.pt npm run build` (o build falha sem a variável; F3-08)
 11. `npm run size`
 
 Contrato:
