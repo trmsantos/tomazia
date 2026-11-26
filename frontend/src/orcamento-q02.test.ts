@@ -115,8 +115,16 @@ const TEMPO_DO_BUILD = 240_000;
  * 80 962: é o sinal de revisão, recalibrado com o custo real e não com a
  * estimativa. O critério Q-02 a sério são os 100 kB do `size-limit`, e continua
  * folgado.
+ *
+ * **86 000 bytes (F3-06a, Visita-nos; decisão do Tomás, 26 de novembro de
+ * 2026).** A secção traz o cálculo do horário em hora de Lisboa, os textos da
+ * linha do momento, as ligações de contacto e o `useMomento`, e o `App.tsx` passou
+ * a ter a tentativa repetível do `/info`. Medido com a mesma conta deste
+ * ficheiro: **85 420 bytes** (o `size-limit` dá 85,23 kB; era 82,33 kB em
+ * `main`). 86 000 deixa cerca de 580 bytes de folga sobre a medida, o sinal de
+ * revisão do costume; o critério Q-02 a sério são os 100 kB do `size-limit`.
  */
-const TECTO_DO_PACOTE_PUBLICO = 83_000;
+const TECTO_DO_PACOTE_PUBLICO = 86_000;
 
 /**
  * Uma frase que só existe no ecrã da ementa.

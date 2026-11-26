@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
+import { ErroDaApi } from "./lib/api/cliente";
 import { obterInfo } from "./lib/api/publico";
 import { Cabecalho } from "./pages/publico/Cabecalho";
-import type { EstadoDoInfo } from "./pages/publico/Cabecalho";
 import { Ementa } from "./pages/publico/Ementa";
 import { Eventos } from "./pages/publico/Eventos";
 import { Galeria } from "./pages/publico/Galeria";
+import { VisitaNos } from "./pages/publico/VisitaNos";
+import type { EstadoDaSeccao } from "./pages/publico/VisitaNos";
 
 /**
  * A página pública (F3-02, secção 2; F3-03, secção 2).
@@ -34,15 +36,27 @@ import { Galeria } from "./pages/publico/Galeria";
  * forma proibida está escrita no `Cabecalho.tsx`, ao lado do tipo.
  */
 function App(): ReactElement {
-  const [info, setInfo] = useState<EstadoDoInfo>({ estado: "a-carregar" });
+  /*
+   * O mesmo estado vai para o cabeçalho e para a secção «Visita-nos» (F3-06a,
+   * 2.3). O `falhou` traz o estado HTTP do erro — `null` quando não houve
+   * resposta — para a secção escolher a linha do erro; não é payload, e o
+   * cabeçalho, que só olha para o `estado`, não precisa de o saber.
+   */
+  const [info, setInfo] = useState<EstadoDaSeccao>({ estado: "a-carregar" });
+  const [tentativa, setTentativa] = useState(0);
+  // Quem espera pelo fim da tentativa em curso (o «A tentar…» da secção).
+  const aoAcabar = useRef<(() => void) | null>(null);
 
+  /*
+   * O pedido é cancelado ao desmontar, e isso não é higiene abstrata: em
+   * `React.StrictMode` os efeitos correm duas vezes em desenvolvimento, e
+   * sem isto ficavam dois `/info` no ar — numa rota que é `no-store` de
+   * propósito e numa ligação de dados móveis. É o mesmo que a `Ementa` faz.
+   *
+   * O «Tentar outra vez» muda a `tentativa` e **não** volta a `a-carregar`:
+   * isso fazia a secção piscar para o esqueleto e o foco perder-se.
+   */
   useEffect(() => {
-    /*
-     * O pedido é cancelado ao desmontar, e isso não é higiene abstrata: em
-     * `React.StrictMode` os efeitos correm duas vezes em desenvolvimento, e
-     * sem isto ficavam dois `/info` no ar — numa rota que é `no-store` de
-     * propósito e numa ligação de dados móveis. É o mesmo que a `Ementa` faz.
-     */
     const cancelamento = new AbortController();
     let montado = true;
 
@@ -50,7 +64,7 @@ function App(): ReactElement {
       try {
         const resposta = await obterInfo({ sinal: cancelamento.signal });
         if (montado) setInfo({ estado: "pronto", info: resposta });
-      } catch {
+      } catch (erro) {
         // "Não consegui perguntar" fica a ser isso mesmo. Reescrevê-lo como
         // `{ wifi: { rede: null … } }` seria o site a **afirmar** que não há
         // WiFi, morada, telefone nem horário — e a F3-06 herda estes estados
@@ -58,7 +72,22 @@ function App(): ReactElement {
         //
         // O `montado` é o que impede o cancelamento de passar por falha: um
         // pedido que **nós** abortámos não é uma resposta que não chegou.
-        if (montado) setInfo({ estado: "falhou" });
+        //
+        // O estado HTTP é o que a secção usa para escolher a linha do erro
+        // (F3-06a, 2.3); `null` é «não houve resposta» (rede, DNS, prazo, ou
+        // um erro que nem é da API). Não é payload: o falhado continua a não
+        // trazer informação nenhuma.
+        if (montado) {
+          setInfo({
+            estado: "falhou",
+            estadoHttp: erro instanceof ErroDaApi ? erro.estado : null,
+          });
+        }
+      } finally {
+        if (montado) {
+          aoAcabar.current?.();
+          aoAcabar.current = null;
+        }
       }
     }
 
@@ -68,7 +97,19 @@ function App(): ReactElement {
       montado = false;
       cancelamento.abort();
     };
-  }, []);
+  }, [tentativa]);
+
+  // Cumpre-se quando a tentativa acaba, bem ou mal; nunca rejeita.
+  const tentarOutraVez = useCallback(
+    () =>
+      new Promise<void>((cumprir) => {
+        // Cumpre a promessa anterior antes de a substituir: ninguém fica à espera para sempre.
+        aoAcabar.current?.();
+        aoAcabar.current = cumprir;
+        setTentativa((anterior) => anterior + 1);
+      }),
+    [],
+  );
 
   return (
     <>
@@ -105,6 +146,12 @@ function App(): ReactElement {
          * desaparece — o seu próprio `<h2>` existe nos seis estados dela.
          */}
         <Galeria />
+        {/*
+         * «Visita-nos» fecha a página (F3-06a, 2.1). Pode não existir: sem
+         * horário nem contactos configurados não há título, nem espaço, nem
+         * secção. O `<main>` já desconta o cabeçalho; esta não o volta a fazer.
+         */}
+        <VisitaNos info={info} aoTentarOutraVez={tentarOutraVez} />
       </main>
     </>
   );

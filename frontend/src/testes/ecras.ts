@@ -189,3 +189,20 @@ export const FICHEIROS_DA_F4_05B = [
   "src/lib/api/gestao-resumo.ts",
   "src/lib/api/gestao-clientes.ts",
 ];
+
+/**
+ * A secção «Visita-nos» e o que ela traz (F3-06a, 9, Q-05): o ecrã, os textos,
+ * os nomes e a escrita da hora, e as ligações de contacto.
+ *
+ * Três caminhos novos, dois em pastas novas (`src/lib/horario/`,
+ * `src/lib/ligacoes/`): sem estas entradas, uma varredura de texto que passasse
+ * a olhar para `src/lib/` cobria-as a meio, e a frase «Fechado» — a única que o
+ * site nunca pode escrever por omissão — ficava sem varredura (regra 10).
+ */
+export const FICHEIROS_DA_F3_06A = [
+  "src/pages/publico/VisitaNos.tsx",
+  "src/pages/publico/textos-do-visita-nos.ts",
+  "src/lib/horario/nomes-e-textos.ts",
+  "src/lib/horario/estado-do-horario.ts",
+  "src/lib/ligacoes/contactos.ts",
+];

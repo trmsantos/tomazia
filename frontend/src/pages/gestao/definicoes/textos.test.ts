@@ -241,13 +241,19 @@ describe("os dias e as frases que os levam", () => {
     expect(DIAS_PELA_ORDEM.map((dia) => nomeDoDia(dia))).toEqual(NOMES.map(([, nome]) => nome));
   });
 
-  it("«onde aparece»: duas frases completas, no singular e no plural", () => {
-    expect(TEXTOS.ondeApareceHorario).toBe(
-      "Vai aparecer na página Visita-nos, que ainda não existe no site.",
-    );
+  it("«onde aparece»: duas frases completas, no singular e no plural (F3-06a, 9.1)", () => {
+    // A versão de transição («Vai aparecer na página Visita-nos, que ainda não
+    // existe no site.») acabou com a F3-06a: a secção existe e está na mesma
+    // página que a ementa, por isso a frase deixa de dizer «página» e de
+    // prometer. Sem posição («no fim da página»): as secções podem mudar de
+    // ordem e a frase passava a ser falsa (docs/ecras/F3-06a.md, 9.1).
+    expect(TEXTOS.ondeApareceHorario).toBe("Aparece na secção Visita-nos do site.");
     expect(TEXTOS.ondeApareceContactos).toBe(
-      "Vão aparecer na página Visita-nos, que ainda não existe no site. Deixa um campo vazio para o esconder.",
+      "Aparecem na secção Visita-nos do site. Deixa um campo vazio para o esconder.",
     );
+    for (const frase of [TEXTOS.ondeApareceHorario, TEXTOS.ondeApareceContactos]) {
+      expect(frase).not.toMatch(/ainda não existe|página|no fim/);
+    }
     expect(ONDE_APARECE_VISITA_NOS.singular).toBe(TEXTOS.ondeApareceHorario);
     expect(ONDE_APARECE_VISITA_NOS.plural).toBe(TEXTOS.ondeApareceContactos);
   });
