@@ -24,8 +24,9 @@
 # final (F5-02) — mudar o site de sítio passa a ser editar um ficheiro no
 # servidor, nunca um commit.
 #
-# Ordem (provada pelos testes com o registo dos stubs): `pip install` corre
-# ANTES da sincronização do código (não depende dele); a sincronização do
+# Ordem (provada pelos testes com o registo dos stubs): o trinco contra
+# deploys em paralelo é o primeiro passo (ver `tomar_trinco`); `pip install`
+# corre ANTES da sincronização do código (não depende dele); a sincronização do
 # código e do frontend vêm a seguir; o `.env` é verificado outra vez depois
 # de todas as sincronizações, antes de `alembic`, porque nenhuma delas pode
 # apagar o `.env` a caminho de reiniciar a app com configuração em falta;
@@ -78,6 +79,169 @@ em_erro() {
   exit "$codigo"
 }
 trap em_erro ERR
+
+# ---------------------------------------------------------------------------
+# Trinco contra deploys em paralelo.
+#
+# Porquê: no primeiro deploy real, dois cliques em "Deploy HEAD Commit"
+# puseram dois `deploy.sh` a correr ao mesmo tempo, os dois a apagar e a
+# copiar nas mesmas pastas e os dois a caminho do `alembic`. O cPanel não
+# os serializa, por isso é o script que tem de o fazer — e é o primeiro
+# passo de todos, antes de qualquer leitura ou escrita.
+#
+# `mkdir` e não `flock`: o `mkdir` é atómico (dois `mkdir` da mesma pasta,
+# ao mesmo tempo, dão exatamente um sucesso) e existe sempre; o `flock`
+# pode não estar dentro do CageFS, e um guarda que dependesse dele tinha de
+# ter um segundo caminho para quando não está — dois caminhos, um deles
+# nunca testado.
+#
+# Lá dentro fica o PID do dono. Um deploy morto à força (`kill -9`, o
+# cPanel a matar a tarefa por tempo) não chega a libertar o trinco; o
+# seguinte vê que esse PID já não existe e recupera-o, dizendo-o na saída.
+# O que NUNCA faz é tratar "não consegui saber se o dono está vivo" como
+# "está morto" (regra 10): esse caso recusa, com uma mensagem à parte.
+#
+# Limite conhecido: se o PID do deploy morto tiver entretanto sido
+# reutilizado por outro processo da mesma conta, o trinco parece vivo e o
+# deploy recusa. A mensagem diz o PID e o caminho do trinco, para se
+# confirmar com `ps` e apagar à mão. Recusar a mais é o lado seguro.
+# ---------------------------------------------------------------------------
+
+TRINCO="$HOME/.tomazia-deploy.trinco"
+TRINCO_MEU=0
+
+libertar_trinco() {
+  if [ "$TRINCO_MEU" -ne 1 ]; then
+    return 0
+  fi
+  TRINCO_MEU=0
+  if ! rm -f -- "$TRINCO/pid" || ! rmdir -- "$TRINCO"; then
+    echo "deploy.sh: não consegui libertar o trinco ${TRINCO}. Como este processo vai terminar, o próximo deploy encontra-o abandonado e recupera-o sozinho." >&2
+  fi
+}
+# Os sinais passam a `exit`, para o trap EXIT correr também quando o
+# deploy é interrompido. O bash com que isto foi testado já corre o trap
+# EXIT ao morrer por SIGTERM sem estas linhas (o teste do SIGTERM passa
+# sem elas), mas isso não está garantido em todas as versões, e escrito
+# assim não depende de nenhuma. O `kill -9` não se apanha, e é para esse
+# que existe a recuperação.
+trap libertar_trinco EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# estado_do_processo <pid>
+# Escreve "vivo", "morto" ou "indeterminado". O `kill -0` sai com erro
+# tanto se o processo não existe como se existe mas é de outro utilizador
+# — por isso o código de saída não chega, e lê-se a mensagem, em
+# `LC_ALL=C` para não depender da língua do servidor. Só "No such process"
+# é "morto"; tudo o resto que não seja sucesso é "indeterminado".
+estado_do_processo() {
+  local erro
+  if erro=$(
+    export LC_ALL=C
+    kill -0 "$1" 2>&1
+  ); then
+    echo "vivo"
+    return 0
+  fi
+  case "$erro" in
+    *"No such process"*) echo "morto" ;;
+    *) echo "indeterminado" ;;
+  esac
+}
+
+# escrever_pid_no_trinco
+# Só depois de o `mkdir` ter dado certo: a partir daqui o trinco é deste
+# processo e o trap EXIT liberta-o, aconteça o que acontecer.
+escrever_pid_no_trinco() {
+  TRINCO_MEU=1
+  if ! printf '%s\n' "$$" >"$TRINCO/pid"; then
+    echo "deploy.sh: tomei o trinco ${TRINCO} mas não consegui escrever lá o PID. Recuso continuar. Nada foi alterado." >&2
+    exit 1
+  fi
+}
+
+tomar_trinco() {
+  local pid_dono estado abandonado pid_movido
+
+  if mkdir -- "$TRINCO" 2>/dev/null; then
+    escrever_pid_no_trinco
+    return 0
+  fi
+
+  # O `mkdir` falhou. Regra 10: ou o trinco já existe (resposta), ou não o
+  # consegui criar por outra razão (avaria: permissões, um ficheiro com o
+  # mesmo nome). Nunca a mesma mensagem.
+  if [ -L "$TRINCO" ] || [ ! -d "$TRINCO" ]; then
+    echo "deploy.sh: não consegui criar o trinco ${TRINCO}, e o que lá está não é uma pasta de trinco (ou não há nada e o mkdir falhou por outra razão). Recuso continuar sem trinco. Nada foi alterado." >&2
+    exit 1
+  fi
+
+  if [ ! -f "$TRINCO/pid" ]; then
+    echo "deploy.sh: o trinco ${TRINCO} existe mas não tem PID lá dentro. Ou outro deploy está a arrancar neste preciso momento, ou um deploy morreu entre criar o trinco e escrever o PID. Se tem a certeza de que nenhum deploy está a correr, apague a pasta à mão (rm -r ${TRINCO}) e volte a pedir o deploy. Nada foi alterado." >&2
+    exit 1
+  fi
+  if ! pid_dono=$(cat -- "$TRINCO/pid"); then
+    echo "deploy.sh: não consegui ler ${TRINCO}/pid. Recuso continuar sem saber quem tem o trinco. Nada foi alterado." >&2
+    exit 1
+  fi
+  if ! [[ "$pid_dono" =~ ^[1-9][0-9]{0,9}$ ]]; then
+    echo "deploy.sh: ${TRINCO}/pid não tem um PID válido ('${pid_dono}'). Se tem a certeza de que nenhum deploy está a correr, apague a pasta à mão (rm -r ${TRINCO}). Nada foi alterado." >&2
+    exit 1
+  fi
+
+  estado=$(estado_do_processo "$pid_dono")
+  case "$estado" in
+    vivo)
+      echo "deploy.sh: outro deploy está a correr (PID ${pid_dono}, trinco ${TRINCO}). Esta corrida termina aqui, sem tocar em nada. Espere que o outro acabe; não carregue outra vez no Deploy." >&2
+      exit 1
+      ;;
+    morto) ;;
+    *)
+      echo "deploy.sh: o trinco ${TRINCO} é do PID ${pid_dono}, e não consegui saber se esse processo ainda existe (o kill -0 falhou por outra razão que não 'não existe'). Recuso continuar. Nada foi alterado." >&2
+      exit 1
+      ;;
+  esac
+
+  # Recuperar: primeiro tira-se o trinco abandonado do caminho com um `mv`
+  # (atómico), e só depois se confirma que o que se tirou era mesmo o do
+  # PID morto. Se dois deploys virem o mesmo trinco abandonado ao mesmo
+  # tempo, só um `mv` encontra a pasta; e se o outro já tiver recuperado e
+  # criado um trinco novo, o PID lá dentro já não é o morto e devolve-se.
+  echo "deploy.sh: o trinco ${TRINCO} foi abandonado pelo PID ${pid_dono}, que já não existe (um deploy anterior morreu sem o libertar). A recuperá-lo."
+  abandonado="${TRINCO}.abandonado.$$"
+  if ! mv -- "$TRINCO" "$abandonado" 2>/dev/null; then
+    if [ -d "$TRINCO" ]; then
+      echo "deploy.sh: não consegui mover o trinco abandonado ${TRINCO} (o mv falhou e a pasta continua lá). Recuso continuar. Nada foi alterado." >&2
+    else
+      echo "deploy.sh: outro deploy está a correr: recuperou o trinco abandonado ${TRINCO} antes desta corrida. Esta corrida termina aqui, sem tocar em nada." >&2
+    fi
+    exit 1
+  fi
+  pid_movido=$(cat -- "$abandonado/pid" 2>/dev/null || true)
+  if [ "$pid_movido" != "$pid_dono" ]; then
+    if [ ! -e "$TRINCO" ] && mv -- "$abandonado" "$TRINCO"; then
+      echo "deploy.sh: outro deploy está a correr: recuperou o trinco abandonado primeiro (PID ${pid_movido}). Devolvi-lhe o trinco; esta corrida termina aqui, sem tocar em nada." >&2
+    else
+      echo "deploy.sh: outro deploy está a correr (PID ${pid_movido}), e não consegui devolver-lhe o trinco, que ficou em ${abandonado}. Esta corrida termina aqui, sem tocar em mais nada." >&2
+    fi
+    exit 1
+  fi
+  if ! rm -rf -- "$abandonado"; then
+    echo "deploy.sh: não consegui apagar o trinco abandonado, que ficou em ${abandonado}. Recuso continuar. Nada foi alterado." >&2
+    exit 1
+  fi
+  if ! mkdir -- "$TRINCO" 2>/dev/null; then
+    echo "deploy.sh: outro deploy está a correr: tomou o trinco ${TRINCO} logo a seguir à recuperação. Esta corrida termina aqui, sem tocar em nada." >&2
+    exit 1
+  fi
+  escrever_pid_no_trinco
+  echo "deploy.sh: trinco recuperado; este deploy continua."
+}
+
+PASSO_ATUAL="a tomar o trinco (${TRINCO})"
+tomar_trinco
 
 # versao_valida <texto>
 # Mesma regra que `backend/app/versao.py` aceita ao ler `VERSION`: se o
