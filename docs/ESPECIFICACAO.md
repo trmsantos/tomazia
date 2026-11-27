@@ -116,20 +116,22 @@ ou uma tabela de tentativas por IP.
 
 | Token | Hex | Uso |
 | --- | --- | --- |
-| bordo-noite | `#3D0F24` | Fundo base |
-| bordo-vinho | `#4A1830` | Superfícies: cabeçalho, folhas, painéis |
-| bordo-tomazia | `#5D1F3A` | Marca; títulos e preços sobre creme |
-| dourado-latao | `#D4AF37` | Ação principal, chip ativo, foco. Nunca sobre creme (1,7:1) |
-| creme-papel | `#F5E6D3` | Texto no escuro; fundo dos cartões da ementa |
-| creme-sombra | `#D9C3AE` | Texto secundário no escuro |
+| bordo-noite | `#3D0F24` | Texto e ação principal sobre creme; fundo da barra de baixo e do rodapé; fundo base enquanto uma página for escura |
+| bordo-vinho | `#4A1830` | Superfícies sobre o escuro: folhas, painéis |
+| bordo-tomazia | `#5D1F3A` | Marca; cartão de destaque; títulos, preços e contornos sobre creme |
+| dourado-latao | `#D4AF37` | Ação principal do ecrã, foco no escuro. Sobre creme, só com borda de 1,5 px bordo-noite |
+| creme-papel | `#F5E6D3` | Fundo das páginas; texto no escuro |
+| creme-sombra | `#D9C3AE` | Texto secundário no escuro; linha por baixo dos cartões |
 | sucesso / erro (escuro) | `#7FB77E` / `#E07A5F` | Estados sobre bordô |
 | sucesso / erro (creme) | `#4F6B2E` / `#A63D2A` | Estados sobre creme |
 
-- Tipografia: Playfair Display 700 em títulos (nunca abaixo de 22 px); Source Sans 3 no resto; preços com algarismos tabulares. Escala em telemóvel: 14, 17, 21, 27, 34 px; corpo 17 px, entrelinha 1,5. Fontes servidas pelo site.
-- Espaçamento: 4, 8, 12, 16, 24, 32, 48 px. Cantos: 4 px em chips e campos, 12 px em cartões. Sem sombras no escuro; o cartão creme tem borda de 1 px em creme-sombra.
+- Cor derivada, sem hex novo: o "papel" dos cartões é creme-papel misturado com branco (`color-mix`, cerca de `#FCF9F4`), e a decoração do cartão de destaque é o dourado a 18 % de opacidade. A paleta continua com dez cores.
+- Dourado: uma só ação dourada por ecrã. Sobre creme ou papel só aparece num botão, sempre com a borda de 1,5 px em bordo-noite (texto bordo-noite sobre dourado, 7,7:1). Chip ativo, foco e texto nunca são dourados sobre creme (ADR 0023).
+- Tipografia: Bricolage Grotesque 800 nos títulos de página e no nome do bar, 700 nos de secção, com espaçamento de -0.02em; DM Sans 400, 500 e 700 no resto; preços com algarismos tabulares. Escala em telemóvel: 14, 17, 21, 27, 34 px; corpo 17 px, entrelinha 1,5. Fontes servidas pelo site, as duas juntas até 100 KB.
+- Espaçamento: 4, 8, 12, 16, 24, 32, 48 px. Cantos: 10 px em etiquetas e miniaturas, 12 px em campos, 14 px em botões, 18 px em cartões e avisos, 24 px no cartão de destaque e no topo da folha, 22 px na barra da gestão, cápsula em chips e interruptores. Sem sombras: o cartão papel tem uma linha de 1 px em creme-sombra por baixo.
 - Coluna pública até 640 px. Gestão: uma coluna no telemóvel, duas a partir de 1024 px.
 - Movimento só em resposta a ações; `prefers-reduced-motion` respeitado. Sem vídeo de fundo: a abertura é uma fotografia estática (ADR 0020).
-- Componentes: Botão (principal, secundário, discreto, perigo), Campo, Chip de categoria, Linha de produto (nome, pontilhado, preço), Cartão de evento, Folha, Aviso temporário, Interruptor, Estado vazio, Linha de lista editável.
+- Componentes: Botão (principal, dourado, secundário, discreto, perigo), Campo, Chip de categoria, Linha de produto (nome, pontilhado, preço, até ao R-02), Cartão (papel e destaque), Cartão de evento, Folha, Aviso temporário, Interruptor, Estado vazio, Linha de lista editável.
 - Fica de fora: bordas douradas em tudo, desfoque de vidro, cartões que sobem no hover, carrossel automático, etiquetas em maiúsculas, emojis em títulos, setas nos botões.
 - Texto: PT-PT, maiúscula só no início da frase, botões com a ação ("Copiar password", "Enviar foto", "Guardar alterações"), erros que dizem o que fazer.
 
@@ -141,7 +143,7 @@ Uma página, de cima para baixo. O QR code da mesa abre diretamente aqui, sem fo
 2. Abertura: o logótipo e uma fotografia real do bar, em WebP leve, sem vídeo nem animação (ADR 0020).
 3. Chips de categoria fixos, que acompanham o scroll; lupa que filtra por nome de produto ou de categoria (ADR 0013).
 4. Ementa: um cartão creme por categoria; linhas com nome, pontilhado e preço; descrição opcional por baixo; indisponíveis escondidos.
-5. Próximos eventos: até três, data grande em Playfair; a secção some sem eventos (ADR 0015).
+5. Próximos eventos: até três, data grande em Bricolage Grotesque; a secção some sem eventos (ADR 0015).
 6. Galeria: slide que se passa com o dedo, uma foto de cada vez, sem avanço automático, com botões e teclado como alternativa (ADR 0021); "Enviar uma foto" numa folha.
 7. Visita-nos: horário com estado atual ("Aberto até às 02:00"), morada com "Abrir no Google Maps", telefone, Instagram. Sem mapa embutido (a CSP não tem `frame-src`).
 8. Rodapé: "Receber novidades" (folha com consentimento por marcar), política de privacidade, Livro de Reclamações Eletrónico.
