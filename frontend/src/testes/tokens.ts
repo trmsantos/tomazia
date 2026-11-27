@@ -75,7 +75,7 @@ export function misturarEmSrgb(a: string, b: string, percentagem: number): strin
 }
 
 /** O valor tal como está escrito no CSS, no âmbito e depois em `:root`; `undefined` se não existir. */
-export function valorBruto(
+function valorBruto(
   blocos: Map<string, Map<string, string>>,
   ambito: string,
   nome: string,
@@ -102,7 +102,7 @@ function resolverOperando(
  * `var()`, hex ou `white`. Devolve `null` quando a variável não existe ou
  * quando o valor não é uma cor opaca que se saiba calcular (`transparent`,
  * por exemplo, tem alfa) — quem chama tem de distinguir isso de "o contraste
- * chumbou", e de "não existe" (`valorBruto` diz qual dos dois é).
+ * chumbou", e de "não existe" (`eTransparente` separa o `transparent` dos outros).
  */
 export function resolver(
   blocos: Map<string, Map<string, string>>,
@@ -129,6 +129,35 @@ export function resolver(
 
   if (/^#[0-9a-f]{3,8}$/i.test(valor)) return valor;
   return null;
+}
+
+/**
+ * `true` quando `nome`, seguindo os `var()` até ao fim, vale `transparent`;
+ * `false` quando vale uma cor que o `resolver` calcula. Lança quando a cadeia
+ * não se resolve (variável inexistente, ciclo, sintaxe desconhecida): "não
+ * consegui procurar" nunca pode dar o mesmo que "não é transparente".
+ */
+export function eTransparente(
+  blocos: Map<string, Map<string, string>>,
+  ambito: string,
+  nome: string,
+): boolean {
+  let atual = nome;
+  for (let passo = 0; passo <= 10; passo += 1) {
+    const valor = valorBruto(blocos, ambito, atual);
+    if (valor === undefined) {
+      throw new Error(`Não consegui procurar ${atual} em ${ambito}: a variável não existe.`);
+    }
+    const referencia = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(valor);
+    if (referencia?.[1]) {
+      atual = referencia[1];
+      continue;
+    }
+    if (valor.toLowerCase() === "transparent") return true;
+    if (resolver(blocos, ambito, atual) !== null) return false;
+    throw new Error(`Não consegui procurar ${atual} em ${ambito}: não sei ler «${valor}».`);
+  }
+  throw new Error(`Não consegui procurar ${nome} em ${ambito}: cadeia de var() demasiado longa.`);
 }
 
 /**

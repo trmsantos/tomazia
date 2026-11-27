@@ -25,10 +25,10 @@ import { arredondar, contraste } from "../testes/contraste";
 import {
   AMBITOS,
   blocosDosTokens,
+  eTransparente,
   lerBlocos,
   misturarEmSrgb,
   resolver,
-  valorBruto,
 } from "../testes/tokens";
 
 const PARES_OBRIGATORIOS: { frente: string; tras: string; minimo: number; porque: string }[] = [
@@ -254,11 +254,30 @@ describe("autoteste do leitor de tokens", () => {
     expect(resolver(blocos, ".superficie-creme", "--a")).toBe("#fdf9f4");
     // R 217*0,55+245*0,45 = 229,6 -> 230 (e6); G 210,75 -> 211 (d3); B 190,65 -> 191 (bf).
     expect(resolver(blocos, ".superficie-creme", "--b")).toBe("#e6d3bf");
-    // `transparent` tem alfa: não há #rrggbb. Continua a ser null, mas o valor
-    // existe, e quem chama distingue-o de "não consegui procurar".
+    // `transparent` tem alfa: não há #rrggbb. Continua a ser null.
     expect(resolver(blocos, ".superficie-creme", "--c")).toBeNull();
-    expect(valorBruto(blocos, ".superficie-creme", "--c")).toContain("transparent");
-    expect(valorBruto(blocos, ".superficie-creme", "--inexistente")).toBeUndefined();
+  });
+
+  it("eTransparente separa transparent de cor e de «não consegui procurar»", () => {
+    const blocos = lerBlocos(`
+      :root { --x: transparent; --cor: #3d0f24; }
+      .superficie-escura {
+        --direto: transparent;
+        --por-var: var(--x);
+        --opaca: var(--cor);
+        --estranha: color-mix(in srgb, #3d0f24 88%, transparent);
+      }
+    `);
+
+    expect(eTransparente(blocos, ".superficie-escura", "--direto")).toBe(true);
+    expect(eTransparente(blocos, ".superficie-escura", "--por-var")).toBe(true);
+    expect(eTransparente(blocos, ".superficie-escura", "--opaca")).toBe(false);
+    expect(() => eTransparente(blocos, ".superficie-escura", "--inexistente")).toThrow(
+      /não consegui procurar/i,
+    );
+    expect(() => eTransparente(blocos, ".superficie-escura", "--estranha")).toThrow(
+      /não consegui procurar/i,
+    );
   });
 
   it("um par obrigatório que resolve para null falha com «não consegui resolver», sem ser saltado", () => {
