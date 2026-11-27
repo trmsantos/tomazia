@@ -56,8 +56,10 @@ nunca lhe toca). Cobre o fallback do SPA (excluindo `/api`), os
 cabeçalhos de segurança (CSP estrita, HSTS sem `includeSubDomains` nem
 `preload` até à F5-02, `nosniff`, `Permissions-Policy`,
 `X-Frame-Options`), `Cache-Control` diferente para `/assets/*` e para
-`index.html`, o bloqueio de execução de scripts em `media/`, e o bloco
-do Passenger com `PassengerFriendlyErrorPages Off`.
+`index.html`, a recusa de qualquer ficheiro ou pasta começado por ponto
+(`/.env`, `/.git/...`) com a única exceção de `/.well-known/` na raiz, o
+bloqueio de execução de scripts em `media/`, e o bloco do Passenger com
+`PassengerFriendlyErrorPages Off`.
 
 ## O que o Tomás tem de configurar à mão
 
