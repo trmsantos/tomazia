@@ -44,6 +44,46 @@ DirectoryIndex index.html
 </If>
 
 # ============================================================
+# Ficheiros e pastas começados por ponto: nunca servidos.
+#
+# Porquê: no primeiro deploy (F1-05) foi parar por engano um ficheiro de
+# ambiente (`.env`, com o segredo de sessão) à raiz do site, e nada o
+# impedia de ser descarregado por `https://<domínio>/.env`. O Apache só
+# protege `.ht*` por omissão. O mesmo vale para um `.git/` deixado numa
+# pasta, um `.htpasswd`, um `.DS_Store`, um temporário `.tomazia-sinc.*`
+# deixado por um deploy interrompido.
+#
+# A regra olha para QUALQUER segmento do caminho começado por ponto —
+# ficheiro ou pasta, a qualquer profundidade (`/.env`, `/.git/config`,
+# `/assets/.env`) — e não só para o nome do ficheiro: um `<FilesMatch>`
+# não apanhava `/.git/config`, cujo nome é `config`.
+#
+# A única exceção é `/.well-known/`, NA RAIZ, de que o certificado SSL
+# precisa (o AutoSSL do cPanel valida o domínio por
+# `/.well-known/acme-challenge/...` e `/.well-known/pki-validation/...`).
+# Mesmo lá dentro, um segmento escondido continua recusado
+# (`/.well-known/.env`), e um `.well-known` fora da raiz não é exceção
+# (`/assets/.well-known/x`). As duas expressões, em detalhe:
+#
+#   1. `/\.(?!well-known(/|$))` — um segmento começado por ponto que não
+#      seja `.well-known`;
+#   2. `./\.well-known(/|$)` — um `.well-known` que não esteja logo a
+#      seguir à primeira barra, ou seja, fora da raiz.
+#
+# `REQUEST_URI` é o caminho já descodificado (`/%2eenv` chega aqui como
+# `/.env`). Num `.htaccess`, o `RewriteRule` do SPA só corre depois da
+# autorização (fase de fixup), por isso um caminho escondido dá 403 quer o
+# ficheiro exista quer não — nunca o `index.html`. Como o resto deste
+# ficheiro, isto não foi visto num Apache a sério; fica para a F5-01.
+#
+# Verificação de texto em
+# `backend/tests/seguranca/test_htaccess_recusa_ficheiros_escondidos.py`.
+# ============================================================
+<If "%{REQUEST_URI} =~ m#/\.(?!well-known(/|$))# || %{REQUEST_URI} =~ m#./\.well-known(/|$)#">
+  Require all denied
+</If>
+
+# ============================================================
 # Cabeçalhos de segurança, em todas as respostas.
 # ============================================================
 <IfModule mod_headers.c>
@@ -57,7 +97,7 @@ DirectoryIndex index.html
   Header always set Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
 
   # max-age=86400 (um dia) SEM includeSubDomains e SEM preload, até à
-  # F5-02: o site novo vive em novo.<dominio> enquanto o PHP antigo vive
+  # F5-02: o site novo vive em new.<dominio> enquanto o PHP antigo vive
   # no apex do mesmo domínio, e o `preload` é irreversível na prática
   # (fica em listas de browsers durante meses/anos, mesmo depois de se
   # remover o cabeçalho). Só se reconsidera isto depois do corte final.
@@ -165,8 +205,18 @@ RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .fcgi .s
 # a cada alteração feita no painel, para um erro de configuração nunca
 # mostrar caminhos do servidor no browser.
 #
-# O deploy automático (deploy.sh) NUNCA toca neste bloco nem no resto do
-# .htaccess — só o cPanel (pelo painel) e o Tomás (à mão) mexem aqui.
+# ONDE ELE FICA DE FACTO (visto no primeiro deploy, F1-05): com o
+# *Application URL* do Setup Python App a ser o subdomínio mais `api`, o
+# cPanel NÃO escreve este bloco aqui, na raiz: escreve-o em
+# `WEB/api/.htaccess`, uma pasta que só existe para isso. É lá que se
+# confirma e repõe a linha `PassengerFriendlyErrorPages Off`. O bloco fica
+# neste modelo para se saber o que lá deve estar. Não o copiar também para
+# o `.htaccess` da raiz: dois blocos do Passenger para a mesma app é uma
+# configuração que ninguém testou.
+#
+# O deploy automático (deploy.sh) NUNCA toca neste bloco nem em nenhum
+# .htaccess, a nenhuma profundidade (incluindo `WEB/api/.htaccess`) — só o
+# cPanel (pelo painel) e o Tomás (à mão) mexem aqui.
 # ============================================================
 <IfModule Phusion_Passenger_module>
   PassengerAppRoot "<caminho-para-tomazia_api>"
