@@ -202,6 +202,30 @@
   }
 
   /*
+   * O círculo do Cartão de destaque (R-01, 6.9). É um `::after` e não um
+   * `style`, que a CSP bloqueia. O `isolation` e o `z-index: -1` são os dois
+   * obrigatórios: um `::after` posicionado pinta-se por cima do conteúdo que
+   * não o está, e o círculo tingia o texto e o botão dourado. Assim fica entre
+   * o fundo do cartão e o conteúdo. Não apanha toques.
+   */
+  .cartao-destaque {
+    isolation: isolate;
+  }
+
+  .cartao-destaque::after {
+    content: "";
+    position: absolute;
+    top: var(--decoracao-afastamento);
+    right: var(--decoracao-afastamento);
+    width: var(--decoracao-destaque);
+    height: var(--decoracao-destaque);
+    border-radius: var(--raio-cheio);
+    background: var(--cor-decoracao-destaque);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /*
    * O que resta aqui em baixo é o pouco que nenhuma utilidade do Tailwind
    * escreve e que um atributo `style` escreveria — e `style` inline é
    * bloqueado pela CSP de produção (ADR 0008).

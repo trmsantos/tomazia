@@ -99,6 +99,8 @@
   --raio-grande: 24px; /* cartão de destaque, topo da Folha */
   --raio-barra: 22px; /* barra da gestão */
   --raio-cheio: 9999px; /* chips e Interruptor */
+  --decoracao-destaque: 150px; /* diâmetro do círculo do cartão de destaque */
+  --decoracao-afastamento: -40px; /* quanto o círculo sai pelo canto de cima, à direita */
   --contorno-fino: 1px;
   --contorno-medio: 1.5px; /* todos os Botões */
   --espessura-foco: 2px;
