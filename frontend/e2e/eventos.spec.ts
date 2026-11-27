@@ -952,6 +952,10 @@ test.describe("as cinco formas da data, desenhadas (5.2)", () => {
       `a data e o nome saíram os dois em «${nome.familia}»: duas Bricolages no mesmo ` +
         "cartão competem (4.2)",
     ).not.toMatch(/bricolage/i);
+    expect(
+      nome.familia,
+      `o nome saiu em «${nome.familia}»: é texto e tem de ser a DM Sans, não uma letra de sistema`,
+    ).toMatch(/DM Sans/i);
   });
 });
 

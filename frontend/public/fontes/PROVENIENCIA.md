@@ -15,7 +15,7 @@ variáveis de `google/fonts` num commit fixo, e o `sha256` é o do ficheiro em
 disco. `src/styles/fontes.test.ts` volta a calcular o resumo e falha se
 divergir — é isso que faz desta página uma verificação e não uma promessa. O
 mesmo teste lê os bytes (`src/testes/woff2.ts`) e confirma os glifos do
-português, o `tnum` do DM Sans e o intervalo de `wght` de cada ficheiro.
+português, o `tnum` da Bricolage e o intervalo de `wght` de cada ficheiro.
 
 ## Porque é que são variáveis e recortadas à mão
 
@@ -79,6 +79,7 @@ da pasta onde eles estão.
 ```bash
 C=5026800714d07231937d92eb4cceabf06e05d74e
 B=https://raw.githubusercontent.com/google/fonts/$C/ofl
+mkdir -p "$T/origem" "$T/trabalho"
 curl -fsSL -o "$T/origem/BricolageGrotesque[opsz,wdth,wght].ttf" \
   "$B/bricolagegrotesque/BricolageGrotesque%5Bopsz,wdth,wght%5D.ttf"
 curl -fsSL -o "$T/origem/DMSans[opsz,wght].ttf" "$B/dmsans/DMSans%5Bopsz,wght%5D.ttf"

@@ -251,7 +251,8 @@ test.describe("cor (critério 9)", () => {
     expect(estilo.contorno).toBeGreaterThanOrEqual(1);
   });
 
-  test("o dia de hoje destaca-se pelo peso: 600 contra 400, e só um", async ({ page }) => {
+  // R-01 / ADR 0023: os pesos lêem-se dos tokens, não se fixam à mão.
+  test("o dia de hoje destaca-se pelo peso forte contra o normal, e só um", async ({ page }) => {
     await abrirComVisitaNos(page, undefined, MOMENTOS.qui17h00);
     await expect(linhaDeHoje(page)).toHaveText("Quinta-feira");
 
@@ -266,10 +267,26 @@ test.describe("cor (critério 9)", () => {
         })),
       );
 
+    const token = (nome: string) =>
+      page.evaluate(
+        (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(),
+        nome,
+      );
+    const forteTxt = await token("--peso-forte");
+    const normalTxt = await token("--peso-normal");
+    expect(forteTxt, "guarda: --peso-forte vazio").not.toBe("");
+    expect(normalTxt, "guarda: --peso-normal vazio").not.toBe("");
+    const forte = Number(forteTxt);
+    const normal = Number(normalTxt);
+    expect(Number.isFinite(forte) && Number.isFinite(normal), "guarda: tokens não numéricos").toBe(
+      true,
+    );
+    expect(forte, "o forte tem de ser maior do que o normal").toBeGreaterThan(normal);
+
     expect(pesos).toHaveLength(7);
     expect(pesos.filter((p) => p.atual)).toHaveLength(1);
     for (const p of pesos) {
-      const esperado = p.atual ? 600 : 400;
+      const esperado = p.atual ? forte : normal;
       expect(p.pesoTh, `${p.dia} (th)`).toBe(esperado);
       expect(p.pesoTd, `${p.dia} (td)`).toBe(esperado);
     }
