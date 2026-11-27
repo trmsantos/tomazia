@@ -144,6 +144,16 @@ export default {
       sucesso: "var(--cor-sucesso)",
       erro: "var(--cor-erro)",
       pontilhado: "var(--cor-pontilhado)",
+      // R-01 / ADR 0023. `papel` é a cor do cartão claro (`bg-papel`), a única
+      // derivada que os componentes podem escrever pelo nome: é igual em todos
+      // os âmbitos. As outras são papéis: a ação dourada com o seu texto e a
+      // sua borda, e o preenchimento dos controlos (`bg-controlo`), que é papel
+      // no creme e no papel e transparente nos escuros.
+      papel: "var(--cor-papel)",
+      dourada: "var(--cor-acao-dourada)",
+      "sobre-dourada": "var(--cor-texto-sobre-dourada)",
+      "contorno-dourada": "var(--cor-contorno-dourada)",
+      controlo: "var(--cor-fundo-controlo)",
     },
 
     // `font-*` é o mesmo espaço de nomes para a família e para o peso, por

@@ -162,12 +162,15 @@
 
 @layer components {
   /*
-   * As três superfícies. São elas que pintam o fundo e, sobretudo, que
+   * As cinco superfícies: as três da F3-01 e o papel e o destaque do redesign
+   * B (R-01 / ADR 0023). São elas que pintam o fundo e, sobretudo, que
    * reatribuem os papéis de cor definidos em `tokens.css`.
    */
   .superficie-escura,
   .superficie-painel,
-  .superficie-creme {
+  .superficie-creme,
+  .superficie-papel,
+  .superficie-destaque {
     background-color: var(--cor-fundo-local);
     color: var(--cor-texto);
   }

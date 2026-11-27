@@ -624,6 +624,26 @@ describe("a paleta do tokens.css é a da especificação", () => {
   });
 });
 
+describe("as cores com nome do tokens.css", () => {
+  it("a única cor com nome no tokens.css é white, dentro de --cor-papel", () => {
+    // R-01 / ADR 0023: o papel é o creme a 25 % com branco, e o branco não é
+    // uma cor da paleta — é o fim da escala. Fica escrito com o nome do CSS
+    // nessa linha e em mais nenhuma, para não abrir a porta a uma décima
+    // primeira cor sem passar pela tabela Design.
+    const tokens = lerTexto(join(RAIZ_FRONTEND, FICHEIRO_DOS_TOKENS), FICHEIRO_DOS_TOKENS);
+    const linhas = tokens.split("\n");
+
+    const comNome = detetarCoresSoltas(tokens, ".css")
+      .filter((achado) => achado.regra.startsWith("cor com nome"))
+      .map((achado) => ({
+        cor: achado.excerto,
+        noPapel: /^\s*--cor-papel\s*:/.test(linhas[achado.linha - 1] ?? ""),
+      }));
+
+    expect(comNome).toEqual([{ cor: "white", noPapel: true }]);
+  });
+});
+
 /** Os dez nomes da paleta, como aparecem no Tailwind (`bg-dourado-latao`). */
 const NOMES_CRUS_DA_PALETA = [
   "bordo-noite",

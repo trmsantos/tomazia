@@ -64,13 +64,25 @@ describe("src/styles/global.css", () => {
     expect(global()).toMatch(/prefers-reduced-motion:\s*reduce/);
   });
 
-  it("define as três classes de superfície, e só elas pintam o fundo", () => {
+  it("define as cinco classes de superfície, e só elas pintam o fundo", () => {
+    // R-01 / ADR 0023: o papel e o destaque juntam-se às três da F3-01, na
+    // mesma regra que pinta o fundo — uma classe de âmbito fora dela trocava
+    // os papéis sem pintar o fundo que eles pressupõem.
     const texto = global();
+    const regra =
+      /((?:\.superficie-[a-z]+\s*,\s*)*\.superficie-[a-z]+)\s*\{\s*background-color:\s*var\(--cor-fundo-local\)/.exec(
+        texto,
+      );
+    expect(regra, "não encontrei a regra das superfícies que pinta o fundo").not.toBeNull();
+    const seletores = (regra?.[1] ?? "").split(",").map((seletor) => seletor.trim());
 
-    for (const classe of [".superficie-escura", ".superficie-painel", ".superficie-creme"]) {
-      expect(texto, `falta ${classe}`).toContain(classe);
-    }
-    expect(texto).toMatch(/background-color:\s*var\(--cor-fundo-local\)/);
+    expect(seletores).toEqual([
+      ".superficie-escura",
+      ".superficie-painel",
+      ".superficie-creme",
+      ".superficie-papel",
+      ".superficie-destaque",
+    ]);
   });
 
   it("o corpo usa os tokens de tipografia, não valores escritos à mão", () => {

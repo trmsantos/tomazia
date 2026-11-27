@@ -13,9 +13,17 @@ import { fileURLToPath } from "node:url";
 export const RAIZ_DO_FRONTEND = fileURLToPath(new URL("../..", import.meta.url));
 export const CAMINHO_DOS_TOKENS = join(RAIZ_DO_FRONTEND, "src/styles/tokens.css");
 
-/** Os âmbitos de superfície da secção 2 de `docs/ecras/F3-01.md`. */
-export const AMBITOS = [".superficie-escura", ".superficie-painel", ".superficie-creme"];
-// R-01 Task 4 acrescenta ".superficie-papel" e ".superficie-destaque", com os tokens.
+/**
+ * Os âmbitos de superfície: os três da secção 2 de `docs/ecras/F3-01.md` e
+ * os dois do redesign B (R-01 / ADR 0023, secção 5 de `docs/ecras/R-01.md`).
+ */
+export const AMBITOS = [
+  ".superficie-escura",
+  ".superficie-painel",
+  ".superficie-creme",
+  ".superficie-papel",
+  ".superficie-destaque",
+];
 
 /** Declarações por seletor. Um seletor composto (`:root, .x`) conta para os dois. */
 export function lerBlocos(css: string): Map<string, Map<string, string>> {
@@ -188,7 +196,7 @@ export function blocosDosTokens(): Map<string, Map<string, string>> {
     if (!blocos.has(ambito)) {
       throw new Error(
         `Não consegui ler o tokens.css: falta o âmbito \`${ambito}\`. ` +
-          "Os três âmbitos da secção 2 de docs/ecras/F3-01.md têm de existir.",
+          "Os cinco âmbitos (docs/ecras/F3-01.md, 2, e docs/ecras/R-01.md, 5) têm de existir.",
       );
     }
   }

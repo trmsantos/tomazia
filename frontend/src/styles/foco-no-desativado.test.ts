@@ -22,7 +22,8 @@
  * porque não há botão desativado nenhum numa Folha da demonstração — o que
  * quer dizer que o primeiro que lá for posto já nasce no limite.
  *
- * O 0,55 escolhido está certo. Este ficheiro existe para que continue a
+ * Hoje o valor é 0,60 (ver o comentário de `--opacidade-desativado` em
+ * `tokens.css`). Este ficheiro existe para que continue a
  * estar certo **por cálculo e não por sorte**: se alguém o baixar abaixo do
  * ponto em que o anel atravessa os 3:1, cai aqui, com o número e com o
  * valor mínimo que ainda serve.
@@ -38,14 +39,25 @@ const MINIMO = 3;
 
 /**
  * Os âmbitos em que um controlo desativado pode aparecer, com o nome que
- * uma falha deve usar. O `.superficie-painel` entra porque é a superfície
- * da Folha e do Aviso, onde há botões.
+ * uma falha deve usar e o chão que a conta dá hoje. O `.superficie-painel`
+ * entra porque é a superfície da Folha e do Aviso, onde há botões. O papel e
+ * o destaque são do redesign B (R-01 / ADR 0023): o cartão papel e o cartão
+ * bordo-tomazia, onde vão estar o "Entrar" e o "Aprovar".
+ *
+ * O chão escreve-se aqui para uma mudança de paleta aparecer como uma
+ * mudança de número, e não só como um "ainda passa". Secção 7 de
+ * `docs/ecras/R-01.md`.
  */
 const AMBITOS = [
-  { seletor: ".superficie-escura", nome: "escuro" },
-  { seletor: ".superficie-painel", nome: "painel" },
-  { seletor: ".superficie-creme", nome: "creme" },
+  { seletor: ".superficie-escura", nome: "escuro", chao: 0.517 },
+  { seletor: ".superficie-painel", nome: "painel", chao: 0.544 },
+  { seletor: ".superficie-creme", nome: "creme", chao: 0.538 },
+  { seletor: ".superficie-papel", nome: "papel", chao: 0.517 },
+  { seletor: ".superficie-destaque", nome: "destaque", chao: 0.422 },
 ];
+
+/** Quanto o chão calculado pode afastar-se do escrito: o arredondamento à terceira casa. */
+const TOLERANCIA_DO_CHAO = 0.005;
 
 function corDoAmbito(seletor: string, nome: string): Rgb {
   const blocos = blocosDosTokens();
@@ -112,6 +124,22 @@ describe("o anel de foco de um controlo desativado", () => {
         `= ${limite}. O valor actual é ${opacidade}.`,
     ).toBeGreaterThanOrEqual(MINIMO);
   });
+
+  it.each(AMBITOS)(
+    "o chão do âmbito $nome é o que está escrito",
+    ({ seletor, nome, chao: escrito }) => {
+      const calculado = chao(
+        corDoAmbito(seletor, "--cor-foco"),
+        corDoAmbito(seletor, "--cor-fundo-local"),
+      );
+
+      expect(
+        Math.abs(calculado - escrito),
+        `no ${nome} o chão calculado é ${calculado.toFixed(3)} e a tabela diz ${escrito}. ` +
+          "Se a paleta mudou de propósito, atualiza a tabela, o tokens.css e a secção 7 do R-01.md.",
+      ).toBeLessThanOrEqual(TOLERANCIA_DO_CHAO);
+    },
+  );
 
   it("o chão é o do âmbito mais apertado, e fica escrito em vez de redescoberto", () => {
     // Qual é o âmbito apertado **calcula-se**, não se assume: a intuição
