@@ -12,7 +12,7 @@
  *  - no **discreto** *acrescentava* um contorno, e o botão desligado
  *    passava a pesar mais do que o ligado — sinal invertido, que é pior do
  *    que sinal nenhum;
- *  - no **principal** e no **perigo** apagava a variante toda, e os quatro
+ *  - no **principal** e no **perigo** apagava a variante toda, e os cinco
  *    botões ficavam iguais uns aos outros.
  *
  * A regra certa: o controlo **mantém o preenchimento e o contorno da sua
@@ -92,7 +92,7 @@ describe("desativado mantém a variante — Botão", () => {
         expect(
           desativado.has(marca),
           `o ${variante} desativado perdeu a ${marca}, que é o que o distingue das outras ` +
-            "três variantes",
+            "quatro variantes",
         ).toBe(true);
       }
     },
@@ -122,7 +122,7 @@ describe("desativado mantém a variante — Botão", () => {
 
   it("as cinco variantes continuam distinguíveis umas das outras quando desativadas", () => {
     // A regra anterior apagava a variante toda no principal e no perigo, e
-    // os quatro desativados ficavam iguais. Um "Eliminar produto"
+    // os cinco desativados ficavam iguais. Um "Eliminar produto"
     // desativado com a cara de um "Cancelar" desativado é uma confusão que
     // só custa caro uma vez.
     const assinaturas = VARIANTES.map(({ variante }) => ({

@@ -10,9 +10,10 @@ import { juntar } from "./juntar";
  * ligações e o teclado funciona sem uma linha de código nossa.
  *
  * O estado ativo não vem só pela cor — o `aria-current` di-lo, e o
- * preenchimento cheio distingue-o de todos os outros. É o segundo dos três
- * usos do dourado, e só sobrevive porque a barra de chips vive sobre bordô;
- * dentro de um cartão creme, o `bg-acao` passa a ser a cor de marca sozinho.
+ * preenchimento cheio distingue-o de todos os outros. Nos fundos escuros o
+ * `bg-acao` é dourado (um dos três usos lá: ação principal, chip ativo e
+ * foco); no creme e no papel é a cor de marca escura, porque aí o dourado
+ * só aparece no Botão `dourado` (R-01 / ADR 0023).
  *
  * Cápsula (`rounded-cheio`), como o Interruptor (R-01 / ADR 0023). Os dois
  * estados têm a mesma caixa — `border` e `font-medio` nos dois — para a barra

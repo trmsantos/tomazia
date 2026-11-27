@@ -35,7 +35,7 @@ dourados sobre creme.
    de 1 px em creme-sombra por baixo.
 3. **Superfícies.** Dois âmbitos novos além do escuro, do painel e do creme: o
    **papel** (creme-papel misturado com branco por `color-mix`, cerca de
-   `#FCF9F4`) e o **destaque** (bordo-tomazia, texto creme, com um círculo de
+   `#FDF9F4`) e o **destaque** (bordo-tomazia, texto creme, com um círculo de
    dourado a 18 % de decoração). A paleta continua com os mesmos dez hex; o
    papel e a decoração são derivados em `tokens.css`.
 4. **Dourado.** Uma só ação dourada por ecrã. Sobre creme ou papel o dourado só

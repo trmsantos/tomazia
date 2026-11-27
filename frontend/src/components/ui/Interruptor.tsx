@@ -16,8 +16,9 @@ import { juntar } from "./juntar";
  * real seria mesmo só o carril. O teste dos 44 px mede a união do controlo
  * com a etiqueta, por isso uma `<div>` aqui falha — e deve falhar.
  *
- * **O carril nunca é dourado.** O dourado tem três usos e este não é um
- * deles; e um carril `bg-acao` dentro de um cartão creme ficava a 1,72 contra
+ * **O carril nunca é dourado.** Nos escuros o dourado é só ação principal,
+ * chip ativo e foco, e no creme só o Botão `dourado` (R-01 / ADR 0023); e
+ * um carril `bg-acao` dentro de um cartão creme ficava a 1,72 contra
  * o fundo. Ligado é o carril cheio em `bg-texto` com o manípulo em `bg-fundo`,
  * que se lê nos dois âmbitos. No R-01 / ADR 0023 só mudou a letra do rótulo;
  * o carril fica como estava, em cápsula. O estado também não vem só da cor: a posição do

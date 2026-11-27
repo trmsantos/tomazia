@@ -174,7 +174,7 @@ describe("Botão", () => {
     expect(botao).toHaveAttribute("aria-label", "Fechar");
   });
 
-  it("as quatro variantes pegam pelos papéis da tabela da especificação", () => {
+  it("as cinco variantes pegam pelos papéis da tabela da especificação", () => {
     // Secção 7.1: principal = bg-acao/text-sobre-acao; secundário = só
     // contorno; discreto = só texto suave; perigo = bg-perigo. Nenhuma
     // escreve uma cor da paleta — é a classe `.superficie-creme` que troca

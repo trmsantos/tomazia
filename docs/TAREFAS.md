@@ -12,7 +12,7 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → R-01 Base do redesign B → R-02 Página pública no estilo B → R-03 Gestão no estilo B → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
-**Mudança decidida pelo Tomás em 2026-11-25:** o público passa à frente do resto da gestão. Depois da F4-05b (Início e Clientes), a ordem é F3-08 Logótipo e ícones → F3-06a Visita-nos → F3-09 Atalhos → F3-10 Galeria em slide, e só então a F4-05c Conta e o resto da gestão (F4-02b, F4-07, F4-08, F4-09, F4-10). O resto do público (F4-06, F3-07, F3-11, F2-07, F3-06b) mantém a ordem acima.
+**Mudança decidida pelo Tomás em 2026-11-25:** o público passa à frente do resto da gestão. Depois da F4-05b (Início e Clientes), a ordem é F3-08 Logótipo e ícones → F3-06a Visita-nos → F3-09 Atalhos → F3-10 Galeria em slide, e só então a F4-05c Conta e o resto da gestão (F4-02b, F4-07, F4-08, F4-09, F4-10). O resto do público (F4-06, F3-07, F3-11, F2-07, F3-06b) mantém a ordem acima. Em 2026-11-26/27 o Tomás aprovou o redesign B (ADR 0023): R-01 → R-02 → R-03 entram entre a F3-08 e a F3-09.
 
 Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografia real do bar, sem vídeo (ADR 0020); a galeria é um slide passado com o dedo, sem avanço automático (ADR 0021); a localização é um link "Abrir no Google Maps", sem mapa embutido.
 
@@ -340,14 +340,14 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 
 - **Agentes:** ui-ux, frontend, qa, dominio-bar.
 - **Depende de:** R-01.
-- **Faz:** fundo creme; cartão bordo-tomazia de cima com "Bar da Tomazia", a frase "Estarreja · café, cervejas e petiscos" (o dominio-bar confirma que descreve o bar) e o estado "Aberto até às 02:00"; chips em cápsula; ementa em cartões, com o preço numa etiqueta e sem pontilhado; eventos com o bloco da data; grelha da galeria no estilo B; Visita-nos; rodapé bordo-noite. A linha de produto deixa o pontilhado e a especificação atualiza-se no mesmo PR.
+- **Faz:** fundo creme; cartão bordo-tomazia de cima com "Bar da Tomazia", a frase "Estarreja · café, cervejas e petiscos" (o dominio-bar confirma que descreve o bar) e o estado "Aberto até às 02:00"; chips em cápsula; ementa em cartões, com o preço numa etiqueta e sem pontilhado; eventos com o bloco da data; grelha da galeria no estilo B; Visita-nos; rodapé bordo-noite. A linha de produto deixa o pontilhado e a especificação atualiza-se no mesmo PR. Decidir o `--cor-acao` do painel e do destaque (ou o âmbito da Folha). Hoje, no escuro, no painel e no destaque, o principal e o Chip ativo são dourados, e uma Folha com um principal mais um dourado dá dois dourados que o `data-variante` não apanha. Medir "um só dourado por ecrã" pela cor computada, não só pelo atributo.
 - **Feito quando:** a ementa e a barra de chips continuam à vista no 390×844 sem deslizar (F3-02); um só botão dourado por ecrã; Q-02, Q-03, Q-04; capturas 390×844 e 1024.
 
 ### R-03 Gestão no estilo B
 
 - **Agentes:** ui-ux, frontend, qa.
 - **Depende de:** R-01 (pode ser feita antes ou depois do R-02).
-- **Faz:** moldura com barra de baixo flutuante e cabeçalho; Entrar, Início, Ementa, Galeria, Eventos, Mais, Definições, Clientes, formulários e folhas, com os mesmos componentes. Mantém os controlos que cada ecrã já tem.
+- **Faz:** moldura com barra de baixo flutuante e cabeçalho; Entrar, Início, Ementa, Galeria, Eventos, Mais, Definições, Clientes, formulários e folhas, com os mesmos componentes. Mantém os controlos que cada ecrã já tem. Decidir o `--cor-acao` do painel e do destaque (ou o âmbito da Folha). Hoje, no escuro, no painel e no destaque, o principal e o Chip ativo são dourados, e uma Folha com um principal mais um dourado dá dois dourados que o `data-variante` não apanha. Medir "um só dourado por ecrã" pela cor computada, não só pelo atributo.
 - **Feito quando:** cada ecrã faz o que fazia; um só botão dourado por ecrã; alvos de 44 px (56 px nos de moderar); Q-03, Q-04; capturas 390×844 e 1024.
 
 ### F3-09 Atalhos para Eventos, Galeria e Visita-nos

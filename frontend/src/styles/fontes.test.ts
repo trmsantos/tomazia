@@ -28,9 +28,17 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { RAIZ_FRONTEND, RAIZ_REPOSITORIO, lerTexto } from "../testes/percorrer-arvore";
+import {
+  RAIZ_FRONTEND,
+  RAIZ_REPOSITORIO,
+  caminhoRelativo,
+  exigirSentinelas,
+  lerTexto,
+  listarFicheiros,
+} from "../testes/percorrer-arvore";
 import { blocosDosTokens } from "../testes/tokens";
 import {
   eixosFvar,
@@ -505,5 +513,133 @@ describe("preços: o DM Sans não é usado em preços", () => {
     expect(bloco).toMatch(/font-weight:\s*var\(--peso-seccao\)/);
     expect(bloco).toMatch(/font-variant-numeric:\s*tabular-nums/);
     expect(bloco).not.toMatch(/--fonte-corpo/);
+  });
+});
+
+/**
+ * R-01 / ADR 0023 — critério 10 de `docs/ecras/R-01.md`: `font-titulo`,
+ * `font-seccao` e `font-preco` trazem o peso consigo e nunca se juntam a
+ * `font-normal|medio|forte`. Junto deles, o peso de corpo ganhava ou perdia
+ * conforme a ordem das regras no CSS, e um 400 pedido à Bricolage (só
+ * 700–800) saía a 700 sem ninguém reparar.
+ *
+ * "Junto" quer dizer no mesmo literal de string ou de template, ou nos
+ * argumentos da mesma chamada a `juntar(...)`. Lê-se a árvore do TypeScript
+ * e não o texto cru, para um comentário não contar e para os argumentos de
+ * um `juntar` em várias linhas contarem juntos.
+ */
+const CLASSE_COM_PESO = /^font-(titulo|seccao|preco)$/;
+const CLASSE_DE_PESO = /^font-(normal|medio|forte)$/;
+
+/** As classes de um texto, sem prefixos de variante (`sm:`, `hover:`) nem `!`. */
+function classesDe(texto: string): string[] {
+  return texto
+    .split(/\s+/)
+    .map((parte) => parte.slice(parte.lastIndexOf(":") + 1).replace(/^!/, ""))
+    .filter((parte) => parte !== "");
+}
+
+function misturaPesos(textos: string[]): boolean {
+  const classes = textos.flatMap(classesDe);
+  return (
+    classes.some((classe) => CLASSE_COM_PESO.test(classe)) &&
+    classes.some((classe) => CLASSE_DE_PESO.test(classe))
+  );
+}
+
+/** O texto de um literal de string ou de template; `undefined` se não for um. */
+function textoDoLiteral(no: ts.Node): string | undefined {
+  if (ts.isStringLiteral(no) || ts.isNoSubstitutionTemplateLiteral(no)) return no.text;
+  if (ts.isTemplateExpression(no)) {
+    // As partes fixas de `${...}` juntam-se com um espaço: o que vem de fora
+    // não é uma classe que se possa ler aqui.
+    return [no.head.text, ...no.templateSpans.map((parte) => parte.literal.text)].join(" ");
+  }
+  return undefined;
+}
+
+/** Todos os literais abaixo de `no`, incluindo os de `cond && "..."` e de ternários. */
+function literaisDentro(no: ts.Node): string[] {
+  const textos: string[] = [];
+  const visitar = (filho: ts.Node): void => {
+    const texto = textoDoLiteral(filho);
+    if (texto !== undefined) textos.push(texto);
+    ts.forEachChild(filho, visitar);
+  };
+  visitar(no);
+  return textos;
+}
+
+/** As misturas proibidas num ficheiro `.tsx`, como "caminho:linha: texto". */
+function misturasDePesoNoCodigo(codigo: string, nome: string): string[] {
+  const fonte = ts.createSourceFile(nome, codigo, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const achados: string[] = [];
+  const registar = (no: ts.Node, textos: string[]): void => {
+    const linha = fonte.getLineAndCharacterOfPosition(no.getStart(fonte)).line + 1;
+    achados.push(`${nome}:${linha}: ${textos.join(" | ")}`);
+  };
+
+  const visitar = (no: ts.Node): void => {
+    const texto = textoDoLiteral(no);
+    if (texto !== undefined && misturaPesos([texto])) registar(no, [texto]);
+
+    if (
+      ts.isCallExpression(no) &&
+      ts.isIdentifier(no.expression) &&
+      no.expression.text === "juntar"
+    ) {
+      const textos = no.arguments.flatMap(literaisDentro);
+      // Um literal que já mistura sozinho foi registado acima; aqui só a
+      // mistura que só existe entre argumentos.
+      if (misturaPesos(textos) && !textos.some((um) => misturaPesos([um]))) {
+        registar(no, textos);
+      }
+    }
+    ts.forEachChild(no, visitar);
+  };
+  visitar(fonte);
+  return achados;
+}
+
+describe("R-01 / ADR 0023: as classes de título não levam peso de corpo ao lado", () => {
+  it("autoteste: a varredura apanha os casos maus e deixa passar os bons", () => {
+    // Prova de que o detetor deteta: sem isto, um detetor que nunca
+    // encontrasse nada passava o teste de baixo com o código cheio de erros.
+    const prova = [
+      'const a = <h2 className="font-titulo text-titulo font-forte">x</h2>;',
+      "const b = `font-seccao ${cor} sm:font-medio`;",
+      "const c = juntar(",
+      '  "font-preco text-texto",',
+      '  ativo && "font-normal",',
+      ");",
+      'const d = juntar("font-seccao", erro ? "text-erro" : "text-texto");',
+      'const e = <p className="font-medio text-texto">ok</p>;',
+      "// font-titulo font-forte num comentário não é uma classe",
+    ].join("\n");
+
+    const achados = misturasDePesoNoCodigo(prova, "prova.tsx");
+
+    expect(achados.map((achado) => achado.split(":")[1])).toEqual(["1", "2", "3"]);
+  });
+
+  it("nenhum .tsx de src/ junta font-titulo|seccao|preco a font-normal|medio|forte", () => {
+    const ficheiros = listarFicheiros(join(RAIZ_FRONTEND, "src"), { extensoes: [".tsx"] }).filter(
+      (caminho) => !caminho.endsWith(".test.tsx"),
+    );
+
+    // Guarda da regra 10: zero ficheiros lidos dava "sem misturas" sem ter
+    // procurado em lado nenhum.
+    exigirSentinelas(
+      ficheiros,
+      ["src/components/ui/EstadoVazio.tsx", "src/components/ui/Folha.tsx"],
+      "pesos das classes de título",
+    );
+    expect(ficheiros.length, `li ${ficheiros.length} ficheiros .tsx`).toBeGreaterThan(0);
+
+    const achados = ficheiros.flatMap((caminho) =>
+      misturasDePesoNoCodigo(lerTexto(caminho, caminhoRelativo(caminho)), caminhoRelativo(caminho)),
+    );
+
+    expect(achados, `li ${ficheiros.length} ficheiros .tsx`).toEqual([]);
   });
 });

@@ -125,7 +125,7 @@ ou uma tabela de tentativas por IP.
 | sucesso / erro (escuro) | `#7FB77E` / `#E07A5F` | Estados sobre bordô |
 | sucesso / erro (creme) | `#4F6B2E` / `#A63D2A` | Estados sobre creme |
 
-- Cor derivada, sem hex novo: o "papel" dos cartões é creme-papel misturado com branco (`color-mix`, cerca de `#FCF9F4`), e a decoração do cartão de destaque é o dourado a 18 % de opacidade. A paleta continua com dez cores.
+- Cor derivada, sem hex novo: o "papel" dos cartões é creme-papel misturado com branco (`color-mix`, cerca de `#FDF9F4`), e a decoração do cartão de destaque é o dourado a 18 % de opacidade. A paleta continua com dez cores.
 - Dourado: uma só ação dourada por ecrã. Sobre creme ou papel só aparece num botão, sempre com a borda de 1,5 px em bordo-noite (texto bordo-noite sobre dourado, 7,7:1). Chip ativo, foco e texto nunca são dourados sobre creme (ADR 0023).
 - Tipografia: Bricolage Grotesque 800 nos títulos de página e no nome do bar, 700 nos de secção, com espaçamento de -0.02em; DM Sans 400, 500 e 700 no resto; preços em Bricolage Grotesque 700 com algarismos tabulares (o DM Sans não tem tnum). Escala em telemóvel: 14, 17, 21, 27, 34 px; corpo 17 px, entrelinha 1,5. Fontes servidas pelo site, as duas juntas até 100 KB.
 - Espaçamento: 4, 8, 12, 16, 24, 32, 48 px. Cantos: 10 px em etiquetas e miniaturas, 12 px em campos, 14 px em botões, 18 px em cartões e avisos, 24 px no cartão de destaque e no topo da folha, 22 px na barra da gestão, cápsula em chips e interruptores. Sem sombras: o cartão papel tem uma linha de 1 px em creme-sombra por baixo.

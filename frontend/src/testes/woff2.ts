@@ -135,9 +135,18 @@ export function lerTabelasWoff2(caminho: string): TabelasWoff2 {
     throw naoConsegui(caminho, "o bloco comprimido passa do fim do ficheiro");
   }
 
+  // Defesa em profundidade: o diretório já diz quantos bytes o fluxo
+  // descomprimido tem (as tabelas vêm seguidas, sem enchimento). Um bloco
+  // que descomprima para mais do que isso é recusado pelo próprio Brotli,
+  // em vez de encher a memória antes de chegarmos à verificação abaixo.
+  const tamanhoEsperado = diretorio.reduce((total, { tamanho }) => total + tamanho, 0);
+  if (tamanhoEsperado === 0) throw naoConsegui(caminho, "o diretório soma zero bytes");
+
   let fluxo: Buffer;
   try {
-    fluxo = brotliDecompressSync(dados.subarray(posicao, posicao + tamanhoComprimido));
+    fluxo = brotliDecompressSync(dados.subarray(posicao, posicao + tamanhoComprimido), {
+      maxOutputLength: tamanhoEsperado,
+    });
   } catch (erro) {
     throw naoConsegui(caminho, `o Brotli recusou o bloco comprimido (${String(erro)})`);
   }

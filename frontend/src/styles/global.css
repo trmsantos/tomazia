@@ -20,8 +20,9 @@
        por cima do bordô, e aí o texto não se lê. */
     color-scheme: dark;
 
-    /* A caixa de consentimento marcada fica creme, não dourada: o dourado tem
-       três usos (ação principal, chip ativo, foco) e só três. */
+    /* A caixa de consentimento marcada fica creme, não dourada: nos fundos
+       escuros o dourado é só ação principal, chip ativo e foco, e no creme e
+       no papel só aparece no Botão `dourado` (R-01 / ADR 0023). */
     accent-color: var(--cor-creme-papel);
 
     /* Só existem o DM Sans entre 400 e 700 e a Bricolage entre 700 e 800, e

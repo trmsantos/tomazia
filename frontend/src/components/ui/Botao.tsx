@@ -48,7 +48,7 @@ const PELA_VARIANTE: Record<VarianteDeBotao, string> = {
  * (as duas cores já eram as dele), no discreto **acrescentava** um contorno e
  * fazia o botão desligado pesar mais do que o ligado, e no principal e no
  * perigo apagava a variante toda. Assim, um principal desativado continua
- * dourado, só apagado, e os quatro continuam a distinguir-se uns dos outros.
+ * dourado, só apagado, e os cinco continuam a distinguir-se uns dos outros.
  */
 const DESATIVADO = "opacity-desativado cursor-not-allowed";
 

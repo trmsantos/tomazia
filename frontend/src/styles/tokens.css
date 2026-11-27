@@ -359,7 +359,7 @@
    * bordo-noite (7,73).
    *
    * **A fronteira é a borda, não o preenchimento.** O dourado dá 1,72 contra
-   * o creme e 2,00 contra o papel, abaixo dos 3 de 1.4.11. Por isso o creme e
+   * o creme e 2,01 contra o papel, abaixo dos 3 de 1.4.11. Por isso o creme e
    * o papel trocam `--cor-contorno-dourada` para bordo-noite (13,27 e 15,50).
    * Aqui é o próprio dourado, que já passa contra o fundo, e a borda existe
    * na mesma para o botão ter a mesma caixa nos cinco âmbitos.
