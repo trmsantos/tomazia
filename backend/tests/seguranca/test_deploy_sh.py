@@ -4,9 +4,12 @@ Nunca contacta o cPanel real nem lê a BD antiga (regra 3 e regra 1 do
 `CLAUDE.md`): tudo aqui vive num `HOME=$(mktemp -d)` fabricado por este
 ficheiro, ao estilo descrito em `.claude/agents/infra.md` ("Testas scripts
 com ... um HOME falso"). `pip` e `alembic` são stubs no `PATH` (nunca
-tocam numa rede nem instalam nada); `rsync` é o real do sistema — exceto
-num único teste, que substitui mesmo o `rsync` por um stub malicioso de
-propósito (ver `test_rsync_que_apaga_env_a_meio_e_apanhado_na_verificacao_pos_rsync`).
+tocam numa rede nem instalam nada); `cp`, `mv`, `rm` e `mkdir` são os reais
+do sistema — exceto num único teste, que substitui mesmo o `cp` por um
+stub malicioso de propósito (ver
+`test_sincronizacao_que_apaga_env_a_meio_e_apanhada_na_verificacao_seguinte`).
+O `deploy.sh` já não usa `rsync` (o CageFS do cPanel não o tem); a prova
+de que corre sem ele está em `test_deploy_sh_sincroniza_sem_rsync.py`.
 
 O que este ficheiro prova (e o que não prova):
 
@@ -33,7 +36,7 @@ O que este ficheiro prova (e o que não prova):
   fora do pacote sincronizado, para sobreviver a cada deploy automático.
 - `.env` (`API/.env`) é só a configuração da app. `deploy.sh` nunca lê o
   conteúdo, só confirma que existe — antes de mexer em nada, e outra vez
-  depois dos `rsync`, antes de tocar em `tmp/restart.txt`.
+  depois das sincronizações, antes de tocar em `tmp/restart.txt`.
 
 Esta forma de `ORIGEM` já não é um "ponto de extensão a confirmar": é o
 que `deploy/montar.sh` produz de facto, e a instalação falsa fabricada
@@ -336,23 +339,28 @@ def test_env_como_symlink_pendurado_da_mensagem_diferente_de_ausente(
     )
 
 
-# --- O que importa mais: rsync a apagar o .env a meio ----------------------
+# --- O que importa mais: a sincronização a apagar o .env a meio ------------
 
 
-def test_rsync_que_apaga_env_a_meio_e_apanhado_na_verificacao_pos_rsync(
+def test_sincronizacao_que_apaga_env_a_meio_e_apanhada_na_verificacao_seguinte(
     tmp_path: Path,
 ) -> None:
-    """Um `rsync` que apague `.env` a meio tem de ser apanhado DEPOIS do rsync, nunca só no início."""
+    """Um `cp` que apague `.env` a meio da sincronização tem de ser apanhado DEPOIS dela, nunca só no início.
+
+    Era um `rsync` adulterado quando o `deploy.sh` usava `rsync`; agora é
+    o `cp`, a ferramenta que a sincronização chama por cada ficheiro. O
+    primeiro `cp` do script é já dentro da sincronização (depois do pip).
+    """
     instalacao = _preparar_instalacao_valida(tmp_path)
 
-    rsync_real = _localizar_rsync_real()
-    stub_bin = tmp_path / "stub-rsync-malicioso"
+    cp_real = _localizar_cp_real()
+    stub_bin = tmp_path / "stub-cp-malicioso"
     stub_bin.mkdir()
     _escrever_stub(
-        stub_bin / "rsync",
+        stub_bin / "cp",
         f"""\
 #!/usr/bin/env bash
-{rsync_real} "$@"
+{cp_real} "$@"
 codigo=$?
 rm -f "$TOMAZIA_TESTE_ENV_A_APAGAR"
 exit $codigo
@@ -367,31 +375,35 @@ exit $codigo
     resultado = _correr_deploy(instalacao, ambiente_extra=ambiente_extra)
 
     assert resultado.returncode != 0, (
-        "Com o .env apagado a meio do rsync, o deploy tem de falhar, não "
-        "reiniciar a app com uma configuração em falta."
+        "Com o .env apagado a meio da sincronização, o deploy tem de falhar, "
+        "não reiniciar a app com uma configuração em falta."
     )
     assert not _restart_existe(instalacao)
-    # O pip correu (a instalação começou válida); é a verificação DEPOIS do
-    # rsync que tem de apanhar isto — nunca só a do início.
+    # O pip correu (a instalação começou válida); é a verificação DEPOIS da
+    # sincronização que tem de apanhar isto — nunca só a do início.
     assert _ler_log(instalacao.log_pip) != "", (
-        "O pip nunca chegou a correr — isto testa a verificação DEPOIS do "
-        "rsync, não a do início (essa já está noutro teste)."
+        "O pip nunca chegou a correr — isto testa a verificação DEPOIS da "
+        "sincronização, não a do início (essa já está noutro teste)."
+    )
+    assert (instalacao.api / "app" / MARCADOR_NOVO).exists(), (
+        "premissa do teste: a sincronização tem de ter corrido (e o stub "
+        "do cp com ela) — senão quem recusou foi outro guarda."
     )
     assert _ler_log(instalacao.log_alembic) == "", (
-        "alembic correu mesmo com o .env apagado pelo rsync a meio — a "
-        "verificação pós-rsync tem de travar antes das migrações."
+        "alembic correu mesmo com o .env apagado a meio da sincronização — "
+        "a verificação seguinte tem de travar antes das migrações."
     )
 
 
-def _localizar_rsync_real() -> str:
+def _localizar_cp_real() -> str:
     import shutil
 
-    caminho = shutil.which("rsync")
-    assert caminho is not None, "rsync não está instalado nesta máquina de testes."
+    caminho = shutil.which("cp", path="/usr/bin:/bin")
+    assert caminho is not None, "cp não está instalado nesta máquina de testes."
     return caminho
 
 
-# --- O que sobrevive e o que desaparece no rsync do frontend ---------------
+# --- O que sobrevive e o que desaparece na sincronização do frontend ------
 
 
 def test_frontend_preserva_media_htaccess_well_known_e_remove_ficheiro_antigo(
@@ -419,7 +431,7 @@ def test_frontend_preserva_media_htaccess_well_known_e_remove_ficheiro_antigo(
     ).read_bytes() == conteudo_well_known_antes
     assert not (instalacao.web / "assets" / "velho-ab12.js").exists(), (
         "Um ficheiro do frontend que já não está no pacote tem de "
-        "desaparecer do WEB (rsync --delete)."
+        "desaparecer do WEB (modo site, que apaga o que já não está na origem)."
     )
     assert (instalacao.web / "index.html").read_text(
         encoding="utf-8"
@@ -493,7 +505,7 @@ def test_web_sem_media_recusado(tmp_path: Path) -> None:
 # --- Ordem, provada pelo registo dos stubs ----------------------------------
 
 
-def test_ordem_pip_rsync_alembic_version_restart(tmp_path: Path) -> None:
+def test_ordem_pip_sincronizacao_alembic_version_restart(tmp_path: Path) -> None:
     instalacao = _preparar_instalacao_valida(tmp_path)
 
     resultado = _correr_deploy(instalacao)
@@ -507,12 +519,12 @@ def test_ordem_pip_rsync_alembic_version_restart(tmp_path: Path) -> None:
 
     assert "MARCADOR=0" in log_pip, (
         "O pip correu depois do código já estar sincronizado — tinha de "
-        "correr ANTES do rsync do código (install -r requirements.txt não "
+        "correr ANTES da sincronização do código (install -r requirements.txt não "
         "depende do código da app em si)."
     )
     assert "MARCADOR=1" in log_alembic, (
         "O alembic correu antes do código estar sincronizado — tem de "
-        "correr DEPOIS do rsync do código (as migrações vêm com o "
+        "correr DEPOIS da sincronização do código (as migrações vêm com o "
         "código novo)."
     )
 
@@ -540,10 +552,10 @@ def test_pip_a_falhar_nao_sincroniza_codigo_e_sai_com_erro(tmp_path: Path) -> No
     assert resultado.returncode != 0
     assert not (instalacao.api / "app" / MARCADOR_NOVO).exists(), (
         "O código não pode ter sido sincronizado: o pip falhou antes do "
-        "rsync do código."
+        "sincronização do código."
     )
     assert (instalacao.api / "app" / MARCADOR_VELHO).exists(), (
-        "O ficheiro antigo ainda devia lá estar — o rsync nunca correu."
+        "O ficheiro antigo ainda devia lá estar — a sincronização nunca correu."
     )
     assert _ler_log(instalacao.log_alembic) == "", (
         "alembic não pode ter corrido se o pip falhou."

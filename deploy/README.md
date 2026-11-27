@@ -32,7 +32,7 @@ que pode já ter andado entre o fim do CI e o início do deploy.
 | `publicar-branch.sh` | CI (job `publicar`) | Põe a árvore da branch `deploy` igual à pasta montada e empurra `--ff-only` (nunca `--force`). `--pasta <pasta> --sha <sha> --branch deploy`. |
 | `pedir-deploy.sh` | CI (job `pedir`) | Pede à UAPI do cPanel para puxar `deploy` e correr `deploy.sh` no servidor. Sem argumentos — tudo por variável de ambiente (nunca na linha de comandos, para não ficar nos logs do Actions). |
 | `esperar-versao.sh` | CI (job `verificar`) | Faz polling a `/api/health` até a versão certa responder, de um processo arrancado depois do deploy ter começado. `<url-base> <sha-esperado> <timeout-s> <intervalo-s> <inicio-deploy-iso8601>`. |
-| `deploy.sh` | **No servidor**, chamado por `.cpanel.yml` | `pip install`, `rsync` do código e do frontend, `alembic upgrade head`, grava `VERSION`, sinaliza o reinício do Passenger (`tmp/restart.txt`). Nunca toca em `.htaccess`, `media/`, `.env` nem `tomazia_data/`. |
+| `deploy.sh` | **No servidor**, chamado por `.cpanel.yml` | `pip install`, sincroniza o código e o frontend, `alembic upgrade head`, grava `VERSION`, sinaliza o reinício do Passenger (`tmp/restart.txt`). Nunca toca em `.htaccess` (a qualquer profundidade, incluindo `WEB/api/.htaccess`, onde está o bloco do Passenger), `media/`, `.well-known/`, `.env` nem `tomazia_data/`. **Não usa `rsync`**: o CageFS do cPanel da dominios.pt não o tem, e o primeiro deploy morreu por isso. Sincroniza só com `cp`, `mv`, `rm`, `mkdir`, `rmdir` e `find` (ver a função `sincronizar`). Recusa o pacote, antes de escrever o que quer que seja, se lá houver uma ligação simbólica. |
 
 No CI, o job `seguranca` do `ci.yml` corre `shellcheck -x` sobre todos
 eles — e só isso: o `bash -n` faz-se à mão, no desenvolvimento, e não é
@@ -189,7 +189,11 @@ mensagem a dizê-lo. É o comportamento esperado, não uma avaria.
   `pytest` do job `backend`; nenhum deles escreve fora de uma pasta
   temporária.
 - `deploy/deploy.sh` testado com `HOME=$(mktemp -d)`, `pip`/`alembic`
-  substituídos por stubs no `PATH`, nunca a rede real nem o cPanel.
+  substituídos por stubs no `PATH`, nunca a rede real nem o cPanel. Um
+  dos testes corre-o com um `PATH` montado só com as ferramentas de que
+  ele precisa, e sem `rsync` — é a lista das dependências do script no
+  servidor (`FERRAMENTAS_DO_SERVIDOR`, em
+  `backend/tests/seguranca/test_deploy_sh_sincroniza_sem_rsync.py`).
 - `deploy/pedir-deploy.sh` e `deploy/esperar-versao.sh` testados contra
   um `http.server` real em `127.0.0.1`, nunca a UAPI nem o `/api/health`
   verdadeiros.
