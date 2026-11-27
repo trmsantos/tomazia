@@ -334,12 +334,14 @@ describe("papéis de cor por âmbito", () => {
     }
   });
 
-  it.each([".superficie-papel", ".superficie-destaque"])(
+  it.each([".superficie-painel", ".superficie-papel", ".superficie-destaque"])(
     "o %s declara todos os papéis, sem herdar nenhum",
     (ambito) => {
       // Um `var()` declarado num âmbito resolve-se lá e desce já resolvido
       // (a nota de `--cor-fio-interno` em tokens.css). Um cartão papel dentro
       // de um painel herdava papéis do painel, por isso declara-os todos.
+      // R-01 / ADR 0023: o painel entrou na lista. Uma Folha aberta num ecrã
+      // creme (R-02) herdava do creme tudo o que não declarasse.
       const declarados = blocosDosTokens().get(ambito) ?? new Map<string, string>();
       const papeis = [
         "--cor-fundo-local",
@@ -366,6 +368,53 @@ describe("papéis de cor por âmbito", () => {
       expect(papeis.filter((papel) => !declarados.has(papel))).toEqual([]);
     },
   );
+
+  it.each([".superficie-painel", ".superficie-papel", ".superficie-destaque"])(
+    "um %s dentro de um .superficie-creme resolve cada papel como sozinho",
+    (dentro) => {
+      // R-01 / ADR 0023. O `resolver` não modela herança (cai sempre para
+      // `:root`), por isso o encaixe faz-se aqui como o browser o faz: o
+      // papel que o âmbito de dentro declara resolve-se nele; o que não
+      // declara chega já resolvido do âmbito de fora. Sozinho, o de fora é o
+      // `:root`. A lista de papéis é a do escuro, para um papel novo entrar
+      // aqui sem ninguém se lembrar dele.
+      const blocos = blocosDosTokens();
+      const papeis = [...(blocos.get(".superficie-escura")?.keys() ?? [])];
+      expect(papeis.length, "não consegui ler os papéis do .superficie-escura").toBeGreaterThan(10);
+
+      const ler = (ambito: string, nome: string): string =>
+        eTransparente(blocos, ambito, nome)
+          ? "transparent"
+          : (resolver(blocos, ambito, nome) ?? `não consegui resolver ${nome} em ${ambito}`);
+      const encaixado = (fora: string, nome: string): string =>
+        blocos.get(dentro)?.has(nome) === true ? ler(dentro, nome) : ler(fora, nome);
+
+      const diferentes = papeis
+        .map((papel) => ({
+          papel,
+          sozinho: encaixado(":root", papel),
+          noCreme: encaixado(".superficie-creme", papel),
+        }))
+        .filter(({ sozinho, noCreme }) => sozinho !== noCreme);
+      expect(diferentes).toEqual([]);
+    },
+  );
+
+  it("o painel é o escuro com fundo vinho: só o fundo e o fio mudam", () => {
+    // R-01 / ADR 0023. Declarar todos os papéis no painel não pode mudar o
+    // que ele era: cada papel resolve como no escuro, menos estes dois.
+    const blocos = blocosDosTokens();
+    const papeis = [...(blocos.get(".superficie-escura")?.keys() ?? [])];
+    expect(papeis.length).toBeGreaterThan(10);
+    const ler = (ambito: string, nome: string): string =>
+      eTransparente(blocos, ambito, nome) ? "transparent" : (resolver(blocos, ambito, nome) ?? "");
+
+    const mudam = papeis.filter(
+      (papel) => ler(".superficie-painel", papel) !== ler(".superficie-escura", papel),
+    );
+    expect(mudam.sort()).toEqual(["--cor-fio-interno", "--cor-fundo-local"]);
+    expect(resolver(blocos, ".superficie-painel", "--cor-fundo-local")).toBe("#4a1830");
+  });
 
   it("no destaque o perigo é erro-escuro e o erro é creme-papel", () => {
     // Erro-creme sobre bordo-tomazia dá 1,93 (o botão Eliminar perdia a

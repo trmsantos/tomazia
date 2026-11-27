@@ -384,13 +384,38 @@
   --cor-pontilhado: var(--cor-creme-sombra);
 }
 
+/*
+ * O painel é o escuro com fundo vinho: a Folha e o Aviso. Até ao R-01
+ * declarava só o fundo e o fio, e o resto herdava-se da página, que era
+ * sempre escura. No R-02 a página passa a creme, e uma Folha aberta lá
+ * herdava o creme: ação e borda dourada bordo-noite, controlos papel, tudo
+ * sobre o vinho. Por isso **declara todos os papéis** (R-01 / ADR 0023), com
+ * os valores do escuro, como o papel e o destaque.
+ */
 .superficie-painel {
   --cor-fundo-local: var(--cor-bordo-vinho);
+  --cor-texto: var(--cor-creme-papel);
+  --cor-texto-suave: var(--cor-creme-sombra);
+  --cor-texto-marca: var(--cor-creme-papel);
+  --cor-contorno: var(--cor-creme-sombra);
+  --cor-contorno-superficie: var(--cor-creme-sombra);
   /* Repetido de propósito: ver a nota em `--cor-fio-interno` acima. Aqui a
      mistura resolve-se contra o bordô vinho e dá 3,55; herdada de cima dava
      3,33, que ainda passava — mas por acaso, e no dia em que a paleta mexer
      ninguém dava por isso. */
   --cor-fio-interno: color-mix(in srgb, var(--cor-creme-sombra) 55%, var(--cor-fundo-local));
+  --cor-pontilhado: var(--cor-creme-sombra);
+  --cor-foco: var(--cor-dourado-latao);
+  --cor-acao: var(--cor-dourado-latao);
+  --cor-texto-sobre-acao: var(--cor-bordo-noite);
+  --cor-acao-dourada: var(--cor-dourado-latao);
+  --cor-texto-sobre-dourada: var(--cor-bordo-noite);
+  --cor-contorno-dourada: var(--cor-dourado-latao);
+  --cor-fundo-controlo: transparent;
+  --cor-perigo: var(--cor-erro-escuro);
+  --cor-texto-sobre-perigo: var(--cor-bordo-noite);
+  --cor-erro: var(--cor-erro-escuro);
+  --cor-sucesso: var(--cor-sucesso-escuro);
 }
 
 /*
