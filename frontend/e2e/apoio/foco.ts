@@ -74,6 +74,12 @@ export type ElementoFocado = {
    */
   opacidadeEfetiva: number;
   noCreme: boolean;
+  /**
+   * A superfície mais próxima (R-01 / ADR 0023): `escura`, `painel`,
+   * `creme`, `papel` ou `destaque`. Sem nenhuma classe `.superficie-*` por
+   * cima, o controlo está no corpo da página, que é o `:root` — o escuro.
+   */
+  superficie: string;
   caixa: CaixaDeLayout;
 };
 
@@ -208,6 +214,17 @@ export async function percorrerComTab(pagina: Page): Promise<Varrimento> {
         fundoEfetivo: pintura.fundo,
         opacidadeEfetiva: pintura.opacidade,
         noCreme: elemento.closest(".superficie-creme") !== null,
+        superficie: (() => {
+          const ambito = elemento.closest(
+            ".superficie-escura, .superficie-painel, .superficie-creme, " +
+              ".superficie-papel, .superficie-destaque",
+          );
+          if (ambito === null) return "escura";
+          const classe = [...ambito.classList].find((nome) => nome.startsWith("superficie-"));
+          // Achou um âmbito pelo seletor e não lhe encontra a classe: isso é
+          // "não consegui ler", e não pode cair no escuro.
+          return classe === undefined ? "?" : classe.slice("superficie-".length);
+        })(),
         caixa: {
           topo,
           esquerda,

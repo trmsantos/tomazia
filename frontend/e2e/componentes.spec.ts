@@ -12,6 +12,7 @@ import {
   CONTROLOS,
   SECCOES,
   SELETOR_INTERATIVO,
+  SUPERFICIES,
   TITULO_DA_DEMONSTRACAO,
 } from "./apoio/pagina";
 
@@ -71,15 +72,29 @@ test.describe("Q-03: acessibilidade", () => {
     ).toEqual([]);
   });
 
-  test("a página tem as onze secções da especificação, cada uma com o seu título", async ({
-    page,
-  }) => {
+  test("a página tem as treze secções, cada uma com o seu título", async ({ page }) => {
     // Guarda da regra 10 para todo o resto deste ficheiro: numa página
     // meia feita, as varreduras abaixo encontrariam poucos elementos e
     // passariam a dizer pouco — sem nunca falhar.
+    //
+    // R-01 / ADR 0023: as onze da F3-01 mais "Superfície papel" e
+    // "Superfície destaque". Conta-se o total e não só as que existem: uma
+    // secção a mais, sem lugar em `SECCOES`, ficava fora dos testes.
+    expect(Object.values(SECCOES)).toHaveLength(13);
+    await expect(page.locator("main section[id]")).toHaveCount(13);
     for (const id of Object.values(SECCOES)) {
       await expect(page.locator(`#${id}`), `falta a secção #${id}`).toHaveCount(1);
+      await expect(
+        page.locator(`#${id}`).getByRole("heading", { level: 2 }),
+        `a secção #${id} não tem o seu título`,
+      ).toHaveCount(1);
     }
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Superfície papel", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Superfície destaque", exact: true }),
+    ).toBeVisible();
   });
 });
 
@@ -224,6 +239,56 @@ test.describe("Q-04: foco visível", () => {
     ).toBeGreaterThan(2);
 
     expect(aneisInvisiveis(visitados)).toEqual([]);
+  });
+
+  test("o anel vê-se nas cinco superfícies, e cada uma tem controlos que o Tab visita", async ({
+    page,
+  }) => {
+    // R-01 / ADR 0023: o R-01 não muda o fundo de nenhuma página, por isso
+    // cada componente tem de estar certo nos cinco âmbitos. O anel do
+    // destaque é creme-papel e não dourado (secção 8, ponto 4): o dourado a
+    // 0,6 sobre bordo-tomazia ficava em cerca de 3,0. O guarda por
+    // superfície é o que impede "não há controlos no papel" de passar por
+    // "o anel do papel está certo".
+    const varrimento = await percorrerComTab(page);
+    exigirVarrimentoCompleto(varrimento);
+
+    const desconhecidos = varrimento.visitados
+      .filter((visitado) => !(SUPERFICIES as readonly string[]).includes(visitado.superficie))
+      .map((visitado) => `${visitado.descricao}: superfície «${visitado.superficie}»`);
+    expect(desconhecidos, "não consegui dizer em que superfície estes controlos estão").toEqual([]);
+
+    for (const superficie of SUPERFICIES) {
+      const ali = varrimento.visitados.filter((visitado) => visitado.superficie === superficie);
+      expect(
+        ali.length,
+        `guarda: o Tab não visitou nenhum controlo na superfície ${superficie} — ` +
+          "o anel dali ficava por medir",
+      ).toBeGreaterThan(0);
+      expect(aneisInvisiveis(ali), `superfície ${superficie}`).toEqual([]);
+    }
+  });
+
+  test("o anel de um controlo desativado vê-se nas cinco superfícies", async ({ page }) => {
+    // R-01 / ADR 0023: o chão do `--opacidade-desativado` é diferente em
+    // cada âmbito (escuro 0,517, painel 0,544, creme 0,538, papel 0,517,
+    // destaque 0,422; secção 7). O 0,6 passa nos cinco, e é aqui que se
+    // prova — com um controlo desativado em cada um, e não só no escuro e
+    // no creme.
+    const varrimento = await percorrerComTab(page);
+    exigirVarrimentoCompleto(varrimento);
+
+    for (const superficie of SUPERFICIES) {
+      const apagados = varrimento.visitados.filter(
+        (visitado) => visitado.superficie === superficie && visitado.opacidadeEfetiva < 1,
+      );
+      expect(
+        apagados.length,
+        `guarda: nenhum controlo desativado e focável na superfície ${superficie} — ` +
+          "o anel apagado dali ficava por medir",
+      ).toBeGreaterThan(0);
+      expect(aneisInvisiveis(apagados), `superfície ${superficie}`).toEqual([]);
+    }
   });
 
   test("autoteste: a medição atravessa um véu translúcido e multiplica as opacidades", async ({
@@ -649,17 +714,40 @@ test.describe("1.4.11: as linhas de 1 px dentro do creme", () => {
   });
 });
 
-test.describe("o dourado nunca sobre o creme", () => {
-  test("nenhum elemento dentro de .superficie-creme usa o dourado", async ({ page }) => {
-    const dourado = resolver(blocosDosTokens(), ":root", "--cor-dourado-latao");
+/**
+ * R-01 / ADR 0023: a regra deixou de ser "o dourado nunca sobre o creme" e
+ * passou a ser **"sobre creme ou papel, o dourado só aparece num botão e
+ * sempre com a borda bordo-noite"** (`docs/ecras/R-01.md`, secção 1). O
+ * preenchimento dourado dá 1,72 contra o creme e 2,01 contra o papel; a
+ * fronteira do botão é a borda de 1,5 px, que dá 13,27 e 15,50.
+ *
+ * Por isso a varredura não proíbe o dourado: exige que **todo** o dourado
+ * dentro do creme e do papel seja o preenchimento de um
+ * `[data-variante=dourado]` com essa borda. Um chip ativo, um anel de foco
+ * ou um texto dourado continuam a falhar.
+ */
+test.describe("o dourado sobre creme e papel só num botão com borda bordo-noite", () => {
+  test("todo o dourado dentro de .superficie-creme e .superficie-papel é o preenchimento de um botão dourado com a borda bordo-noite do `border-medio`", async ({
+    page,
+  }) => {
+    const blocos = blocosDosTokens();
+    const dourado = resolver(blocos, ":root", "--cor-dourado-latao");
+    const bordoNoite = resolver(blocos, ":root", "--cor-bordo-noite");
     const corDoDourado = dourado === null ? null : lerCor(dourado);
+    const corDoBordoNoite = bordoNoite === null ? null : lerCor(bordoNoite);
     expect(corDoDourado, "não consegui ler --cor-dourado-latao do tokens.css").not.toBeNull();
+    expect(corDoBordoNoite, "não consegui ler --cor-bordo-noite do tokens.css").not.toBeNull();
 
     const achados = await page.evaluate(
-      ({ vermelho, verde, azul }) => {
-        const igual = (cor: string): boolean => {
+      ({ alvo, borda }) => {
+        const igual = (
+          cor: string,
+          { vermelho, verde, azul }: { vermelho: number; verde: number; azul: number },
+        ): boolean => {
           const numeros = cor.match(/\d+(?:\.\d+)?/g);
           if (numeros === null || numeros.length < 3) return false;
+          // Um canal alfa a zero não pinta nada, seja de que cor for.
+          if (numeros.length >= 4 && Number(numeros[3]) === 0) return false;
           return (
             Math.round(Number(numeros[0])) === vermelho &&
             Math.round(Number(numeros[1])) === verde &&
@@ -667,37 +755,105 @@ test.describe("o dourado nunca sobre o creme", () => {
           );
         };
 
-        const dentroDoCreme = [...document.querySelectorAll(".superficie-creme *")];
-        return {
-          total: dentroDoCreme.length,
-          comDourado: dentroDoCreme
-            .filter((elemento) => {
-              const estilo = getComputedStyle(elemento);
-              return [
-                estilo.color,
-                estilo.backgroundColor,
-                estilo.borderTopColor,
-                estilo.borderBottomColor,
-                estilo.borderLeftColor,
-                estilo.borderRightColor,
-                estilo.outlineColor,
-              ].some(igual);
-            })
-            .map((elemento) => {
-              const nome = (elemento.textContent ?? "").trim().slice(0, 40);
-              return `${elemento.tagName.toLowerCase()} «${nome}»`;
-            })
-            .slice(0, 20),
-        };
+        const PROPRIEDADES = [
+          "color",
+          "backgroundColor",
+          "borderTopColor",
+          "borderBottomColor",
+          "borderLeftColor",
+          "borderRightColor",
+          "outlineColor",
+        ] as const;
+
+        const porSuperficie: Record<string, number> = {};
+        const botoesDourados: Record<string, number> = {};
+        const falhas: string[] = [];
+
+        for (const superficie of ["creme", "papel"]) {
+          const dentro = [...document.querySelectorAll(`.superficie-${superficie} *`)];
+          porSuperficie[superficie] = dentro.length;
+          botoesDourados[superficie] = 0;
+
+          for (const elemento of dentro) {
+            const estilo = getComputedStyle(elemento);
+            const douradas = PROPRIEDADES.filter((propriedade) => igual(estilo[propriedade], alvo));
+            if (douradas.length === 0) continue;
+
+            const nome = (elemento.textContent ?? "").trim().slice(0, 40);
+            const descricao = `${superficie}: ${elemento.tagName.toLowerCase()} «${nome}»`;
+
+            if (elemento.getAttribute("data-variante") !== "dourado") {
+              falhas.push(
+                `${descricao} usa o dourado em ${douradas.join(", ")} e não é um botão dourado`,
+              );
+              continue;
+            }
+            botoesDourados[superficie] += 1;
+
+            const soOPreenchimento = douradas.length === 1 && douradas[0] === "backgroundColor";
+            if (!soOPreenchimento) {
+              falhas.push(
+                `${descricao}: o botão dourado só pode ter dourado no preenchimento, e tem-no em ${douradas.join(", ")}`,
+              );
+            }
+            if (!igual(estilo.borderTopColor, borda)) {
+              falhas.push(
+                `${descricao}: a borda é ${estilo.borderTopColor} e tem de ser bordo-noite — ` +
+                  "sem ela o preenchimento fica a 1,72 contra o creme e o botão perde a fronteira",
+              );
+            }
+            // R-01 / ADR 0023: o Chromium arredonda a largura da borda para
+            // baixo, para píxeis inteiros, e calcula 1px para 1.5px. Por isso
+            // não se fixa o `1.5px` computado: prova-se o token no elemento e
+            // que a borda, desenhada, é igual à do secundário no mesmo âmbito.
+            const token = estilo.getPropertyValue("--contorno-medio").trim();
+            if (token !== "1.5px") {
+              falhas.push(`${descricao}: --contorno-medio é «${token}» e tem de ser 1.5px`);
+            }
+            const largura = Number.parseFloat(estilo.borderTopWidth);
+            if (!Number.isFinite(largura) || largura < 1) {
+              falhas.push(`${descricao}: a borda tem ${estilo.borderTopWidth}, abaixo de 1px`);
+            }
+            const secundario = document.querySelector(
+              `.superficie-${superficie} [data-variante="secundario"]`,
+            );
+            if (secundario === null) {
+              falhas.push(
+                `${descricao}: não encontrei um botão secundário na superfície ${superficie} ` +
+                  "para comparar a largura da borda — falha de leitura, não de largura",
+              );
+            } else {
+              const larguraDoSecundario = getComputedStyle(secundario).borderTopWidth;
+              if (larguraDoSecundario !== estilo.borderTopWidth) {
+                falhas.push(
+                  `${descricao}: a borda tem ${estilo.borderTopWidth} e a do secundário no ` +
+                    `mesmo âmbito tem ${larguraDoSecundario}; as duas vêm de \`border-medio\``,
+                );
+              }
+            }
+          }
+        }
+
+        return { porSuperficie, botoesDourados, falhas };
       },
-      corDoDourado ?? { vermelho: -1, verde: -1, azul: -1 },
+      {
+        alvo: corDoDourado ?? { vermelho: -1, verde: -1, azul: -1 },
+        borda: corDoBordoNoite ?? { vermelho: -1, verde: -1, azul: -1 },
+      },
     );
 
-    expect(
-      achados.total,
-      "guarda: a secção creme da demonstração está vazia, não verifiquei nada",
-    ).toBeGreaterThan(10);
-    expect(achados.comDourado).toEqual([]);
+    for (const superficie of ["creme", "papel"]) {
+      expect(
+        achados.porSuperficie[superficie],
+        `guarda: a superfície ${superficie} da demonstração está vazia, não verifiquei nada`,
+      ).toBeGreaterThan(10);
+      expect(
+        achados.botoesDourados[superficie],
+        `guarda: não encontrei um botão dourado na superfície ${superficie} — a regra ` +
+          "da borda ficava por medir",
+      ).toBeGreaterThan(0);
+    }
+    expect(achados.falhas).toEqual([]);
   });
 });
 

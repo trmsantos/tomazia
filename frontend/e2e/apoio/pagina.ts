@@ -8,14 +8,15 @@
  * cumpre-o. Se um nome mudar, muda numa linha.
  *
  * `docs/ecras/F3-01.md`, secção 8, descreve as onze secções da página; os
- * identificadores abaixo são os dessas secções.
+ * identificadores abaixo são os dessas secções. R-01 / ADR 0023: entram mais
+ * duas, "Superfície papel" e "Superfície destaque", antes do "Foco" — treze.
  */
 export const CAMINHO_DA_DEMONSTRACAO = "/demonstracao.html";
 
 /** O `<h1>` da página. É também a marca que `dist/` nunca pode conter. */
 export const TITULO_DA_DEMONSTRACAO = "Componentes do Bar da Tomazia";
 
-/** `id` de cada secção, pela ordem da secção 8 da especificação. */
+/** `id` de cada secção, pela ordem da página. */
 export const SECCOES = {
   tipografia: "tipografia",
   cores: "cores",
@@ -27,6 +28,8 @@ export const SECCOES = {
   interruptor: "interruptor",
   estadoVazio: "estado-vazio",
   sobreCreme: "sobre-creme",
+  sobrePapel: "sobre-papel",
+  sobreDestaque: "sobre-destaque",
   foco: "foco",
 } as const;
 
@@ -49,3 +52,12 @@ export const CONTROLOS = {
  */
 export const SELETOR_INTERATIVO =
   'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+
+/**
+ * As cinco superfícies do redesign B (R-01 / ADR 0023, secção 5 de
+ * `docs/ecras/R-01.md`). O corpo da página não leva classe nenhuma: é o
+ * `:root`, que tem os papéis do escuro.
+ */
+export const SUPERFICIES = ["escura", "painel", "creme", "papel", "destaque"] as const;
+
+export type Superficie = (typeof SUPERFICIES)[number];
