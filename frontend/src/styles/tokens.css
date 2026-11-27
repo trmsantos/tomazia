@@ -86,10 +86,15 @@
   --espaco-12: 3rem; /* 48 */
 
   /* Forma */
-  --raio-pequeno: 4px; /* chips, campos, botões */
-  --raio-cartao: 12px; /* cartões, folhas, avisos */
-  --raio-cheio: 9999px; /* só o Interruptor */
+  --raio-pequeno: 10px; /* etiquetas, miniaturas, barras do horário (R-01 / ADR 0023: era 4px) */
+  --raio-campo: 12px; /* Campo */
+  --raio-botao: 14px; /* Botão, bloco da data */
+  --raio-cartao: 18px; /* cartão papel, Aviso (era 12px) */
+  --raio-grande: 24px; /* cartão de destaque, topo da Folha */
+  --raio-barra: 22px; /* barra da gestão */
+  --raio-cheio: 9999px; /* chips e Interruptor */
   --contorno-fino: 1px;
+  --contorno-medio: 1.5px; /* todos os Botões */
   --espessura-foco: 2px;
   --afastamento-foco: 2px;
   --alvo-toque: 44px; /* Q-04; em px de propósito */

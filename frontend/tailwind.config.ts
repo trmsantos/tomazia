@@ -192,12 +192,17 @@ export default {
     borderRadius: {
       nenhum: "0px",
       pequeno: "var(--raio-pequeno)",
+      campo: "var(--raio-campo)",
+      botao: "var(--raio-botao)",
       cartao: "var(--raio-cartao)",
+      grande: "var(--raio-grande)",
+      barra: "var(--raio-barra)",
       cheio: "var(--raio-cheio)",
     },
     borderWidth: {
       0: "0px",
       DEFAULT: "var(--contorno-fino)",
+      medio: "var(--contorno-medio)",
       // A barra do destino ativo na navegação da gestão (F4-01, 5.2).
       marca: "var(--espessura-marca-ativa)",
     },
