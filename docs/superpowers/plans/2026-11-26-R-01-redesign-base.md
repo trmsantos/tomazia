@@ -97,7 +97,7 @@ Papéis por âmbito (o que muda; o resto como hoje):
 
 ---
 
-### Tarefa 1: valores visuais do R-01 (ui-ux)
+### Task 1: valores visuais do R-01 (ui-ux)
 
 **Ficheiros:** Criar `docs/ecras/R-01.md`.
 **Interfaces:** Consome as duas tabelas acima e as maquetas. Produz a lista final de tokens, papéis, classes de cada componente e a confirmação (ou recusa) da borda bordo-noite no dourado sobre creme, com os contrastes calculados.
@@ -112,7 +112,7 @@ docs(ecras): valores visuais do R-01
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 2: ADR 0023, especificação e tarefas (arquiteto, só `docs/`)
+### Task 2: ADR 0023, especificação e tarefas (arquiteto, só `docs/`)
 
 **Ficheiros:** Criar `docs/decisoes/0023-redesign-b-letra-forma-e-superficies.md`; Modificar `docs/ESPECIFICACAO.md` (secção `## Design`, linhas 118–134, e linha 144), `frontend/CLAUDE.md` (linhas 7–8: paleta com "Sobre creme, só com borda bordo-noite" e fontes Bricolage Grotesque + DM Sans), `docs/TAREFAS.md` (secção `## Redesign` antes de `### F3-09`, com R-01, R-02, R-03: Agentes, Depende de, Faz, Feito quando).
 **Interfaces:** Produz a tabela Design com os **mesmos dez hex** e "Uso" novo; `dourado-latao` passa a "Ação principal do ecrã, foco no escuro. Sobre creme, só com borda de 1,5 px bordo-noite". Tipografia: Bricolage Grotesque 800/700 com `-0.02em`, DM Sans 400/500/700. Cantos: os da tabela de raios. Linha de produto: "nome, pontilhado, preço" até ao R-02.
@@ -128,7 +128,7 @@ docs(redesign): ADR 0023 e secção Design da especificação
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 3: o leitor de tokens sabe `color-mix` e cinco âmbitos (qa)
+### Task 3: o leitor de tokens sabe `color-mix` e cinco âmbitos (qa)
 
 **Ficheiros:** Modificar `frontend/src/testes/tokens.ts`; Teste `frontend/src/styles/papeis-por-ambito.test.ts` (bloco "autoteste do leitor de tokens").
 **Interfaces:** Produz `resolver()` que resolve `color-mix(in srgb, <a> <p>%, <b>)` com `<a>`/`<b>` em `var(--x)`, hex ou `white`, para `#rrggbb` arredondado; `transparent` continua `null` (tem alfa). `AMBITOS = [".superficie-escura", ".superficie-painel", ".superficie-creme", ".superficie-papel", ".superficie-destaque"]`.
@@ -148,7 +148,7 @@ test(tokens): resolver color-mix e cinco âmbitos
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 4: papéis de cor novos (qa escreve os testes, frontend implementa)
+### Task 4: papéis de cor novos (qa escreve os testes, frontend implementa)
 
 **Ficheiros:** Modificar `frontend/src/styles/tokens.css`, `frontend/src/styles/global.css` (lista de `.superficie-*` em `@layer components`), `frontend/tailwind.config.ts` (`colors`); Teste `papeis-por-ambito.test.ts`, `foco-no-desativado.test.ts`, `cores-so-nos-tokens.test.ts`.
 **Interfaces:** Produz tokens `--cor-papel`, `--cor-decoracao-destaque`, `--cor-acao-dourada`, `--cor-texto-sobre-dourada`, `--cor-contorno-dourada`; âmbitos `.superficie-papel`, `.superficie-destaque` com a tabela de papéis acima; classes Tailwind `bg-papel` (via `papel: var(--cor-papel)`), `bg-dourada`, `text-sobre-dourada`, `border-contorno-dourada`.
@@ -171,7 +171,7 @@ feat(tokens): âmbitos papel e destaque e papéis do dourado
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 5: tokens de forma (frontend)
+### Task 5: tokens de forma (frontend)
 
 **Ficheiros:** Modificar `tokens.css` (bloco "Forma"), `tailwind.config.ts` (`borderRadius`, `borderWidth`); Teste `frontend/src/styles/escala-de-espacamento.test.ts` ou novo `frontend/src/styles/forma.test.ts`.
 **Interfaces:** Produz `rounded-pequeno|campo|botao|cartao|grande|barra|cheio` e `border-medio`. `--raio-pequeno` muda de 4px para 10px e continua a servir os 28 ficheiros que o usam.
@@ -187,7 +187,7 @@ feat(tokens): raios e contorno médio do redesign B
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 6: os ficheiros das letras (infra obtém, qa testa)
+### Task 6: os ficheiros das letras (infra obtém, qa testa)
 
 **Ficheiros:** Criar `frontend/public/fontes/bricolage-grotesque-v<rev>-latin-700-800.woff2`, `frontend/public/fontes/dm-sans-v<rev>-latin-400-700.woff2`, `frontend/src/testes/woff2.ts`; Modificar `frontend/public/fontes/OFL.txt` (os dois textos OFL de `google/fonts`), `PROVENIENCIA.md`; Apagar os três `.woff2` antigos; Teste `frontend/src/styles/fontes.test.ts` (bloco "os ficheiros das fontes").
 **Interfaces:** `<rev>` é `head.fontRevision` com o ponto trocado por `_` (ex.: `v1_001`). Produz `lerTabelasWoff2(caminho: string): Map<string, Buffer>`, `temGlifo(tabelas, codepoint: number): boolean`, `recursosGsub(tabelas): string[]`, `eixosFvar(tabelas): {tag, min, max}[]`.
@@ -216,7 +216,7 @@ feat(fontes): Bricolage Grotesque e DM Sans variáveis, latin
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 7: letras ligadas ao site (frontend)
+### Task 7: letras ligadas ao site (frontend)
 
 **Ficheiros:** Modificar `frontend/src/styles/fontes.css`, `frontend/index.html` (preloads, ≈ linhas 30–48), `tokens.css` (bloco Tipografia), `global.css` (`.font-titulo`, `.font-seccao`, comentário de `font-synthesis`), `tailwind.config.ts` (`fontFamily.seccao`, `fontWeight.medio`, `fontWeight.forte` passa a 700 pelo token); Teste `fontes.test.ts`, `frontend/src/marca/head-do-index.test.ts:277–283`, `frontend/src/build-de-producao.test.ts:112–131`, `frontend/src/styles/base-global.test.ts`.
 **Interfaces:** `@font-face` "Bricolage Grotesque" com `font-weight: 700 800`, "DM Sans" com `font-weight: 400 700`, ambos `font-display: swap`, sem `unicode-range`. Classes: `font-titulo` (Bricolage, 800, `-0.02em`), `font-seccao` (Bricolage, 700, `-0.02em`), `font-corpo`, `font-normal|medio|forte`.
@@ -236,7 +236,7 @@ feat(fontes): Bricolage nos títulos e DM Sans no texto
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 8: Botão no aspeto B (qa escreve, frontend implementa)
+### Task 8: Botão no aspeto B (qa escreve, frontend implementa)
 
 **Ficheiros:** Modificar `frontend/src/components/ui/Botao.tsx`; Teste `Botao.test.tsx`, `desativado-mantem-a-variante.test.tsx`.
 **Interfaces:** `VarianteDeBotao = "principal" | "dourado" | "secundario" | "discreto" | "perigo"`. Classes: `dourado: "bg-dourada text-sobre-dourada border-medio border-contorno-dourada"`; `secundario: "border-medio border-contorno text-texto"`; `principal`, `discreto`, `perigo` como hoje (o principal muda de cor pelo âmbito). Base: `rounded-botao` em vez de `rounded-pequeno`. O `<button>` leva `data-variante={variante}` (para o R-02/R-03 contarem os dourados por ecrã). Docstring: "um só `dourado` por ecrã; sobre creme leva sempre a borda".
@@ -254,7 +254,7 @@ feat(ui): variante dourada do Botão e raio B
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 9: Campo, Chip e Interruptor (qa escreve, frontend implementa)
+### Task 9: Campo, Chip e Interruptor (qa escreve, frontend implementa)
 
 **Ficheiros:** Modificar `Campo.tsx`, `Chip.tsx`, `Interruptor.tsx` (só comentários e raio, se a ui-ux o pedir); Teste `Campo.test.tsx:131`, `Chip.test.tsx:66–72`, `Interruptor.test.tsx`.
 **Interfaces:** Campo `rounded-campo`; Chip `rounded-cheio text-nota font-medio`, ativo `bg-acao text-sobre-acao`, inativo `border border-contorno text-texto` (mais `bg-papel` se a Tarefa 1 o decidir); o peso é o mesmo nos dois estados.
@@ -270,7 +270,7 @@ feat(ui): Campo, Chip e Interruptor no aspeto B
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 10: Folha, Aviso, Estado vazio e Linha de produto (qa escreve, frontend implementa)
+### Task 10: Folha, Aviso, Estado vazio e Linha de produto (qa escreve, frontend implementa)
 
 **Ficheiros:** Modificar `Folha.tsx` (≈ linhas 107–122), `AvisoTemporario.tsx:103`, `EstadoVazio.tsx` (≈ 10–47), `LinhaDeProduto.tsx` (≈ 55–66); Modificar `frontend/src/lib/formato/data-do-evento.ts` (só comentários "Playfair"); Teste os `.test.tsx` respetivos.
 **Interfaces:** Folha `rounded-t-grande lg:rounded-grande`, título `font-titulo text-titulo`; Aviso `rounded-cartao`; Estado vazio título `font-seccao text-seccao` (a regra dos 22 px da Playfair sai); Linha de produto mantém nome, pontilhado e preço (`font-forte tabular-nums text-texto-marca`) até ao R-02.
@@ -286,7 +286,7 @@ feat(ui): Folha, Aviso, Estado vazio e Linha de produto na letra B
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 11: Cartão (qa escreve, frontend implementa)
+### Task 11: Cartão (qa escreve, frontend implementa)
 
 **Ficheiros:** Criar `frontend/src/components/ui/Cartao.tsx`, `Cartao.test.tsx`; Modificar `global.css` (`.cartao-destaque::after`), `tokens.css` (`--decoracao-destaque`, `--decoracao-afastamento`), `frontend/src/testes/componentes.ts` (entra `Cartao.tsx`).
 **Interfaces:** `Cartao({ tom = "papel", como = "div", children }: { tom?: "papel" | "destaque"; como?: "div" | "section" | "article" | "li"; children: ReactNode })`. Papel: `superficie-papel rounded-cartao border-b border-contorno-superficie p-4`. Destaque: `superficie-destaque cartao-destaque relative overflow-hidden rounded-grande p-6`; o círculo é `::after` com `--cor-decoracao-destaque`, `pointer-events: none`, sem `style` inline.
@@ -303,7 +303,7 @@ feat(ui): Cartão papel e de destaque
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 12: demonstração e testes de browser (qa)
+### Task 12: demonstração e testes de browser (qa)
 
 **Ficheiros:** Modificar `frontend/src/demonstracao/PaginaDemonstracao.tsx`, `frontend/e2e/apoio/pagina.ts`, `frontend/e2e/componentes.spec.ts`, `frontend/e2e/eventos.spec.ts:897–951`, `frontend/e2e/ementa-pixeis.spec.ts:44–68`.
 **Interfaces:** A demonstração ganha as secções "Superfície papel" e "Superfície destaque" (cada uma com as cinco variantes do Botão, Campo, Chip, Interruptor) e o Botão `dourado` nas cinco superfícies.
@@ -321,7 +321,7 @@ test(ui): componentes B nas cinco superfícies
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 13: `/verificar` completo (qa)
+### Task 13: `/verificar` completo (qa)
 
 **Ficheiros:** nenhum novo; corrige o que falhar na tarefa dona.
 
@@ -334,7 +334,7 @@ fix(redesign): correções do /verificar do R-01
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
-### Tarefa 14: capturas (frontend gera, ui-ux revê)
+### Task 14: capturas (frontend gera, ui-ux revê)
 
 **Ficheiros:** Criar `docs/ecras/capturas/redesign/{direcoes,b-completo,b-gestao}.png`, `docs/ecras/capturas/redesign/LEIA-ME.md`, `docs/ecras/capturas/R-01/390-*.png`.
 **Interfaces:** Maquetas: um script de uma só vez, no scratchpad e fora do repositório, com Playwright, abre cada HTML por `file://`, responde a `**/files/logo.webp` com o `logo.webp` da mesma pasta (`page.route`), deixa o Google Fonts carregar (é uma maqueta, não o site; a CSP não se aplica) e espera `document.fonts.ready`; captura página inteira a 1280 de largura. O `LEIA-ME.md` diz a origem, a data e que as letras vieram do Google Fonts. Componentes: as capturas existentes de `e2e/capturas.spec.ts` passam a escrever também a secção papel e a secção destaque, a 390×844, e copiam-se para `docs/ecras/capturas/R-01/` (pelo menos `390-botao.png`, `390-foco-botao.png`, `390-folha-aberta.png`, `390-sobre-creme.png`, `390-sobre-papel.png`, `390-sobre-destaque.png`).
