@@ -91,6 +91,22 @@ describe("src/styles/global.css", () => {
     expect(texto).toMatch(/var\(--fonte-corpo\)/);
     expect(texto).toMatch(/var\(--cor-texto\)/);
   });
+
+  it("o font-titulo e o font-seccao trazem o peso e o espaçamento da Bricolage", () => {
+    // R-01, secção 3: as duas classes trazem o peso consigo e nunca se
+    // juntam a `font-normal|medio|forte`. A Bricolage só existe entre 700 e
+    // 800; um peso pedido de fora saía noutro sem dar erro.
+    const texto = global();
+
+    expect(texto).toMatch(/\.font-titulo\s*\{[^}]*font-weight:\s*var\(--peso-titulo\)[^}]*\}/);
+    expect(texto).toMatch(
+      /\.font-titulo\s*\{[^}]*letter-spacing:\s*var\(--espacejamento-titulo\)[^}]*\}/,
+    );
+    expect(texto).toMatch(/\.font-seccao\s*\{[^}]*font-weight:\s*var\(--peso-seccao\)[^}]*\}/);
+    expect(texto).toMatch(
+      /\.font-seccao\s*\{[^}]*letter-spacing:\s*var\(--espacejamento-titulo\)[^}]*\}/,
+    );
+  });
 });
 
 /**

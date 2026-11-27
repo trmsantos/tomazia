@@ -58,11 +58,17 @@
   --cor-decoracao-destaque: color-mix(in srgb, var(--cor-dourado-latao) 18%, transparent);
 
   /* Tipografia */
-  --fonte-titulo: "Playfair Display", "Iowan Old Style", Georgia, serif;
-  --fonte-corpo: "Source Sans 3", -apple-system, "Segoe UI", Roboto, sans-serif;
-  --peso-normal: 400;
-  --peso-forte: 600;
-  --peso-titulo: 700;
+  /* Bricolage só existe entre 700 e 800 e DM Sans entre 400 e 700
+     (`public/fontes/`): cada --peso-* cabe no intervalo da família que o
+     usa, e `fontes.test.ts` verifica-o. */
+  --fonte-titulo: "Bricolage Grotesque", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fonte-corpo: "DM Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --peso-normal: 400; /* DM Sans */
+  --peso-medio: 500; /* DM Sans */
+  --peso-forte: 700; /* DM Sans */
+  --peso-seccao: 700; /* Bricolage: títulos de secção e preços */
+  --peso-titulo: 800; /* Bricolage: títulos de página e nome do bar */
+  --espacejamento-titulo: -0.02em; /* só Bricolage */
 
   --texto-nota: 0.875rem; /* 14 px */
   --texto-corpo: 1.0625rem; /* 17 px */

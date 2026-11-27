@@ -1,44 +1,53 @@
 /*
- * As três faces, servidas pelo próprio site.
+ * As duas famílias do redesign B (ADR 0023, docs/ecras/R-01.md, secção 3),
+ * servidas pelo próprio site.
  *
  * Nada de CDN: a CSP de produção é `font-src 'self'` com `default-src 'none'`,
  * por isso uma fonte pedida a outro domínio é bloqueada no servidor e funciona
- * em desenvolvimento — o modo de falha que esta tarefa inteira tenta evitar.
+ * em desenvolvimento — o modo de falha que a F3-01 inteira tentou evitar.
  *
  * Os ficheiros vivem em `public/fontes/` (com a licença e a proveniência ao
  * lado) e não em `src/`: o preload precisa de um nome estável, e o Vite
  * embute ficheiros abaixo de 4 KB na própria folha de estilos, que a mesma
  * CSP bloqueia.
  *
+ * Um ficheiro variável por família, e não um por peso: o desenho usa cinco
+ * pesos (DM Sans 400, 500 e 700; Bricolage 700 e 800) e dois pedidos cobrem
+ * os cinco. Cada ficheiro foi cortado ao intervalo de `wght` que o nome diz,
+ * e é esse intervalo, exatamente, que vai no `font-weight` do bloco: um valor
+ * só ("700") dizia ao browser que não existe mais nenhum. Com
+ * `font-synthesis: none` (em `global.css`), um peso pedido fora do intervalo
+ * sai no extremo mais próximo sem erro — por isso `fontes.test.ts` verifica
+ * que todos os `--peso-*` cabem no intervalo da família que os usa.
+ *
+ * O eixo `opsz` ficou nos dois ficheiros e o browser escolhe-o pelo tamanho
+ * do texto (`font-optical-sizing: auto`, o valor por omissão): o título a
+ * 34 px sai com o desenho de título e a nota a 14 px com o de texto pequeno.
+ *
+ * Os preços são Bricolage e não DM Sans (`.font-preco`, R-01 6.8): o DM Sans
+ * de google/fonts não tem `tnum` nem algarismos tabulares por omissão.
+ *
  * `font-display: swap` e não `optional` nem `block`: a primeira visita é a que
  * conta, porque é a do QR code na mesa. O texto aparece já na fonte de sistema
  * e troca quando a nossa chega.
  *
- * O intervalo de caracteres não se declara: com uma só face por peso não
+ * O intervalo de caracteres não se declara: com uma só face por família não
  * poupa nada e cria a hipótese de uma letra portuguesa cair fora por engano.
  * O subconjunto é latin e está registado em `public/fontes/PROVENIENCIA.md`.
  */
 
 @font-face {
-  font-family: "Playfair Display";
-  src: url("/fontes/playfair-display-v40-latin-700.woff2") format("woff2");
-  font-weight: 700;
+  font-family: "Bricolage Grotesque";
+  src: url("/fontes/bricolage-grotesque-v1_001-latin-700-800.woff2") format("woff2");
+  font-weight: 700 800;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Source Sans 3";
-  src: url("/fontes/source-sans-3-v20-latin-400.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Source Sans 3";
-  src: url("/fontes/source-sans-3-v20-latin-600.woff2") format("woff2");
-  font-weight: 600;
+  font-family: "DM Sans";
+  src: url("/fontes/dm-sans-v4_004-latin-400-700.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }

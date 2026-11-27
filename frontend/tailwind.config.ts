@@ -159,12 +159,16 @@ export default {
     // `font-*` é o mesmo espaço de nomes para a família e para o peso, por
     // isso não há uma chave `titulo` nos dois: a família de título leva o seu
     // peso na camada base (ver `.font-titulo` em `global.css`).
+    // `seccao` e `titulo` são a Bricolage e trazem o peso em `global.css`;
+    // os pesos daqui são só do DM Sans e nunca se juntam a elas (R-01, 3).
     fontFamily: {
       titulo: "var(--fonte-titulo)",
+      seccao: "var(--fonte-titulo)",
       corpo: "var(--fonte-corpo)",
     },
     fontWeight: {
       normal: "var(--peso-normal)",
+      medio: "var(--peso-medio)",
       forte: "var(--peso-forte)",
     },
     fontSize: {

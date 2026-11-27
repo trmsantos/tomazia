@@ -24,8 +24,11 @@
        três usos (ação principal, chip ativo, foco) e só três. */
     accent-color: var(--cor-creme-papel);
 
-    /* Só existem 400, 600 e a Playfair 700. Sem isto, o `bolder` do browser
-       fabrica um negrito falso da Source Sans 3 que ninguém desenhou. */
+    /* Só existem o DM Sans entre 400 e 700 e a Bricolage entre 700 e 800, e
+       nenhuma tem itálico. Sem isto, o browser fabrica um negrito ou um
+       itálico falsos que ninguém desenhou; com isto, um peso fora do
+       intervalo sai no extremo mais próximo, e é por isso que os --peso-*
+       têm um teste (`fontes.test.ts`). */
     font-synthesis: none;
   }
 
@@ -118,14 +121,37 @@
   }
 
   /*
-   * A família de título traz consigo o peso que existe: a Playfair só foi
-   * descarregada em 700. Isto fica aqui, e não no `theme.fontWeight`, porque
-   * no Tailwind o `font-*` é o mesmo espaço de nomes para a família e para o
-   * peso — duas chaves `titulo` gerariam duas classes com o mesmo nome e uma
-   * delas perdia em silêncio.
+   * As classes da Bricolage trazem o peso consigo (R-01, secção 3), e nunca
+   * se juntam a `font-normal|medio|forte`: a Bricolage só existe entre 700 e
+   * 800, e um 500 pedido a ela saía a 700 sem dar erro. Isto fica aqui, e não
+   * no `theme.fontWeight`, porque no Tailwind o `font-*` é o mesmo espaço de
+   * nomes para a família e para o peso — duas chaves `titulo` gerariam duas
+   * classes com o mesmo nome e uma delas perdia em silêncio.
+   *
+   * `.font-titulo` e `.font-seccao` recebem a família do `theme.fontFamily`;
+   * `.font-preco` não tem chave lá e declara a família aqui.
    */
   .font-titulo {
     font-weight: var(--peso-titulo);
+    letter-spacing: var(--espacejamento-titulo);
+  }
+
+  .font-seccao {
+    font-weight: var(--peso-seccao);
+    letter-spacing: var(--espacejamento-titulo);
+  }
+
+  /*
+   * Os preços são Bricolage 700 com algarismos tabulares (R-01 6.8). O DM Sans
+   * de google/fonts não tem `tnum` nem algarismos tabulares por omissão (o «1»
+   * tem 342 unidades e o «0» 656): um `tabular-nums` num preço em DM Sans não
+   * fazia nada e a coluna desalinhava. Sem o espaçamento de -0.02em: os
+   * algarismos tabulares são para ficar à mesma distância.
+   */
+  .font-preco {
+    font-family: var(--fonte-titulo);
+    font-weight: var(--peso-seccao);
+    font-variant-numeric: tabular-nums;
   }
 
   /*

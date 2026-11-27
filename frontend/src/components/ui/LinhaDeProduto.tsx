@@ -63,7 +63,7 @@ export function LinhaDeProduto({
               aria-hidden="true"
               className="min-w-fio flex-auto border-b border-dotted border-pontilhado"
             />
-            <span className="flex-none whitespace-nowrap text-corpo font-forte tabular-nums text-texto-marca">
+            <span className="flex-none whitespace-nowrap text-corpo font-preco tabular-nums text-texto-marca">
               {preco}
             </span>
           </>

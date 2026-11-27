@@ -37,7 +37,7 @@ export function BotaoDoPreco({
       onClick={aoAbrir}
       className={
         "min-h-toque min-w-preco-gestao shrink-0 rounded-pequeno border border-contorno px-3 " +
-        "text-corpo font-forte tabular-nums text-texto"
+        "text-corpo font-preco tabular-nums text-texto"
       }
     >
       {texto === "" ? "—" : texto}

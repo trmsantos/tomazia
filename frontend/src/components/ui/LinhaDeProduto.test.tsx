@@ -136,6 +136,17 @@ describe("o preço", () => {
 
     expect(screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className).toContain("tabular-nums");
   });
+
+  it("é Bricolage pelo `font-preco` e não DM Sans: o DM Sans não tem `tnum`", () => {
+    // R-01 6.8. O `font-preco` traz a família, o peso e os algarismos
+    // tabulares; um `font-forte` ao lado pedia outro peso à Bricolage, que
+    // só existe entre 700 e 800.
+    desenhar(<LinhaDeProduto nome="Imperial" precoCent={110} />);
+
+    const classes = screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className.split(/\s+/);
+    expect(classes).toContain("font-preco");
+    expect(classes.filter((classe) => /^font-(normal|medio|forte)$/.test(classe))).toEqual([]);
+  });
 });
 
 describe("um preço que não é um inteiro ≥ 0", () => {
