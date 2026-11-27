@@ -81,8 +81,8 @@ afirmam as duas metades: recusar, e não ter escrito nada.
 
 `HOME` falso dentro de `tmp_path`, `pip` e `alembic` como stubs
 registadores dentro do virtualenv falso (nunca tocam numa rede nem
-instalam nada), `rsync` o real do sistema. Nunca se contacta o cPanel nem
-se lê a BD antiga (regras 1 e 3 do `CLAUDE.md`). A forma de `$ORIGEM` é a
+instalam nada), `cp`, `mv`, `rm` e `mkdir` os reais do sistema. Nunca
+se contacta o cPanel nem se lê a BD antiga (regras 1 e 3 do `CLAUDE.md`). A forma de `$ORIGEM` é a
 que `deploy/montar.sh` produz de facto — o código dentro de `api/`, os
 estáticos dentro de `frontend/dist/`; a prova de que é mesmo essa é
 `tests/seguranca/test_integracao_pacote_deploy.py`, que corre os dois
@@ -290,7 +290,7 @@ def _assert_nada_escrito(
         "deploy que nem chegou a correr."
     )
     assert (instalacao.api / "app" / MARCADOR_VELHO).exists(), (
-        "O código antigo da API desapareceu — o rsync do código chegou a correr."
+        "O código antigo da API desapareceu — a sincronização do código chegou a correr."
     )
     assert not (instalacao.api / "app" / MARCADOR_NOVO).exists(), (
         "O código novo foi sincronizado — a recusa chegou tarde demais."

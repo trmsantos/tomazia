@@ -28,7 +28,7 @@ Fonte de verdade para pessoas e agentes. O plano completo, com diagramas, vive n
 └── repositories/tomazia/        clone da branch deploy (Git Version Control)
 ```
 
-- Durante a construção, o site novo vive em `novo.<domínio>` e o `WEB` do `deploy.sh` aponta para a pasta desse subdomínio.
+- Durante a construção, o site novo vive no subdomínio `new.<domínio>` (até ao corte da F5-02): a pasta no servidor chama-se `~/novo.<domínio>`, o endereço é `new.<domínio>`, e o `WEB` do `deploy.sh` aponta para essa pasta.
 - O deploy nunca toca em `.htaccess`, `media/`, `.env`, `tomazia_data/` nem nas pastas do cPanel.
 - `GET /api/health` devolve `{"estado": "ok", "versao": "<sha>", "arrancado_em": "<ISO-8601 UTC>"}`. O `arrancado_em` é fixado à importação do processo, não por pedido. O deploy espera até ver a versão do commit **e** um `arrancado_em` posterior ao início do deploy: sem a segunda condição, um processo antigo que já servisse aquele `VERSION` daria o deploy por concluído sem ter reiniciado.
 

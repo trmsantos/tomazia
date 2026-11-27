@@ -429,16 +429,15 @@ fi
 
 # --- nenhuma ligação simbólica sai no pacote ---
 #
-# O `deploy.sh` sincroniza o pacote com `rsync -a`, que preserva links, e
-# o Apache do cPanel segue-os (`SymLinksIfOwnerMatch`). Uma ligação como
-# `frontend/dist/logo.svg -> ../tomazia_api/.env` seria servida por HTTP
-# com o conteúdo do destino. Nenhum guarda anterior a vê: o S-10/S-12
+# Uma ligação no pacote que chegasse ao site seria seguida pelo Apache do
+# cPanel (`SymLinksIfOwnerMatch`): `frontend/dist/logo.svg ->
+# ../tomazia_api/.env` seria servida por HTTP com o conteúdo do destino. Nenhum guarda anterior a vê: o S-10/S-12
 # olha para NOMES, que aqui são inocentes, e as suas procuras são
 # `-type f`, portanto nem reparam nela. Hoje nada consegue pôr uma
 # ligação no pacote — o `upload-artifact` dereferencia-as — mas essa é
 # uma garantia de terceiros, não nossa, e não está escrita em lado
-# nenhum. O `deploy.sh` tem `--safe-links` como segunda camada; esta é a
-# primeira. Recusa-se o pacote inteiro, em voz alta.
+# nenhum. O `deploy.sh` recusa-as também, no servidor, como segunda
+# camada; esta é a primeira. Recusa-se o pacote inteiro, em voz alta.
 tmp_links="${tmp_auditoria}/links"
 tmp_links_err="${tmp_auditoria}/links.err"
 estado_find_links=0

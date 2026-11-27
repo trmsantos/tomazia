@@ -1,50 +1,59 @@
-"""O `rsync` do frontend de `deploy/deploy.sh` nunca leva para o site uma ligação que sai do pacote (terceira ronda da F1-04).
+"""`deploy/deploy.sh` recusa um pacote com ligações simbólicas, antes de escrever o que quer que seja (terceira ronda da F1-04; refeito na F1-05, sem `rsync`).
 
 ## O achado
 
-`rsync -a` preserva ligações simbólicas tal e qual, e o Apache do cPanel
-segue-as (`SymLinksIfOwnerMatch`). Uma ligação dentro do build —
+Uma ligação simbólica dentro do build —
 
     frontend/dist/logo.svg -> ../tomazia_api/.env
 
-— aterrava no `WEB` como ligação e, a partir dali, o conteúdo do ficheiro
-para onde aponta era servido por HTTP, com um nome inocente e uma extensão
-que ninguém vai inspecionar. O ficheiro nunca esteve no pacote: só o texto
-do destino, que é um atributo da ligação, viajou.
+— aterrava no `WEB` como ligação e, a partir dali, o Apache do cPanel
+seguia-a (`SymLinksIfOwnerMatch`) e servia por HTTP o conteúdo do ficheiro
+para onde aponta, com um nome inocente e uma extensão que ninguém vai
+inspecionar. O ficheiro nunca esteve no pacote: só o texto do destino, que
+é um atributo da ligação, viajou.
 
 Isto tem duas camadas. A primeira é `montar.sh`, que recusa o pacote
 inteiro se encontrar uma ligação (ver
 `test_montar_recusa_ligacoes_simbolicas.py`). Esta é a segunda, e corre no
-último sítio antes do site: `--safe-links` no `rsync` do frontend, que faz
-o `rsync` ignorar qualquer ligação cujo destino saia da árvore que está a
-copiar (aqui, `$ORIGEM/frontend/dist/`).
+servidor, sobre o que o `git pull --ff-only` da branch `deploy` deixou em
+`$HOME/repositories/tomazia` — e o git guarda e restaura ligações
+simbólicas sem drama nenhum (modo `120000`). Entre um e outro há uma
+publicação, uma branch e um pull: o `deploy.sh` não pode assumir que o que
+recebeu foi montado hoje, nem por este `montar.sh`.
 
-Duas camadas e não uma porque elas protegem de coisas diferentes. O
-`montar.sh` corre no runner, sobre o pacote acabado de montar; o `rsync`
-corre no servidor, sobre o que o `git pull --ff-only` da branch `deploy`
-deixou em `$HOME/repositories/tomazia` — e o git guarda e restaura
-ligações simbólicas sem drama nenhum (modo `120000`). Entre um e outro há
-uma publicação, uma branch e um pull: o `deploy.sh` não pode assumir que o
-que recebeu foi montado hoje, nem por este `montar.sh`.
+## O que mudou na F1-05
+
+A segunda camada era o `--safe-links` do `rsync`, que IGNORAVA em silêncio
+as ligações que saíam da árvore e copiava o resto. O CageFS do cPanel não
+tem `rsync`, e a sincronização passou a ser feita com `cp`/`mv`/`rm`. O
+`cp` segue ligações; em vez de reproduzir "seguir só as boas", o
+`deploy.sh` passou a recusar o pacote inteiro, com uma mensagem própria,
+se houver QUALQUER ligação em `api/` ou em `frontend/dist/` — antes do pip,
+antes de qualquer escrita. Um pacote com uma ligação não saiu do
+`montar.sh` deste repositório, e um deploy que o aceitasse em parte só
+escondia isso.
+
+E a regra 10, outra vez: a procura é um `find`, e um `find` que falha
+(uma pasta ilegível) não é "não há ligações". As duas recusas têm de
+dizer coisas diferentes — é o último teste deste ficheiro.
 
 ## O mundo do teste
 
-É por isso que o pacote aqui é montado a sério, com o `montar.sh` real, e
-a ligação é plantada DEPOIS, já dentro do pacote montado — a simular
-exatamente o que chega ao servidor, não o que sai do runner. Plantá-la
-antes só exercitaria a primeira camada outra vez.
+O pacote é montado a sério, com o `montar.sh` real, e a ligação é
+plantada DEPOIS, já dentro do pacote montado — a simular exatamente o que
+chega ao servidor, não o que sai do runner. Plantá-la antes só
+exercitaria a primeira camada outra vez.
 
 O alvo da ligação é um ficheiro do `$HOME` falso, fora do pacote, com
 conteúdo claramente falso (regra 1 do `CLAUDE.md`). A ligação é escrita
 como `../tomazia_api/<ficheiro>` de propósito: a partir do `WEB`
 (`$HOME/novo-dominio-exemplo/`) esse caminho relativo resolve certinho
 para o ficheiro — ou seja, se ela chegasse ao site, era mesmo servível, e
-não uma ligação pendurada sem consequência. É isso que o teste quer poder
-afirmar.
+não uma ligação pendurada sem consequência.
 
 Nunca se contacta o cPanel nem se lê a BD antiga (regras 1 e 3 do
 `CLAUDE.md`): `HOME` falso em `tmp_path`, `pip` e `alembic` como stubs
-silenciosos dentro do virtualenv falso, `rsync` o real do sistema.
+registadores dentro do virtualenv falso.
 
 Não está ligado a nenhum critério S-NN de `docs/ESPECIFICACAO.md`: vive em
 `tests/seguranca/` pela regra 5 do `CLAUDE.md` da raiz.
@@ -57,6 +66,7 @@ import os
 import shutil
 import stat
 import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,6 +93,11 @@ CONTEUDO_FORA_DO_PACOTE = (
 NOME_DA_LIGACAO = "logo.svg"
 DESTINO_DA_LIGACAO = f"../tomazia_api/{NOME_FICHEIRO_FORA_DO_PACOTE}"
 
+#: O pedaço da mensagem que só a recusa por ligações encontradas diz.
+MENSAGEM_LIGACOES = "o pacote tem ligações simbólicas"
+#: O pedaço da mensagem que só a recusa por o `find` ter falhado diz.
+MENSAGEM_FIND_FALHOU = "não consegui procurar ligações simbólicas"
+
 CONTEUDO_ENV_FALSO = """\
 AMBIENTE=producao
 DATA_DIR=/caminho/inventado/tomazia_data
@@ -97,8 +112,9 @@ export PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd):$PATH"
 export VIRTUAL_ENV="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 """
 
-_STUB_SILENCIOSO = """\
+_STUB_REGISTADOR = """\
 #!/usr/bin/env bash
+printf 'EVENTO={nome} ARGS=%s\\n' "$*" >> "${{TOMAZIA_TESTE_LOG}}"
 exit 0
 """
 
@@ -145,6 +161,7 @@ class Instalacao:
     api: Path
     origem: Path
     web: Path
+    log: Path
     ambiente: dict[str, str]
 
 
@@ -167,19 +184,26 @@ def _preparar_servidor_falso(tmp_path: Path) -> Instalacao:
     (web / ".htaccess").write_text("# diretivas reais do servidor\n", encoding="utf-8")
     (web / "media").mkdir()
     (web / "media" / "foto-aprovada.webp").write_bytes(b"conteudo-imagem-falso")
+    (web / "index.html").write_text("<html>site no ar</html>\n", encoding="utf-8")
 
     _escrever_stub(venv_bin / "activate", CONTEUDO_ACTIVATE_FALSO)
-    _escrever_stub(venv_bin / "pip", _STUB_SILENCIOSO)
-    _escrever_stub(venv_bin / "alembic", _STUB_SILENCIOSO)
+    _escrever_stub(venv_bin / "pip", _STUB_REGISTADOR.format(nome="pip"))
+    _escrever_stub(venv_bin / "alembic", _STUB_REGISTADOR.format(nome="alembic"))
 
     (home / ".tomazia-deploy.conf").write_text(f"WEB={web}\n", encoding="utf-8")
 
+    log = tmp_path / "log-stubs.txt"
     return Instalacao(
         home=home,
         api=api,
         origem=origem,
         web=web,
-        ambiente={"HOME": str(home), "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        log=log,
+        ambiente={
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin:/usr/local/bin",
+            "TOMAZIA_TESTE_LOG": str(log),
+        },
     )
 
 
@@ -211,12 +235,24 @@ def _correr_deploy(instalacao: Instalacao) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _plantar_ligacao_no_pacote(instalacao: Instalacao) -> Path:
-    """A ligação intrusa, posta no pacote JÁ montado — como um pacote que chega ao servidor pela branch `deploy`."""
-    ligacao = instalacao.origem / "frontend" / "dist" / NOME_DA_LIGACAO
-    ligacao.symlink_to(DESTINO_DA_LIGACAO)
-    assert ligacao.is_symlink(), "premissa do teste: foi criada mesmo uma ligação"
-    return ligacao
+def _mensagem(resultado: subprocess.CompletedProcess[str]) -> str:
+    return resultado.stdout + resultado.stderr
+
+
+def _instantaneo(pasta: Path) -> dict[str, bytes | str]:
+    """Árvore inteira, ficheiros e ligações (sem as seguir), para comparar antes/depois."""
+    resultado: dict[str, bytes | str] = {}
+    for raiz, pastas, ficheiros in os.walk(pasta):
+        for nome in [*pastas, *ficheiros]:
+            caminho = Path(raiz) / nome
+            relativo = caminho.relative_to(pasta).as_posix()
+            if caminho.is_symlink():
+                resultado[relativo] = f"-> {os.readlink(caminho)}"
+            elif caminho.is_file():
+                resultado[relativo] = caminho.read_bytes()
+            else:
+                resultado[relativo] = "<pasta>"
+    return resultado
 
 
 def _conteudos_servidos(web: Path) -> dict[str, str]:
@@ -235,12 +271,45 @@ def _conteudos_servidos(web: Path) -> dict[str, str]:
     return conteudos
 
 
-def test_uma_ligacao_que_sai_do_pacote_nunca_chega_ao_web(tmp_path: Path) -> None:
-    """O caso exato do achado: `dist/logo.svg -> ../tomazia_api/<ficheiro>` não pode aterrar no site."""
+def _assert_recusado_sem_escrever(
+    instalacao: Instalacao,
+    resultado: subprocess.CompletedProcess[str],
+    web_antes: dict[str, bytes | str],
+) -> None:
+    assert resultado.returncode != 0, (
+        "Um pacote com uma ligação simbólica tem de ser recusado.\n"
+        f"{_mensagem(resultado)}"
+    )
+    assert _instantaneo(instalacao.web) == web_antes, (
+        "O WEB mudou apesar do deploy ter sido recusado — a recusa tem de "
+        "vir antes de qualquer escrita."
+    )
+    log = instalacao.log.read_text(encoding="utf-8") if instalacao.log.is_file() else ""
+    assert log == "", (
+        f"O pip ou o alembic correram — a recusa chegou tarde demais:\n{log}"
+    )
+    assert not (instalacao.api / "app").exists(), (
+        "O código da API foi sincronizado — a recusa chegou tarde demais."
+    )
+    assert not (instalacao.api / "tmp" / "restart.txt").exists()
+
+
+@pytest.fixture
+def instalacao_montada(tmp_path: Path) -> Iterator[Instalacao]:
     raiz = _construir_arvore_minima(tmp_path)
     instalacao = _preparar_servidor_falso(tmp_path)
     _montar_pacote(raiz, instalacao)
-    _plantar_ligacao_no_pacote(instalacao)
+    yield instalacao
+
+
+def test_uma_ligacao_que_sai_do_pacote_e_recusada_e_nunca_chega_ao_web(
+    instalacao_montada: Instalacao,
+) -> None:
+    """O caso exato do achado: `dist/logo.svg -> ../tomazia_api/<ficheiro>` não pode aterrar no site."""
+    instalacao = instalacao_montada
+    ligacao = instalacao.origem / "frontend" / "dist" / NOME_DA_LIGACAO
+    ligacao.symlink_to(DESTINO_DA_LIGACAO)
+    assert ligacao.is_symlink(), "premissa do teste: foi criada mesmo uma ligação"
 
     # Premissa: se a ligação chegasse ao WEB, resolveria mesmo — o teste
     # não está a provar segurança com uma ligação pendurada inofensiva.
@@ -248,57 +317,95 @@ def test_uma_ligacao_que_sai_do_pacote_nunca_chega_ao_web(tmp_path: Path) -> Non
         instalacao.api / NOME_FICHEIRO_FORA_DO_PACOTE
     ).resolve()
 
+    antes = _instantaneo(instalacao.web)
     resultado = _correr_deploy(instalacao)
 
-    assert resultado.returncode == 0, (
-        "deploy.sh tem de completar o deploy, deixando a ligação de fora — "
-        "quem recusa o pacote é o montar.sh, no runner.\n"
-        f"stdout:\n{resultado.stdout}\nstderr:\n{resultado.stderr}"
+    _assert_recusado_sem_escrever(instalacao, resultado, antes)
+    assert MENSAGEM_LIGACOES in _mensagem(resultado), (
+        "A recusa tem de dizer que encontrou ligações simbólicas — senão é "
+        f"indistinguível de qualquer outra avaria:\n{_mensagem(resultado)}"
+    )
+    assert str(ligacao) in _mensagem(resultado), (
+        "A recusa tem de dizer QUAL é a ligação, para o Tomás a ir ver."
     )
 
     caminho_no_web = instalacao.web / NOME_DA_LIGACAO
     assert not os.path.lexists(caminho_no_web), (
-        f"A ligação chegou ao site como {caminho_no_web}. O `rsync -a` do "
-        "frontend precisa de `--safe-links`: sem isso copia a ligação tal e "
-        "qual, o Apache segue-a (SymLinksIfOwnerMatch) e serve por HTTP o "
-        "ficheiro que está do outro lado — que nunca esteve no pacote nem "
-        "passou por guarda nenhum. (`lexists` e não `exists`: uma ligação "
-        "pendurada não 'existe', mas chegou na mesma.)"
+        f"A ligação chegou ao site como {caminho_no_web}. (`lexists` e não "
+        "`exists`: uma ligação pendurada não 'existe', mas chegou na mesma.)"
     )
-
-    servidos = _conteudos_servidos(instalacao.web)
-    assert CONTEUDO_FORA_DO_PACOTE not in servidos.values(), (
-        "O conteúdo de um ficheiro de fora do pacote tornou-se legível "
-        f"debaixo do WEB. Entradas vistas: {sorted(servidos)!r}"
-    )
+    assert CONTEUDO_FORA_DO_PACOTE not in _conteudos_servidos(instalacao.web).values()
 
 
-def test_o_resto_do_build_chega_ao_web_na_mesma(tmp_path: Path) -> None:
-    """A outra metade: `--safe-links` deixa de fora a ligação, nunca o build.
+@pytest.mark.parametrize(
+    ("relativo", "destino"),
+    [
+        # Uma ligação "boa", que fica dentro do build. O `--safe-links`
+        # deixava-a passar; agora recusa-se também: o `cp` segue ligações,
+        # e o pacote do `montar.sh` nunca as tem.
+        ("frontend/dist/atalho.js", "assets/app.js"),
+        # Do lado da API: o código não é servido por HTTP, mas o `cp`
+        # copiava o CONTEÚDO do destino para `tomazia_api/app/`.
+        ("api/app/config_extra.py", "../../../../tomazia_api/.env"),
+        # Uma pasta inteira como ligação.
+        ("frontend/dist/imagens", "/"),
+    ],
+    ids=["interna_ao_build", "na_api", "pasta_para_a_raiz"],
+)
+def test_qualquer_ligacao_no_pacote_e_recusada(
+    instalacao_montada: Instalacao, relativo: str, destino: str
+) -> None:
+    instalacao = instalacao_montada
+    ligacao = instalacao.origem / relativo
+    ligacao.symlink_to(destino)
 
-    Sem isto, um `rsync` que falhasse (ou que não copiasse nada) passava no
-    teste acima com distinção — e o site ficava vazio.
-    """
-    raiz = _construir_arvore_minima(tmp_path)
-    instalacao = _preparar_servidor_falso(tmp_path)
-    _montar_pacote(raiz, instalacao)
-    _plantar_ligacao_no_pacote(instalacao)
-
+    antes = _instantaneo(instalacao.web)
     resultado = _correr_deploy(instalacao)
 
-    assert resultado.returncode == 0, (
-        f"stdout:\n{resultado.stdout}\nstderr:\n{resultado.stderr}"
-    )
+    _assert_recusado_sem_escrever(instalacao, resultado, antes)
+    assert MENSAGEM_LIGACOES in _mensagem(resultado), _mensagem(resultado)
+
+
+def test_pacote_sem_ligacoes_e_aceite(instalacao_montada: Instalacao) -> None:
+    """Controlo: o guarda não pode estar a recusar tudo. Sem isto, os testes acima passavam com um `deploy.sh` que recusasse sempre."""
+    instalacao = instalacao_montada
+    resultado = _correr_deploy(instalacao)
+
+    assert resultado.returncode == 0, _mensagem(resultado)
+    assert MENSAGEM_LIGACOES not in _mensagem(resultado)
     assert (instalacao.web / "index.html").read_text(encoding="utf-8") == (
         "<!doctype html><html><body>pacote de teste</body></html>\n"
-    ), (
-        "O `index.html` do pacote não chegou ao site. A ligação intrusa fica "
-        "de fora; o resto do build tem de passar na mesma."
     )
-    assert (instalacao.web / "assets" / "app.js").is_file(), (
-        "O resto do build tem de ser sincronizado — a exclusão é só da "
-        "ligação, não da pasta que a continha."
-    )
-    assert (instalacao.web / "media" / "foto-aprovada.webp").is_file(), (
-        "A pasta media/ do servidor tem de sobreviver ao deploy."
+    assert (instalacao.web / "assets" / "app.js").is_file()
+    assert (instalacao.web / "media" / "foto-aprovada.webp").is_file()
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="como root, uma pasta sem permissões continua legível e o find não falha",
+)
+def test_find_que_falha_nao_e_relatado_como_pacote_sem_ligacoes(
+    instalacao_montada: Instalacao,
+) -> None:
+    """Regra 10: "não consegui procurar" nunca pode dar o mesmo que "não havia nada".
+
+    Uma pasta ilegível no pacote faz o `find` falhar. Se o código de saída
+    caísse num `if` sem ser lido, o deploy seguia como se não houvesse
+    ligações — e a sincronização, a seguir, ou morria a meio ou tratava a
+    pasta como vazia.
+    """
+    instalacao = instalacao_montada
+    ilegivel = instalacao.origem / "frontend" / "dist" / "assets"
+    antes = _instantaneo(instalacao.web)
+    ilegivel.chmod(0)
+    try:
+        resultado = _correr_deploy(instalacao)
+    finally:
+        ilegivel.chmod(0o755)
+
+    _assert_recusado_sem_escrever(instalacao, resultado, antes)
+    assert MENSAGEM_FIND_FALHOU in _mensagem(resultado), _mensagem(resultado)
+    assert MENSAGEM_LIGACOES not in _mensagem(resultado), (
+        "O find falhou e a recusa disse que encontrou ligações — é outra "
+        f"avaria, com outra mensagem:\n{_mensagem(resultado)}"
     )

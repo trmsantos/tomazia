@@ -223,10 +223,10 @@ def test_htaccess_em_subpasta_do_build_nunca_chega_ao_web(tmp_path: Path) -> Non
     )
 
     assert not (instalacao.web / "assets" / ".htaccess").exists(), (
-        "Um '.htaccess' de uma subpasta do build chegou a WEB/assets/. O "
-        "--exclude do rsync do frontend tem de ser '.htaccess' SEM âncora: "
-        "com '/.htaccess' só o do topo fica de fora, e o Apache honra "
-        "qualquer um, a qualquer profundidade."
+        "Um '.htaccess' de uma subpasta do build chegou a WEB/assets/. A "
+        "exclusão do frontend tem de valer para '.htaccess' a qualquer "
+        "profundidade: só à raiz, os outros passam, e o Apache honra "
+        "qualquer um."
     )
     assert not (
         instalacao.web / "assets" / "fundo" / "mais-fundo" / ".htaccess"

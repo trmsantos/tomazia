@@ -65,8 +65,8 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 
 - **Quem:** Tomás, manual.
 - **Depende de:** F1-04.
-- **Faz:** confirmar a versão do Python; criar `novo.<domínio>`; Setup Python App; chave SSH como deploy key; Git Version Control na branch `deploy`; API token; secrets no ambiente `production`; `.env` e `.htaccess` à mão; regras de proteção da `main` e da `deploy`.
-- **Feito quando:** um merge na `main` aparece em `novo.<domínio>/api/health` com o SHA certo, sem passos manuais; e, com o `CLAUDE_CODE_OAUTH_TOKEN` já configurado, o `persist-credentials: false` no `claude.yml` foi testado com um `@claude` num PR descartável e ficou aplicado — é o único workflow com token de escrita, e sem essa linha o token fica em `.git/config` ao alcance de um `postinstall` durante um `npm ci` dentro da própria ação.
+- **Faz:** confirmar a versão do Python; criar o subdomínio `new.<domínio>` (a pasta chama-se `~/novo.<domínio>`); Setup Python App; Git Version Control (o repositório é público: clone por HTTPS, sem deploy key) na branch `deploy`; API token; secrets no ambiente `production`; `.env` e `.htaccess` à mão; regras de proteção da `main` e da `deploy`.
+- **Feito quando:** um merge na `main` aparece em `new.<domínio>/api/health` com o SHA certo, sem passos manuais; e, com o `CLAUDE_CODE_OAUTH_TOKEN` já configurado, o `persist-credentials: false` no `claude.yml` foi testado com um `@claude` num PR descartável e ficou aplicado — é o único workflow com token de escrita, e sem essa linha o token fica em `.git/config` ao alcance de um `postinstall` durante um `npm ci` dentro da própria ação.
 
 - **Herança da F2-06, duas coisas para fazer à mão no servidor:**
   1. **Medir se há proxy à frente** (ADR 0017). Abre o site do telemóvel em dados móveis e compara a última linha de `~/access-logs/<domínio>` com o IP que um serviço externo te diz. Se baterem certo, não há nada a fazer. Se o log disser `127.0.0.1` ou um endereço interno, há proxy — e o endereço que ele mostra é exatamente o que vai para `PROXIES_DE_CONFIANCA` no `.env`. **Sem isto, se houver proxy, são cinco fotos por hora para o bar inteiro**: o sexto visitante da noite é recusado por causa dos cinco anteriores.
@@ -327,7 +327,7 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Atenção:** o `og:image` tem de ser um endereço absoluto, e o domínio muda no corte (de `novo.<domínio>` para o principal, F5-02). Decidir aqui como se resolve, sem pôr o domínio errado no HTML.
 - **Feito quando:** o favicon e o `apple-touch-icon` aparecem (teste ao `index.html` compilado); o logótipo tem texto alternativo e o `<h1>` continua a ser um só com o nome do bar; nada transborda a 360 px; Q-02 e Q-04; capturas 390×844.
 
-**R-01, R-02 e R-03 vêm do ADR 0023 e fazem a página pública e a gestão no estilo B. Decididos pelo Tomás em 2026-11-26 e 2026-11-27** (desenho em `docs/superpowers/specs/2026-11-26-redesign-b-design.md`; plano do R-01 em `docs/superpowers/plans/2026-11-26-R-01-redesign-base.md`). Três PRs seguidos. O R-01 não muda o fundo de nenhuma página, por isso entre o R-01 e o R-03 há estilos misturados em `novo.bardatomazia.pt`, o que é aceitável porque ainda não é o site oficial.
+**R-01, R-02 e R-03 vêm do ADR 0023 e fazem a página pública e a gestão no estilo B. Decididos pelo Tomás em 2026-11-26 e 2026-11-27** (desenho em `docs/superpowers/specs/2026-11-26-redesign-b-design.md`; plano do R-01 em `docs/superpowers/plans/2026-11-26-R-01-redesign-base.md`). Três PRs seguidos. O R-01 não muda o fundo de nenhuma página, por isso entre o R-01 e o R-03 há estilos misturados em `new.bardatomazia.pt`, o que é aceitável porque ainda não é o site oficial.
 
 ### R-01 Base do redesign B
 
@@ -527,4 +527,4 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Depende de:** todas as anteriores (incluindo a F4-02b).
 - **Faz:** congelar o admin antigo; importação final; guardar cópia do PHP; apontar `WEB` para o `public_html`; atualizar o `.htaccess`; apagar os ficheiros PHP.
 - **Feito quando:** os QR codes impressos abrem a ementa nova; `/api/health` responde no domínio principal.
-- **F3-08:** no corte, `VITE_URL_PUBLICA` passa de `https://novo.bardatomazia.pt` para `https://bardatomazia.pt` nos workflows (`ci.yml` e `deploy.yml`) e volta-se a publicar; o endereço provisório não se partilha antes do corte (a pré-visualização ficaria em cache com ele).
+- **F3-08:** no corte, `VITE_URL_PUBLICA` passa de `https://new.bardatomazia.pt` para `https://bardatomazia.pt` nos workflows (`ci.yml` e `deploy.yml`) e volta-se a publicar; o endereço provisório não se partilha antes do corte (a pré-visualização ficaria em cache com ele).

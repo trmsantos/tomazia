@@ -30,8 +30,10 @@ Hoje nada consegue pôr uma ligação no pacote — o `upload-artifact`
 dereferencia-as ao empacotar, e o resto do pacote sai de um `cp -a` de um
 checkout limpo. Mas essa é uma garantia de terceiros, não nossa, e não
 estava escrita em lado nenhum. Por isso há duas camadas: esta, no
-`montar.sh` (recusa o pacote em voz alta), e o `--safe-links` do `rsync`
-do frontend em `deploy.sh`, o último sítio antes do site, prendido em
+`montar.sh` (recusa o pacote em voz alta), e o guarda equivalente do
+`deploy.sh`, no servidor, o último sítio antes do site (era o
+`--safe-links` do `rsync`; desde a F1-05, sem `rsync`, recusa também o
+pacote inteiro), prendido em
 `test_deploy_sh_nao_sincroniza_ligacoes_para_fora_do_pacote.py`.
 
 ## Porque se recusam TODAS as ligações, e não só as que saem do pacote
@@ -192,9 +194,10 @@ def test_ligacao_simbolica_no_pacote_faz_montar_recusar(
     relativo = LIGACOES[caso][0]
     assert resultado.returncode != 0, (
         f"montar.sh montou o pacote com uma ligação simbólica em {relativo!r} "
-        "e saiu 0. O `rsync -a` do deploy.sh copia-a tal e qual e o Apache "
-        "segue-a: o site passaria a servir o conteúdo do outro lado da "
-        f"ligação.\nstdout:\n{resultado.stdout}"
+        "e saiu 0. Se chegasse ao site, o Apache seguia-a e servia o "
+        "conteúdo do outro lado da ligação; o deploy.sh recusa-a no "
+        "servidor, mas esta é a primeira camada e não pode depender da "
+        f"segunda.\nstdout:\n{resultado.stdout}"
     )
     assert "ligaç" in resultado.stderr.lower(), (
         "A recusa tem de dizer, em stderr, que o problema é uma ligação "

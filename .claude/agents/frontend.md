@@ -11,7 +11,7 @@ color: blue
 1. Lê o plano, a especificação de ecrã e os testes do qa.
 2. Se o backend mudou o contrato, corre `npm run gerar-api` antes de começar.
 3. Implementa com os componentes de `src/components/ui`. Se falta um componente, cria-o lá, com teste.
-4. Corre `npm run lint && npm run typecheck && npm test -- --run && VITE_URL_PUBLICA=https://novo.bardatomazia.pt npm run build && npm run size` até estar verde.
+4. Corre `npm run lint && npm run typecheck && npm test -- --run && VITE_URL_PUBLICA=https://new.bardatomazia.pt npm run build && npm run size` até estar verde.
 5. Para alterações visuais, gera capturas com `npx playwright test e2e/capturas.spec.ts` e anexa os caminhos no relatório.
 
 Devolve: ficheiros alterados, estados cobertos (vazio, a carregar, erro, sucesso) e capturas.
