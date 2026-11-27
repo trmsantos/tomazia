@@ -45,6 +45,8 @@ const CANAL_DO_DESATIVADO = ["opacity-desativado", "cursor-not-allowed"];
 /** O que distingue cada variante das outras, da tabela da secção 7.1. */
 const VARIANTES: { variante: VarianteDeBotao; marcas: string[] }[] = [
   { variante: "principal", marcas: ["bg-acao", "text-sobre-acao"] },
+  // R-01 / ADR 0023
+  { variante: "dourado", marcas: ["bg-dourada", "text-sobre-dourada", "border-contorno-dourada"] },
   { variante: "secundario", marcas: ["border-contorno"] },
   { variante: "discreto", marcas: ["text-texto-suave"] },
   { variante: "perigo", marcas: ["bg-perigo", "text-sobre-perigo"] },
@@ -99,6 +101,9 @@ describe("desativado mantém a variante — Botão", () => {
   it("o discreto desativado não ganha um contorno que o discreto normal não tem", () => {
     // Este é o caso que estava ao contrário. Um botão desligado com mais
     // peso visual do que o mesmo botão ligado lê-se como o oposto do que é.
+    // R-01 / ADR 0023: o discreto passou a ter `border-medio border-transparent`
+    // na caixa (para as cinco variantes terem o mesmo tamanho), por isso a guarda
+    // é que o contorno é invisível e que o desativado não o altera.
     const normal = botao("discreto", false);
     const desativado = botao("discreto", true);
 
@@ -107,15 +112,15 @@ describe("desativado mantém a variante — Botão", () => {
 
     expect(
       comContorno(normal),
-      "guarda: se o discreto normal passar a ter contorno, este teste deixa de dizer o que diz",
-    ).toEqual([]);
+      "guarda: o contorno do discreto tem de ser só a caixa transparente",
+    ).toEqual(["border-medio", "border-transparent"]);
     expect(
       comContorno(desativado),
       "o discreto desativado ganhou contorno: fica a pesar mais desligado do que ligado",
-    ).toEqual([]);
+    ).toEqual(comContorno(normal));
   });
 
-  it("as quatro variantes continuam distinguíveis umas das outras quando desativadas", () => {
+  it("as cinco variantes continuam distinguíveis umas das outras quando desativadas", () => {
     // A regra anterior apagava a variante toda no principal e no perigo, e
     // os quatro desativados ficavam iguais. Um "Eliminar produto"
     // desativado com a cara de um "Cancelar" desativado é uma confusão que
