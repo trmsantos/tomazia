@@ -205,6 +205,18 @@ describe("os papéis de cor, e a armadilha do dourado", () => {
     expect(classes, "sem um mínimo, um nome longo come o fio todo (6.3)").toContain("min-w-fio");
   });
 
+  it("continua com nome, pontilhado e preço tabular até ao R-02", () => {
+    // R-01 / ADR 0023 (6.8 de docs/ecras/R-01.md): a forma da linha muda no
+    // R-02. Até lá ficam os três, e o preço não perde o `tabular-nums`.
+    const { container } = desenhar(<LinhaDeProduto nome="Imperial" precoCent={110} />);
+
+    expect(screen.getByText("Imperial")).toBeInTheDocument();
+    expect(fioDe(container)?.className ?? "", "o pontilhado saiu antes do R-02").toContain(
+      "border-dotted",
+    );
+    expect(screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className).toContain("tabular-nums");
+  });
+
   it("a descrição não usa `text-texto-suave`", () => {
     // No creme esse papel resolve para bordô-tomazia, que é a cor do
     // preço: o texto menos importante do cartão ficaria com a cor da

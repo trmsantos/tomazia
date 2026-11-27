@@ -1,7 +1,7 @@
 /**
  * A data de um evento, em Lisboa, escrita como se fala à porta de um bar.
  *
- * F3-04, 5.2 a 5.6. Duas linhas por cartão: a `grande`, em Playfair a 34 px,
+ * F3-04, 5.2 a 5.6. Duas linhas por cartão: a `grande`, em letra de título a 34 px,
  * e a `pequena`, a 14 px por baixo dela. As duas nunca dizem a mesma coisa
  * duas vezes e juntas dizem sempre o suficiente.
  *
@@ -32,7 +32,7 @@
 
 /** As duas linhas de data de um cartão de evento (F3-04, 4.2). */
 export type DataDoEvento = {
-  /** A linha em Playfair a 34 px: `Hoje`, `Quinta-feira`, `17 de dezembro`. */
+  /** A linha em letra de título a 34 px: `Hoje`, `Quinta-feira`, `17 de dezembro`. */
   grande: string;
   /** A linha de 14 px: `A partir das 22:00`, `Começou às 22:00`. */
   pequena: string;

@@ -104,8 +104,8 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
       <div
         className={
           "superficie-painel folha-sobe lg:folha-aparece flex max-h-folha w-full flex-col gap-4 " +
-          "overflow-y-auto rounded-t-cartao border-t border-contorno-superficie p-6 " +
-          "lg:max-w-folha lg:rounded-cartao lg:border"
+          "overflow-y-auto rounded-t-grande border-t border-contorno-superficie p-6 " +
+          "lg:max-w-folha lg:rounded-grande lg:border"
         }
       >
         {/* A pega é decorativa: diz com a forma que isto se arrasta de baixo, e
@@ -117,8 +117,8 @@ export function Folha({ aberta, titulo, aoFechar, children }: PropriedadesDaFolh
         />
 
         <div className="flex items-start justify-between gap-4">
-          {/* 27 px em Playfair: a Playfair não desce abaixo de 22, e na escala
-              não há nada entre 21 e 27. */}
+          {/* Título de página: Bricolage a 800 pelo `font-titulo`, que já
+              traz o peso, por isso não leva `font-forte` ao lado. */}
           <h2 id={idDoTitulo} className="font-titulo text-titulo text-texto">
             {titulo}
           </h2>

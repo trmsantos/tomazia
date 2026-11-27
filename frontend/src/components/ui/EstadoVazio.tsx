@@ -7,9 +7,9 @@ import type { ReactElement, ReactNode } from "react";
  * e, no máximo, um botão. O vazio explica **porque** está vazio — "Ainda não
  * há fotos." — e não deixa o ecrã mudo.
  *
- * O título é Source Sans 3 a 600 e não Playfair: 21 px fica abaixo dos 22 que
- * a especificação dá como mínimo da Playfair, e na escala não há nada entre 21
- * e 27.
+ * O título é um título de secção, `font-seccao` (Bricolage a 700, secção 6.7
+ * de `docs/ecras/R-01.md`): a 21 px lê-se bem. O peso vem com a classe, por
+ * isso não leva `font-forte` ao lado.
  *
  * O tom `erro` serve o quinto texto da tabela de 7.7, o de rede: o título
  * passa a `text-erro` (5,51 no escuro, 5,16 no creme) e tudo o resto fica
@@ -44,7 +44,9 @@ export function EstadoVazio({
     <div className="mx-auto flex max-w-vazio flex-col items-center gap-3 py-8 text-center">
       <h3
         className={
-          tom === "erro" ? "text-seccao font-forte text-erro" : "text-seccao font-forte text-texto"
+          tom === "erro"
+            ? "font-seccao text-seccao text-erro"
+            : "font-seccao text-seccao text-texto"
         }
       >
         {titulo}

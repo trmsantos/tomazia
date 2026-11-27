@@ -177,16 +177,24 @@ describe("Estado vazio", () => {
     ).toMatch(/text-erro(?![\w-])/);
   });
 
-  it("o título é Source Sans 3, não Playfair: 21 px fica abaixo dos 22 da Playfair", () => {
+  it.each(["neutro", "erro"] as const)("o título (%s) é `font-seccao`, sem peso ao lado", (tom) => {
+    // R-01 / ADR 0023 (6.7 de docs/ecras/R-01.md): a Bricolage a 700 lê-se
+    // bem a 21 px, por isso sai a regra antiga dos 22 px e o título passa a
+    // título de secção. O `font-seccao` traz o peso; um
+    // `font-normal|medio|forte` ao lado pedia outro (secção 3).
     render(
       <EstadoVazio
         titulo="Não consegui carregar a ementa."
         linha="Verifica a ligação e tenta outra vez."
+        tom={tom}
       />,
     );
 
     const titulo = screen.getByRole("heading", { name: "Não consegui carregar a ementa." });
-    expect(titulo.className).toContain("text-seccao");
-    expect(titulo.className).not.toContain("font-titulo");
+    const classes = titulo.className.split(/\s+/);
+    expect(classes).toContain("font-seccao");
+    expect(classes).toContain("text-seccao");
+    expect(classes).not.toContain("font-titulo");
+    expect(classes.filter((classe) => /^font-(normal|medio|forte)$/.test(classe))).toEqual([]);
   });
 });

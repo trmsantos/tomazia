@@ -156,6 +156,16 @@ describe("Aviso temporário", () => {
     expect(aoFechar).toHaveBeenCalledTimes(1);
   });
 
+  it("o aviso usa o raio de cartão, que no redesign B são 18 px", () => {
+    // R-01 / ADR 0023 (6.6 de docs/ecras/R-01.md): a classe fica, o token muda.
+    render(<AvisoTemporario tipo="sucesso" mensagem="Produto guardado." aoFechar={vi.fn()} />);
+
+    const classes = screen.getByRole("status").className.split(/\s+/);
+    expect(classes).toContain("superficie-painel");
+    expect(classes).toContain("rounded-cartao");
+    expect(classes.filter((classe) => /^rounded-pequeno$/.test(classe))).toEqual([]);
+  });
+
   it("a barra de contagem é CSS, não um style com percentagem", () => {
     const { container } = render(
       <AvisoTemporario tipo="sucesso" mensagem="Preço atualizado." aoFechar={vi.fn()} />,
