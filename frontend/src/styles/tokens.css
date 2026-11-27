@@ -40,12 +40,35 @@
      não leitura. */
   --cor-cortina: color-mix(in srgb, var(--cor-bordo-noite) 88%, transparent);
 
+  /* Derivadas do redesign B (R-01 / ADR 0023, secção 4 de docs/ecras/R-01.md).
+
+     O papel é o creme a 25 % com branco: o cartão claro das maquetas, que
+     tinham um quase-branco escrito à mão. Branco e não um hex, para a paleta
+     continuar com dez cores (o branco não é uma cor do bar, é o fim da
+     escala), e esta é a única cor com nome do ficheiro, coisa que o
+     `cores-so-nos-tokens.test.ts` guarda. O canal vermelho dá 252,5 e
+     arredonda para cima; o hex que sai está em `papeis-por-ambito.test.ts`.
+
+     A decoração do destaque é o círculo de dourado a 18 % que fica por trás do
+     conteúdo do cartão bordo-tomazia. Por cima dele o texto creme fica a 7,25
+     e o dourado a 4,22 (R-01, 7). Com `transparent` e não já misturada com o
+     bordo-tomazia: é uma tinta por cima do fundo do cartão, e se esse fundo
+     mudar o círculo acompanha sem outra conta. */
+  --cor-papel: color-mix(in srgb, var(--cor-creme-papel) 25%, white);
+  --cor-decoracao-destaque: color-mix(in srgb, var(--cor-dourado-latao) 18%, transparent);
+
   /* Tipografia */
-  --fonte-titulo: "Playfair Display", "Iowan Old Style", Georgia, serif;
-  --fonte-corpo: "Source Sans 3", -apple-system, "Segoe UI", Roboto, sans-serif;
-  --peso-normal: 400;
-  --peso-forte: 600;
-  --peso-titulo: 700;
+  /* Bricolage só existe entre 700 e 800 e DM Sans entre 400 e 700
+     (`public/fontes/`): cada --peso-* cabe no intervalo da família que o
+     usa, e `fontes.test.ts` verifica-o. */
+  --fonte-titulo: "Bricolage Grotesque", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fonte-corpo: "DM Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --peso-normal: 400; /* DM Sans */
+  --peso-medio: 500; /* DM Sans */
+  --peso-forte: 700; /* DM Sans */
+  --peso-seccao: 700; /* Bricolage: títulos de secção e preços */
+  --peso-titulo: 800; /* Bricolage: títulos de página e nome do bar */
+  --espacejamento-titulo: -0.02em; /* só Bricolage */
 
   --texto-nota: 0.875rem; /* 14 px */
   --texto-corpo: 1.0625rem; /* 17 px */
@@ -69,10 +92,17 @@
   --espaco-12: 3rem; /* 48 */
 
   /* Forma */
-  --raio-pequeno: 4px; /* chips, campos, botões */
-  --raio-cartao: 12px; /* cartões, folhas, avisos */
-  --raio-cheio: 9999px; /* só o Interruptor */
+  --raio-pequeno: 10px; /* etiquetas, miniaturas, barras do horário (R-01 / ADR 0023: era 4px) */
+  --raio-campo: 12px; /* Campo */
+  --raio-botao: 14px; /* Botão, bloco da data */
+  --raio-cartao: 18px; /* cartão papel, Aviso (era 12px) */
+  --raio-grande: 24px; /* cartão de destaque, topo da Folha */
+  --raio-barra: 22px; /* barra da gestão */
+  --raio-cheio: 9999px; /* chips e Interruptor */
+  --decoracao-destaque: 150px; /* diâmetro do círculo do cartão de destaque */
+  --decoracao-afastamento: -40px; /* quanto o círculo sai pelo canto de cima, à direita */
   --contorno-fino: 1px;
+  --contorno-medio: 1.5px; /* todos os Botões */
   --espessura-foco: 2px;
   --afastamento-foco: 2px;
   --alvo-toque: 44px; /* Q-04; em px de propósito */
@@ -104,10 +134,13 @@
    * ele ali está. Mas a `opacity` apaga tudo o que o elemento pinta — **o anel
    * incluído**. O chão é por âmbito, e o apertado é o do painel:
    *
-   *     escuro 0,516 · painel 0,546 · creme 0,536
+   *     escuro 0,517 · painel 0,544 · creme 0,538 · papel 0,517 · destaque 0,422
    *
    * Abaixo disso o anel de um controlo desativado cai abaixo dos 3 de 1.4.11
-   * e quem navega por teclado perde-o. A 0,60 fica em 3,60 / 3,37 / 3,49.
+   * e quem navega por teclado perde-o. A 0,60 fica em 3,59 / 3,36 / 3,50 /
+   * 3,73 / 4,57. Os chãos estão escritos em `foco-no-desativado.test.ts`, que
+   * os recalcula; o papel e o destaque entraram com o R-01 e nenhum dos dois
+   * é mais apertado que o painel.
    *
    * **Porquê 0,60 e não 0,55**, que era o valor anterior: a 0,55 o painel dava
    * 3,04 contra um chão de 0,546 — quatro milésimas, que não é folga, é
@@ -128,7 +161,7 @@
    * devolve a cor **sem** a opacidade aplicada, por isso um teste ingénuo lê
    * 7,73 e passa enquanto a pessoa vê 3,37. A conta tem de multiplicar pela
    * opacidade computada do elemento. E tem de ser feita **a partir dos
-   * tokens**, nos três âmbitos: no painel não há hoje um único controlo
+   * tokens**, em todos os âmbitos: no painel não há hoje um único controlo
    * desativado para amostrar, e foi por isso que o âmbito mais apertado dos
    * três escapou a duas revisões que olharam para píxeis.
    */
@@ -318,6 +351,34 @@
   --cor-foco: var(--cor-dourado-latao);
   --cor-acao: var(--cor-dourado-latao);
   --cor-texto-sobre-acao: var(--cor-bordo-noite);
+  /*
+   * A ação dourada (R-01 / ADR 0023): a ação que o ecrã existe para fazer, uma
+   * só por ecrã. Nos escuros coincide com `--cor-acao`; no creme e no papel
+   * não, porque lá o principal passa a bordo-noite e o dourado fica só para
+   * este botão. O preenchimento é dourado em todo o lado e o texto é sempre
+   * bordo-noite (7,73).
+   *
+   * **A fronteira é a borda, não o preenchimento.** O dourado dá 1,72 contra
+   * o creme e 2,01 contra o papel, abaixo dos 3 de 1.4.11. Por isso o creme e
+   * o papel trocam `--cor-contorno-dourada` para bordo-noite (13,27 e 15,50).
+   * Aqui é o próprio dourado, que já passa contra o fundo, e a borda existe
+   * na mesma para o botão ter a mesma caixa nos cinco âmbitos.
+   */
+  --cor-acao-dourada: var(--cor-dourado-latao);
+  --cor-texto-sobre-dourada: var(--cor-bordo-noite);
+  --cor-contorno-dourada: var(--cor-dourado-latao);
+  /*
+   * O preenchimento do Campo e do Chip inativo: papel no creme e no papel,
+   * nada nos escuros. Um `bg-papel` fixo punha o texto creme dos chips da
+   * ementa (ainda no escuro no R-01) sobre papel, a 1,17.
+   *
+   * `transparent` e não `var(--cor-fundo-local)`, pela armadilha de
+   * `--cor-fio-interno` abaixo: declarado aqui, o `var()` congelava no bordô
+   * noite e descia assim para o painel e para o destaque. Os testes de pares
+   * medem o `transparent` contra o `--cor-fundo-local` do âmbito, que é o que
+   * se vê através dele.
+   */
+  --cor-fundo-controlo: transparent;
   --cor-perigo: var(--cor-erro-escuro);
   --cor-texto-sobre-perigo: var(--cor-bordo-noite);
   --cor-sucesso: var(--cor-sucesso-escuro);
@@ -325,13 +386,38 @@
   --cor-pontilhado: var(--cor-creme-sombra);
 }
 
+/*
+ * O painel é o escuro com fundo vinho: a Folha e o Aviso. Até ao R-01
+ * declarava só o fundo e o fio, e o resto herdava-se da página, que era
+ * sempre escura. No R-02 a página passa a creme, e uma Folha aberta lá
+ * herdava o creme: ação e borda dourada bordo-noite, controlos papel, tudo
+ * sobre o vinho. Por isso **declara todos os papéis** (R-01 / ADR 0023), com
+ * os valores do escuro, como o papel e o destaque.
+ */
 .superficie-painel {
   --cor-fundo-local: var(--cor-bordo-vinho);
+  --cor-texto: var(--cor-creme-papel);
+  --cor-texto-suave: var(--cor-creme-sombra);
+  --cor-texto-marca: var(--cor-creme-papel);
+  --cor-contorno: var(--cor-creme-sombra);
+  --cor-contorno-superficie: var(--cor-creme-sombra);
   /* Repetido de propósito: ver a nota em `--cor-fio-interno` acima. Aqui a
      mistura resolve-se contra o bordô vinho e dá 3,55; herdada de cima dava
      3,33, que ainda passava — mas por acaso, e no dia em que a paleta mexer
      ninguém dava por isso. */
   --cor-fio-interno: color-mix(in srgb, var(--cor-creme-sombra) 55%, var(--cor-fundo-local));
+  --cor-pontilhado: var(--cor-creme-sombra);
+  --cor-foco: var(--cor-dourado-latao);
+  --cor-acao: var(--cor-dourado-latao);
+  --cor-texto-sobre-acao: var(--cor-bordo-noite);
+  --cor-acao-dourada: var(--cor-dourado-latao);
+  --cor-texto-sobre-dourada: var(--cor-bordo-noite);
+  --cor-contorno-dourada: var(--cor-dourado-latao);
+  --cor-fundo-controlo: transparent;
+  --cor-perigo: var(--cor-erro-escuro);
+  --cor-texto-sobre-perigo: var(--cor-bordo-noite);
+  --cor-erro: var(--cor-erro-escuro);
+  --cor-sucesso: var(--cor-sucesso-escuro);
 }
 
 /*
@@ -361,11 +447,86 @@
   --cor-contorno-superficie: var(--cor-creme-sombra);
   --cor-fio-interno: color-mix(in srgb, var(--cor-bordo-tomazia) 60%, var(--cor-fundo-local));
   --cor-foco: var(--cor-bordo-tomazia);
-  --cor-acao: var(--cor-bordo-tomazia);
+  /* Bordo-noite e não bordo-tomazia desde o R-01 (ADR 0023): o principal
+     cheio da maqueta ("Guardar alterações") dá 13,27 contra o creme, e o
+     bordo-tomazia fica para o texto suave, a marca e os contornos. */
+  --cor-acao: var(--cor-bordo-noite);
   --cor-texto-sobre-acao: var(--cor-creme-papel);
+  --cor-contorno-dourada: var(--cor-bordo-noite);
+  --cor-fundo-controlo: var(--cor-papel);
   --cor-perigo: var(--cor-erro-creme);
   --cor-texto-sobre-perigo: var(--cor-creme-papel);
   --cor-sucesso: var(--cor-sucesso-creme);
   --cor-erro: var(--cor-erro-creme);
   --cor-pontilhado: var(--cor-bordo-tomazia);
+}
+
+/*
+ * Os dois âmbitos do redesign B (R-01 / ADR 0023, secção 5 de
+ * docs/ecras/R-01.md). **Declaram todos os papéis**, e não só os que mudam:
+ * no R-01 um cartão papel pode estar dentro de um painel, e um cartão de
+ * destaque dentro do creme, e tudo o que não se declare aqui vinha do âmbito
+ * de fora. É a mesma razão do `--cor-fio-interno` repetido.
+ *
+ * O papel é o creme mais claro. Os papéis são os do creme, e os rácios sobem
+ * todos um pouco (texto 15,50, contorno 11,63, fio 3,74).
+ */
+.superficie-papel {
+  --cor-fundo-local: var(--cor-papel);
+  --cor-texto: var(--cor-bordo-noite);
+  --cor-texto-suave: var(--cor-bordo-tomazia);
+  --cor-texto-marca: var(--cor-bordo-tomazia);
+  --cor-contorno: var(--cor-bordo-tomazia);
+  --cor-contorno-superficie: var(--cor-creme-sombra);
+  --cor-fio-interno: color-mix(in srgb, var(--cor-bordo-tomazia) 60%, var(--cor-fundo-local));
+  --cor-pontilhado: var(--cor-bordo-tomazia);
+  --cor-foco: var(--cor-bordo-tomazia);
+  --cor-acao: var(--cor-bordo-noite);
+  --cor-texto-sobre-acao: var(--cor-creme-papel);
+  --cor-acao-dourada: var(--cor-dourado-latao);
+  --cor-texto-sobre-dourada: var(--cor-bordo-noite);
+  --cor-contorno-dourada: var(--cor-bordo-noite);
+  --cor-fundo-controlo: var(--cor-papel);
+  --cor-perigo: var(--cor-erro-creme);
+  --cor-texto-sobre-perigo: var(--cor-creme-papel);
+  --cor-erro: var(--cor-erro-creme);
+  --cor-sucesso: var(--cor-sucesso-creme);
+}
+
+/*
+ * O destaque é o cartão bordo-tomazia (o nome do bar, o "Entrar", o
+ * "Aprovar"). Até ao R-01 havia uma regra contra o bordo-tomazia como fundo,
+ * porque o erro-escuro dá lá 4,13; aqui ela passa a ser cumprida trocando
+ * três papéis:
+ *
+ *  - `--cor-foco` é creme-papel e não dourado. O dourado dá 5,80 contra o
+ *    fundo, mas a 0,6 de um controlo desativado ficava em ≈ 3,0, sem folga;
+ *    o creme fica em 4,57.
+ *  - `--cor-erro` é creme-papel. O erro diz-se pelas palavras ("Erro.", a
+ *    mensagem do Campo) e não pela cor, porque não há cor de erro da paleta
+ *    que passe a 4,5 aqui.
+ *  - `--cor-perigo` é erro-escuro, com texto bordo-noite (5,51), e não o
+ *    erro-creme dos âmbitos claros: esse dava 1,93 e o "Eliminar" ficava sem
+ *    fronteira. Como preenchimento o erro-escuro dá 4,13, acima dos 3.
+ */
+.superficie-destaque {
+  --cor-fundo-local: var(--cor-bordo-tomazia);
+  --cor-texto: var(--cor-creme-papel);
+  --cor-texto-suave: var(--cor-creme-sombra);
+  --cor-texto-marca: var(--cor-creme-papel);
+  --cor-contorno: var(--cor-creme-sombra);
+  --cor-contorno-superficie: var(--cor-creme-sombra);
+  --cor-fio-interno: color-mix(in srgb, var(--cor-creme-sombra) 55%, var(--cor-fundo-local));
+  --cor-pontilhado: var(--cor-creme-sombra);
+  --cor-foco: var(--cor-creme-papel);
+  --cor-acao: var(--cor-dourado-latao);
+  --cor-texto-sobre-acao: var(--cor-bordo-noite);
+  --cor-acao-dourada: var(--cor-dourado-latao);
+  --cor-texto-sobre-dourada: var(--cor-bordo-noite);
+  --cor-contorno-dourada: var(--cor-dourado-latao);
+  --cor-fundo-controlo: transparent;
+  --cor-perigo: var(--cor-erro-escuro);
+  --cor-texto-sobre-perigo: var(--cor-bordo-noite);
+  --cor-erro: var(--cor-creme-papel);
+  --cor-sucesso: var(--cor-sucesso-escuro);
 }

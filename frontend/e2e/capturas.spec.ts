@@ -96,7 +96,14 @@ test.describe("telemóvel, 390 × 844", () => {
       page.screenshot({ path: caminho, fullPage: true }),
     );
 
-    for (const seccao of [SECCOES.botao, SECCOES.campo, SECCOES.chip, SECCOES.sobreCreme]) {
+    for (const seccao of [
+      SECCOES.botao,
+      SECCOES.campo,
+      SECCOES.chip,
+      SECCOES.sobreCreme,
+      SECCOES.sobrePapel,
+      SECCOES.sobreDestaque,
+    ]) {
       const alvo = page.locator(`#${seccao}`);
       await expect(alvo, `falta a secção #${seccao}`).toHaveCount(1);
       await guardar(`390-${seccao}`, (caminho) => alvo.screenshot({ path: caminho }));

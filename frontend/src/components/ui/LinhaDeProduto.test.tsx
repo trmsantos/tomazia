@@ -136,6 +136,17 @@ describe("o preço", () => {
 
     expect(screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className).toContain("tabular-nums");
   });
+
+  it("é Bricolage pelo `font-preco` e não DM Sans: o DM Sans não tem `tnum`", () => {
+    // R-01 6.8. O `font-preco` traz a família, o peso e os algarismos
+    // tabulares; um `font-forte` ao lado pedia outro peso à Bricolage, que
+    // só existe entre 700 e 800.
+    desenhar(<LinhaDeProduto nome="Imperial" precoCent={110} />);
+
+    const classes = screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className.split(/\s+/);
+    expect(classes).toContain("font-preco");
+    expect(classes.filter((classe) => /^font-(normal|medio|forte)$/.test(classe))).toEqual([]);
+  });
 });
 
 describe("um preço que não é um inteiro ≥ 0", () => {
@@ -192,6 +203,18 @@ describe("os papéis de cor, e a armadilha do dourado", () => {
     expect(classes).toContain("border-pontilhado");
     expect(classes).toContain("border-dotted");
     expect(classes, "sem um mínimo, um nome longo come o fio todo (6.3)").toContain("min-w-fio");
+  });
+
+  it("continua com nome, pontilhado e preço tabular até ao R-02", () => {
+    // R-01 / ADR 0023 (6.8 de docs/ecras/R-01.md): a forma da linha muda no
+    // R-02. Até lá ficam os três, e o preço não perde o `tabular-nums`.
+    const { container } = desenhar(<LinhaDeProduto nome="Imperial" precoCent={110} />);
+
+    expect(screen.getByText("Imperial")).toBeInTheDocument();
+    expect(fioDe(container)?.className ?? "", "o pontilhado saiu antes do R-02").toContain(
+      "border-dotted",
+    );
+    expect(screen.getByText("1,10\u00a0€", SEM_COLAPSAR).className).toContain("tabular-nums");
   });
 
   it("a descrição não usa `text-texto-suave`", () => {

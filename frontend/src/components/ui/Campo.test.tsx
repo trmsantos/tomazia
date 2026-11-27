@@ -128,7 +128,11 @@ describe("Campo", () => {
 
     const campo = screen.getByLabelText("Nome do produto");
     expect(campo.className).toContain("min-h-toque");
-    expect(campo.className).toContain("rounded-pequeno");
+    // R-01 / ADR 0023: raio do campo, e preenchimento pelo papel de controlo.
+    expect(campo.className).toContain("rounded-campo");
+    expect(campo.className).not.toContain("rounded-pequeno");
+    expect(campo.className).toContain("bg-controlo");
+    expect(campo.className).not.toContain("bg-transparent");
     expect(campo).not.toHaveAttribute("style");
   });
 

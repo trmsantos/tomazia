@@ -144,17 +144,31 @@ export default {
       sucesso: "var(--cor-sucesso)",
       erro: "var(--cor-erro)",
       pontilhado: "var(--cor-pontilhado)",
+      // R-01 / ADR 0023. `papel` é a cor do cartão claro (`bg-papel`), a única
+      // derivada que os componentes podem escrever pelo nome: é igual em todos
+      // os âmbitos. As outras são papéis: a ação dourada com o seu texto e a
+      // sua borda, e o preenchimento dos controlos (`bg-controlo`), que é papel
+      // no creme e no papel e transparente nos escuros.
+      papel: "var(--cor-papel)",
+      dourada: "var(--cor-acao-dourada)",
+      "sobre-dourada": "var(--cor-texto-sobre-dourada)",
+      "contorno-dourada": "var(--cor-contorno-dourada)",
+      controlo: "var(--cor-fundo-controlo)",
     },
 
     // `font-*` é o mesmo espaço de nomes para a família e para o peso, por
     // isso não há uma chave `titulo` nos dois: a família de título leva o seu
     // peso na camada base (ver `.font-titulo` em `global.css`).
+    // `seccao` e `titulo` são a Bricolage e trazem o peso em `global.css`;
+    // os pesos daqui são só do DM Sans e nunca se juntam a elas (R-01, 3).
     fontFamily: {
       titulo: "var(--fonte-titulo)",
+      seccao: "var(--fonte-titulo)",
       corpo: "var(--fonte-corpo)",
     },
     fontWeight: {
       normal: "var(--peso-normal)",
+      medio: "var(--peso-medio)",
       forte: "var(--peso-forte)",
     },
     fontSize: {
@@ -182,12 +196,17 @@ export default {
     borderRadius: {
       nenhum: "0px",
       pequeno: "var(--raio-pequeno)",
+      campo: "var(--raio-campo)",
+      botao: "var(--raio-botao)",
       cartao: "var(--raio-cartao)",
+      grande: "var(--raio-grande)",
+      barra: "var(--raio-barra)",
       cheio: "var(--raio-cheio)",
     },
     borderWidth: {
       0: "0px",
       DEFAULT: "var(--contorno-fino)",
+      medio: "var(--contorno-medio)",
       // A barra do destino ativo na navegação da gestão (F4-01, 5.2).
       marca: "var(--espessura-marca-ativa)",
     },

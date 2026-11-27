@@ -277,8 +277,8 @@ describe("description, tema e partilha", () => {
   it("os dois preloads de fontes continuam", () => {
     const preloads = etiquetas(html(provisoria), "link").filter((l) => l["rel"] === "preload");
     expect(preloads.map((l) => l["href"]).sort()).toEqual([
-      "/fontes/playfair-display-v40-latin-700.woff2",
-      "/fontes/source-sans-3-v20-latin-400.woff2",
+      "/fontes/bricolage-grotesque-v1_001-latin-700-800.woff2",
+      "/fontes/dm-sans-v4_004-latin-400-700.woff2",
     ]);
   });
 });

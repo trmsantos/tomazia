@@ -18,4 +18,5 @@ export const COMPONENTES_DA_F3_01 = [
   "src/components/ui/AvisoTemporario.tsx",
   "src/components/ui/Interruptor.tsx",
   "src/components/ui/EstadoVazio.tsx",
+  "src/components/ui/Cartao.tsx",
 ];

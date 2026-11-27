@@ -99,6 +99,14 @@ describe("o botão do preço", () => {
     expect(botao).toHaveTextContent("6,50 €");
   });
 
+  it("o preço é Bricolage pelo `font-preco`: o DM Sans não tem `tnum` (R-01 6.8)", async () => {
+    await abrirEmenta(GARRAFEIRA);
+    const classes = botaoDoPreco(VINHO, "6,50 €").className.split(/\s+/);
+
+    expect(classes).toContain("font-preco");
+    expect(classes.filter((classe) => /^font-(normal|medio|forte)$/.test(classe))).toEqual([]);
+  });
+
   it("zero é «Oferta» e o nome diz «agora oferta»", async () => {
     prepararApi({
       categorias: [

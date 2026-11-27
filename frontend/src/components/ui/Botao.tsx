@@ -3,9 +3,10 @@ import type { ReactElement, ReactNode, Ref } from "react";
 import { juntar } from "./juntar";
 
 /**
- * Botão (secção 7.1 de `docs/ecras/F3-01.md`).
+ * Botão (secção 7.1 de `docs/ecras/F3-01.md`; aspeto B em `docs/ecras/R-01.md`, 6.1).
  *
- * Quatro variantes e nada mais. Nenhuma escreve uma cor da paleta: escrevem
+ * Cinco variantes e nada mais. Um só `dourado` por ecrã; sobre creme leva
+ * sempre a borda. Nenhuma escreve uma cor da paleta: escrevem
  * papéis (`bg-acao`, `text-sobre-acao`, `border-contorno`), e é a classe
  * `.superficie-creme` que troca o que essas palavras significam. É isso que
  * impede o botão dourado de aparecer dentro de um cartão creme, onde o limite
@@ -22,13 +23,19 @@ import { juntar } from "./juntar";
  *    `<form>` é um `submit` para o HTML, e na gestão isso dá uma submissão
  *    acidental a cada "Cancelar".
  */
-export type VarianteDeBotao = "principal" | "secundario" | "discreto" | "perigo";
+export type VarianteDeBotao = "principal" | "dourado" | "secundario" | "discreto" | "perigo";
 
+/*
+ * O `border-medio` está na base e cada variante só escolhe a cor da borda:
+ * as cinco têm a mesma caixa (R-01 / ADR 0023). O dourado sobre creme só
+ * passa 1.4.11 pela borda, não pelo preenchimento (1,72).
+ */
 const PELA_VARIANTE: Record<VarianteDeBotao, string> = {
-  principal: "bg-acao text-sobre-acao",
-  secundario: "border border-contorno text-texto",
-  discreto: "text-texto-suave",
-  perigo: "bg-perigo text-sobre-perigo",
+  principal: "border-transparent bg-acao text-sobre-acao",
+  dourado: "border-contorno-dourada bg-dourada text-sobre-dourada",
+  secundario: "border-contorno text-texto",
+  discreto: "border-transparent text-texto-suave",
+  perigo: "border-transparent bg-perigo text-sobre-perigo",
 };
 
 /*
@@ -41,13 +48,13 @@ const PELA_VARIANTE: Record<VarianteDeBotao, string> = {
  * (as duas cores já eram as dele), no discreto **acrescentava** um contorno e
  * fazia o botão desligado pesar mais do que o ligado, e no principal e no
  * perigo apagava a variante toda. Assim, um principal desativado continua
- * dourado, só apagado, e os quatro continuam a distinguir-se uns dos outros.
+ * dourado, só apagado, e os cinco continuam a distinguir-se uns dos outros.
  */
 const DESATIVADO = "opacity-desativado cursor-not-allowed";
 
 const BASE = juntar(
   "inline-flex items-center justify-center gap-2",
-  "min-h-toque min-w-toque px-6 rounded-pequeno",
+  "min-h-toque min-w-toque px-6 rounded-botao border-medio",
   "font-corpo font-forte text-corpo text-center",
   // Premido desce 1 px. Não há hover que levante nada (a especificação
   // proíbe-o) e no telemóvel o hover nem existe.
@@ -93,6 +100,7 @@ export function Botao({
   return (
     <button
       ref={ref}
+      data-variante={variante}
       aria-describedby={descritoPor}
       type={tipo === "submit" ? "submit" : "button"}
       className={juntar(

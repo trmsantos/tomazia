@@ -10,7 +10,7 @@
  * export const MESES: readonly string[];           // 12, minúsculas, 0 = janeiro
  * ```
  *
- * `grande` é a linha em Playfair a 34 px; `pequena` é a de 14 px por baixo.
+ * `grande` é a linha em letra de título a 34 px; `pequena` é a de 14 px por baixo.
  * A função é **pura**: recebe o `agora` e nunca lê `Date.now()` (5.6). É isso
  * que a torna testável com relógio fixo, e é a mesma escolha que o
  * `inicio_do_dia_do_bar` do backend já fez do outro lado.

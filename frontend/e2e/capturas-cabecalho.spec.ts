@@ -19,7 +19,7 @@ import {
  * Sete, a somar às da F3-01 e da F3-02. E as nove da F3-02 voltam a ser
  * tiradas na mesma corrida, porque **todas elas passaram a ter 122 px de
  * mobiliário fixo em cima** — não é formalidade: o item obrigatório de 14,
- * as duas linhas de Playfair a 27 px a 46,8 px uma da outra, só se responde
+ * as duas linhas de letra de título a 27 px a 46,8 px uma da outra, só se responde
  * ali.
  *
  * **Deixou de haver `390-cabecalho-sem-wifi`.** Com o botão sempre presente

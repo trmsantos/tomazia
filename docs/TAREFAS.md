@@ -9,10 +9,10 @@ O estado de cada tarefa vê-se no GitHub (PR aberto ou merged), não neste fiche
 **Decidido pelo Tomás em 2026-11-16**, depois da análise de lacunas entre o site PHP e a app nova. A leitura dela numa frase: o backend está quase todo feito, e o que o dono vê está por fazer — sem a gestão, o WiFi e o Visita-nos públicos mostram "por configurar", os eventos não aparecem e uma foto aprovada não sai da galeria sem SSH.
 
 1. **Gestão primeiro**, por esta ordem: F2-10 Mensagens de recurso (pequena, e o `Entrar` da F4-01 já mostra `ErroDaApi.mensagem`) → F4-05a Definições → F4-03 Eventos (agora com editar e eliminar) → F4-04 Moderação de fotos → F4-04b Retirar foto da galeria → F4-05b Início e Clientes → F4-05c Conta → F4-02b Categorias e eliminar produto → F4-07 Cartaz do evento → F4-08 Evento cancelado ou adiado → F4-09 Manutenção da galeria da gestão → F4-10 Folha e aviso partilhados.
-2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
+2. **Depois, o público:** F3-06a Visita-nos → F4-06 Exceções ao horário → F3-08 Logótipo e ícones → R-01 Base do redesign B → R-02 Página pública no estilo B → R-03 Gestão no estilo B → F3-09 Atalhos → F3-10 Galeria em slide → F3-07 Qualidade ponta a ponta → F3-11 Abertura com logótipo e fotografia (quando a fotografia existir) → F2-07 Novidades → F3-06b Novidades e rodapé.
 3. **Lançamento:** F5-01 (agora também com os endereços sem `.php`) → F5-02.
 
-**Mudança decidida pelo Tomás em 2026-11-25:** o público passa à frente do resto da gestão. Depois da F4-05b (Início e Clientes), a ordem é F3-08 Logótipo e ícones → F3-06a Visita-nos → F3-09 Atalhos → F3-10 Galeria em slide, e só então a F4-05c Conta e o resto da gestão (F4-02b, F4-07, F4-08, F4-09, F4-10). O resto do público (F4-06, F3-07, F3-11, F2-07, F3-06b) mantém a ordem acima.
+**Mudança decidida pelo Tomás em 2026-11-25:** o público passa à frente do resto da gestão. Depois da F4-05b (Início e Clientes), a ordem é F3-08 Logótipo e ícones → F3-06a Visita-nos → F3-09 Atalhos → F3-10 Galeria em slide, e só então a F4-05c Conta e o resto da gestão (F4-02b, F4-07, F4-08, F4-09, F4-10). O resto do público (F4-06, F3-07, F3-11, F2-07, F3-06b) mantém a ordem acima. Em 2026-11-26/27 o Tomás aprovou o redesign B (ADR 0023): R-01 → R-02 → R-03 entram entre a F3-08 e a F3-09.
 
 Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografia real do bar, sem vídeo (ADR 0020); a galeria é um slide passado com o dedo, sem avanço automático (ADR 0021); a localização é um link "Abrir no Google Maps", sem mapa embutido.
 
@@ -326,6 +326,29 @@ Três decisões de forma acompanham a ordem: a abertura é logótipo e fotografi
 - **Para o ui-ux decidir no plano:** a 360 px sobram 232,81 px para o nome; um círculo de 44 px com 8 de folga deixa ~180, e o nome a 27 px pede 192,03. Ou o nome desce para 22 px (~157 px, o mínimo da especificação), ou o logótipo substitui o texto e o `<h1>` fica com o nome acessível. O botão "WiFi" não sai.
 - **Atenção:** o `og:image` tem de ser um endereço absoluto, e o domínio muda no corte (de `novo.<domínio>` para o principal, F5-02). Decidir aqui como se resolve, sem pôr o domínio errado no HTML.
 - **Feito quando:** o favicon e o `apple-touch-icon` aparecem (teste ao `index.html` compilado); o logótipo tem texto alternativo e o `<h1>` continua a ser um só com o nome do bar; nada transborda a 360 px; Q-02 e Q-04; capturas 390×844.
+
+**R-01, R-02 e R-03 vêm do ADR 0023 e fazem a página pública e a gestão no estilo B. Decididos pelo Tomás em 2026-11-26 e 2026-11-27** (desenho em `docs/superpowers/specs/2026-11-26-redesign-b-design.md`; plano do R-01 em `docs/superpowers/plans/2026-11-26-R-01-redesign-base.md`). Três PRs seguidos. O R-01 não muda o fundo de nenhuma página, por isso entre o R-01 e o R-03 há estilos misturados em `novo.bardatomazia.pt`, o que é aceitável porque ainda não é o site oficial.
+
+### R-01 Base do redesign B
+
+- **Agentes:** arquiteto, ui-ux, qa, frontend, revisor-codigo, revisor-seguranca, dominio-bar.
+- **Depende de:** nenhuma.
+- **Faz:** ADR 0023 e secção Design da especificação; letras Bricolage Grotesque e DM Sans servidas pelo site (as duas juntas até 100 KB); tokens de forma e de cor derivada; âmbitos `.superficie-papel` e `.superficie-destaque`; Botão com variante `dourado`, Campo, Chip, Interruptor, Folha, Aviso, Estado vazio e Linha de produto na letra e nos raios novos; Cartão novo; capturas das maquetas e dos componentes. Valores em `docs/ecras/R-01.md`.
+- **Feito quando:** `/verificar` verde; contrastes medidos nos cinco âmbitos; a borda do botão dourado sobre creme é bordo-noite no browser; Q-02, Q-03 e Q-04; capturas 390×844 em `docs/ecras/capturas/R-01/`. Os ecrãs ficam com o layout de hoje.
+
+### R-02 Página pública no estilo B
+
+- **Agentes:** ui-ux, frontend, qa, dominio-bar.
+- **Depende de:** R-01.
+- **Faz:** fundo creme; cartão bordo-tomazia de cima com "Bar da Tomazia", a frase "Estarreja · café, cervejas e petiscos" (o dominio-bar confirma que descreve o bar) e o estado "Aberto até às 02:00"; chips em cápsula; ementa em cartões, com o preço numa etiqueta e sem pontilhado; eventos com o bloco da data; grelha da galeria no estilo B; Visita-nos; rodapé bordo-noite. A linha de produto deixa o pontilhado e a especificação atualiza-se no mesmo PR. Decidir o `--cor-acao` do painel e do destaque (ou o âmbito da Folha). Hoje, no escuro, no painel e no destaque, o principal e o Chip ativo são dourados, e uma Folha com um principal mais um dourado dá dois dourados que o `data-variante` não apanha. Medir "um só dourado por ecrã" pela cor computada, não só pelo atributo.
+- **Feito quando:** a ementa e a barra de chips continuam à vista no 390×844 sem deslizar (F3-02); um só botão dourado por ecrã; Q-02, Q-03, Q-04; capturas 390×844 e 1024.
+
+### R-03 Gestão no estilo B
+
+- **Agentes:** ui-ux, frontend, qa.
+- **Depende de:** R-01 (pode ser feita antes ou depois do R-02).
+- **Faz:** moldura com barra de baixo flutuante e cabeçalho; Entrar, Início, Ementa, Galeria, Eventos, Mais, Definições, Clientes, formulários e folhas, com os mesmos componentes. Mantém os controlos que cada ecrã já tem. Decidir o `--cor-acao` do painel e do destaque (ou o âmbito da Folha). Hoje, no escuro, no painel e no destaque, o principal e o Chip ativo são dourados, e uma Folha com um principal mais um dourado dá dois dourados que o `data-variante` não apanha. Medir "um só dourado por ecrã" pela cor computada, não só pelo atributo.
+- **Feito quando:** cada ecrã faz o que fazia; um só botão dourado por ecrã; alvos de 44 px (56 px nos de moderar); Q-03, Q-04; capturas 390×844 e 1024.
 
 ### F3-09 Atalhos para Eventos, Galeria e Visita-nos
 

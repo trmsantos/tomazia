@@ -97,10 +97,13 @@ export function Campo({
   const comErro = erro !== undefined || invalido;
 
   const classes = juntar(
-    "min-h-toque w-full px-3 py-2 rounded-pequeno",
-    "border bg-transparent text-texto text-corpo placeholder:text-texto-suave",
+    "min-h-toque w-full px-3 py-2 rounded-campo",
+    "border bg-controlo text-texto text-corpo placeholder:text-texto-suave",
     // O campo define-se pelo contorno, nunca pelo preenchimento: no escuro,
-    // bordô sobre bordô dá 1,13 e a caixa desaparecia.
+    // bordô sobre bordô dá 1,13 e a caixa desaparecia. O `bg-controlo` é
+    // papel no creme e no papel, e transparente nos escuros (R-01 / ADR 0023);
+    // sobre o creme o papel dá 1,17, por isso é textura e a fronteira
+    // continua a ser o contorno de 1 px (9,95).
     //
     // Desativado não mexe na cor do contorno nem na do texto: nos dois âmbitos
     // `contorno` e `texto-suave` são a cor que um campo normal já usa, por

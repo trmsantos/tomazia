@@ -2,17 +2,20 @@ Bar da Tomazia — licenças das fontes em public/fontes/
 
 As duas famílias estão licenciadas sob a SIL Open Font License 1.1, que obriga
 a distribuir a licença junto com os ficheiros. Segue o texto de cada uma, tal
-como publicado em github.com/google/fonts.
+como publicado em github.com/google/fonts, no commit 5026800714d07231937d92eb4cceabf06e05d74e
+(ver PROVENIENCIA.md). Os ficheiros daqui são versões modificadas (instância
+parcial e subconjunto), o que a secção 3 da licença permite com o mesmo nome
+porque nenhuma das duas declara um Reserved Font Name.
 
 ================================================================================
-Playfair Display
+Bricolage Grotesque
 ================================================================================
 
-Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display), with Reserved Font Name "Playfair Display"
+Copyright 2022 The Bricolage Grotesque Project Authors (https://github.com/ateliertriay/bricolage)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------
@@ -103,14 +106,14 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ================================================================================
-Source Sans 3
+DM Sans
 ================================================================================
 
-Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
-
-This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------

@@ -47,7 +47,7 @@ test.describe("12.6: a coluna dos preços alinha", () => {
     expect(
       fontesProntas,
       "as fontes não acabaram de carregar: tudo o que se medisse a seguir seria " +
-        "a fonte do sistema, não a Source Sans 3",
+        "a fonte do sistema, não a Bricolage Grotesque",
     ).toBe("loaded");
 
     const estreito = page.getByText(PRECO_ESTREITO, { exact: true });
@@ -60,12 +60,28 @@ test.describe("12.6: a coluna dos preços alinha", () => {
     ).toBeVisible();
     await expect(largo).toBeVisible();
 
+    // R-01 / ADR 0023: o preço passou para a Bricolage Grotesque (`font-preco`),
+    // porque o DM Sans não tem algarismos tabulares (`tnum`) e o `tabular-nums`
+    // não fazia nada nele. O nome do produto continua no DM Sans.
     const familia = await estreito.evaluate((elemento) => getComputedStyle(elemento).fontFamily);
     expect(
       familia,
       `o preço está a ser desenhado em «${familia}». A coluna só alinha com a ` +
-        "Source Sans 3; com a fonte do sistema esta medida não quer dizer nada.",
-    ).toContain("Source Sans 3");
+        "Bricolage Grotesque; com a fonte do sistema esta medida não quer dizer nada.",
+    ).toContain("Bricolage Grotesque");
+
+    // E a Bricolage fica só no preço: o nome do produto é texto, no DM Sans.
+    const nomeDoProduto = page
+      .locator("section[id='ementa-sandes']")
+      .getByText("Sandes de pernil com queijo da serra", { exact: true });
+    await expect(nomeDoProduto, "guarda: não encontrei o nome do produto da fixtura").toBeVisible();
+    const familiaDoNome = await nomeDoProduto.evaluate(
+      (elemento) => getComputedStyle(elemento).fontFamily,
+    );
+    expect(
+      familiaDoNome,
+      `o nome do produto está em «${familiaDoNome}»: é texto corrido, e tem de ser o DM Sans`,
+    ).toContain("DM Sans");
 
     const variante = await estreito.evaluate(
       (elemento) => getComputedStyle(elemento).fontVariantNumeric,

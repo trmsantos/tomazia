@@ -174,7 +174,7 @@ describe("Botão", () => {
     expect(botao).toHaveAttribute("aria-label", "Fechar");
   });
 
-  it("as quatro variantes pegam pelos papéis da tabela da especificação", () => {
+  it("as cinco variantes pegam pelos papéis da tabela da especificação", () => {
     // Secção 7.1: principal = bg-acao/text-sobre-acao; secundário = só
     // contorno; discreto = só texto suave; perigo = bg-perigo. Nenhuma
     // escreve uma cor da paleta — é a classe `.superficie-creme` que troca
@@ -195,6 +195,37 @@ describe("Botão", () => {
     const perigo = screen.getByRole("button").className;
     expect(perigo).toContain("bg-perigo");
     expect(perigo).toContain("text-sobre-perigo");
+  });
+
+  it("o dourado leva a borda e o raio do botão, e o data-variante diz qual é", () => {
+    // R-01 / ADR 0023: sobre creme o dourado só existe com a borda bordo-noite.
+    render(<Botao variante="dourado">Entrar</Botao>);
+
+    const botao = screen.getByRole("button", { name: "Entrar" });
+    for (const classe of [
+      "bg-dourada",
+      "text-sobre-dourada",
+      "border-medio",
+      "border-contorno-dourada",
+      "rounded-botao",
+    ]) {
+      expect(botao.className).toContain(classe);
+    }
+    expect(botao.getAttribute("data-variante")).toBe("dourado");
+  });
+
+  it("as cinco variantes têm a mesma caixa e nenhuma usa rounded-pequeno", () => {
+    // R-01 / ADR 0023: o border-medio está na base, para Rejeitar e Aprovar
+    // lado a lado terem a mesma altura.
+    const variantes = ["principal", "dourado", "secundario", "discreto", "perigo"] as const;
+    for (const variante of variantes) {
+      const { unmount } = render(<Botao variante={variante}>X</Botao>);
+      const classes = screen.getByRole("button").className.split(/\s+/);
+      expect(classes, variante).toContain("border-medio");
+      expect(classes, variante).toContain("rounded-botao");
+      expect(classes, variante).not.toContain("rounded-pequeno");
+      unmount();
+    }
   });
 
   it("tem alvo de toque de 44 px por construção e nunca um style inline", () => {

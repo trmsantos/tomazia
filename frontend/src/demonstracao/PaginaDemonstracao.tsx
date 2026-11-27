@@ -6,6 +6,7 @@ import type { VarianteDeBotao } from "../components/ui/Botao";
 import { Botao } from "../components/ui/Botao";
 import type { PropriedadesDoCampo } from "../components/ui/Campo";
 import { Campo } from "../components/ui/Campo";
+import { Cartao } from "../components/ui/Cartao";
 import { Chip } from "../components/ui/Chip";
 import { EstadoVazio } from "../components/ui/EstadoVazio";
 import { Folha } from "../components/ui/Folha";
@@ -16,11 +17,13 @@ import { juntar } from "../components/ui/juntar";
  * A página que o Tomás abre com `npm run dev`, em
  * `http://localhost:5173/demonstracao.html`.
  *
- * Mostra os sete componentes com todos os estados, cada um com a etiqueta do
- * estado por baixo. A secção mais importante é a penúltima: a repetição dos
- * mesmos componentes dentro de um `.superficie-creme`, onde se vê de relance
- * se algum dourado escapou para cima do creme (onde daria 1,72 e o limite do
- * botão desaparecia).
+ * Mostra os componentes com todos os estados, cada um com a etiqueta do
+ * estado por baixo. As secções mais importantes são as três antes do "Foco":
+ * a repetição dos mesmos componentes dentro de um `.superficie-creme`, de um
+ * Cartão papel e de um Cartão de destaque (R-01 / ADR 0023). O R-01 não muda
+ * o fundo de nenhuma página, por isso cada componente tem de estar certo nas
+ * cinco superfícies. Sobre creme e papel, o único dourado é o preenchimento
+ * do Botão dourado, sempre com a borda bordo-noite (sem ela daria 1,72).
  *
  * Não chega a produção, e por duas vias e não uma: o Vite só constrói o
  * `index.html` (o que tira daqui o HTML e o JavaScript) e o `content` do
@@ -30,7 +33,10 @@ import { juntar } from "../components/ui/juntar";
  * `src/build-de-producao.test.ts`.
  */
 
-/** As onze secções da secção 8 de `docs/ecras/F3-01.md`, pela mesma ordem. */
+/**
+ * As onze secções da secção 8 de `docs/ecras/F3-01.md`, pela mesma ordem, mais
+ * "Superfície papel" e "Superfície destaque" do R-01 antes do "Foco" — treze.
+ */
 function Seccao({
   id,
   titulo,
@@ -51,7 +57,7 @@ function Seccao({
       // a forma que a secção 6 nomeia como *a* maneira de separar no escuro.
       className="flex flex-col gap-4 border-t border-contorno-superficie pt-6"
     >
-      <h2 id={`${id}-titulo`} className="text-seccao font-forte">
+      <h2 id={`${id}-titulo`} className="font-seccao text-seccao">
         {titulo}
       </h2>
       {children}
@@ -106,11 +112,11 @@ function InterruptorDemonstracao({
 const ESPACO_INQUEBRAVEL = "\u00a0";
 
 const TAMANHOS = [
-  { classe: "text-destaque font-titulo", nome: "Destaque, 34 px, Playfair" },
-  { classe: "text-titulo font-titulo", nome: "Título, 27 px, Playfair" },
-  { classe: "text-seccao font-forte", nome: "Secção, 21 px, Source Sans 3" },
-  { classe: "text-corpo", nome: "Corpo, 17 px, Source Sans 3" },
-  { classe: "text-nota", nome: "Nota, 14 px, Source Sans 3" },
+  { classe: "text-destaque font-titulo", nome: "Destaque, 34 px, Bricolage Grotesque" },
+  { classe: "text-titulo font-titulo", nome: "Título, 27 px, Bricolage Grotesque" },
+  { classe: "text-seccao font-seccao", nome: "Secção, 21 px, Bricolage Grotesque" },
+  { classe: "text-corpo", nome: "Corpo, 17 px, DM Sans" },
+  { classe: "text-nota", nome: "Nota, 14 px, DM Sans" },
 ];
 
 /*
@@ -133,10 +139,17 @@ const PALETA = [
   { nome: "erro-creme", classe: "superficie-creme bg-erro" },
 ];
 
+/*
+ * As cinco superfícies. Cada amostra leva o Botão dourado, normal e
+ * desativado: é a forma de o dourado (e o seu anel de foco, apagado ou não)
+ * aparecer nas cinco, incluindo o painel, que não tem outra secção sua.
+ */
 const AMBITOS = [
   { classe: "superficie-escura", nome: "Superfície escura" },
   { classe: "superficie-painel", nome: "Superfície painel" },
   { classe: "superficie-creme", nome: "Superfície creme" },
+  { classe: "superficie-papel", nome: "Superfície papel" },
+  { classe: "superficie-destaque", nome: "Superfície destaque" },
 ];
 
 const VARIANTES: {
@@ -151,6 +164,7 @@ const VARIANTES: {
     texto: "Guardar alterações",
     aTrabalhar: "A guardar…",
   },
+  { variante: "dourado", nome: "Dourado", texto: "Entrar", aTrabalhar: "A entrar…" },
   { variante: "secundario", nome: "Secundário", texto: "Cancelar", aTrabalhar: "A cancelar…" },
   { variante: "discreto", nome: "Discreto", texto: "Voltar", aTrabalhar: "A voltar…" },
   {
@@ -192,7 +206,7 @@ function BarraDeChips({ nome }: { nome: string }): ReactElement {
   );
 }
 
-/** Os dezasseis botões: quatro variantes vezes quatro estados. */
+/** Os vinte botões: cinco variantes vezes quatro estados. */
 function GrelhaDeBotoes(): ReactElement {
   return (
     <div className="flex flex-col gap-6">
@@ -342,7 +356,7 @@ export function PaginaDemonstracao(): ReactElement {
       <header className="flex flex-col gap-2">
         <h1 className="font-titulo text-destaque">Componentes do Bar da Tomazia</h1>
         <p className="text-corpo text-texto-suave">
-          Os sete componentes base, com todos os estados. Pensada para 390 × 844.
+          Os componentes base, com todos os estados, nas cinco superfícies. Pensada para 390 × 844.
         </p>
       </header>
 
@@ -402,6 +416,13 @@ export function PaginaDemonstracao(): ReactElement {
                   <div className="h-8 w-8 rounded-pequeno border border-contorno" />
                 </div>
                 <p className="text-nota text-texto-suave">Ação, perigo e contorno</p>
+                <div className="flex flex-wrap gap-2">
+                  <Botao variante="dourado">Entrar</Botao>
+                  <Botao variante="dourado" desativado>
+                    Entrar
+                  </Botao>
+                </div>
+                <p className="text-nota text-texto-suave">Botão dourado, normal e desativado</p>
               </div>
             ))}
           </div>
@@ -519,8 +540,8 @@ export function PaginaDemonstracao(): ReactElement {
         <Seccao id="sobre-creme" titulo="Sobre creme">
           <p className="text-nota text-texto-suave">
             A secção que interessa olhar primeiro: os mesmos componentes dentro de um cartão creme.
-            Se algum dourado tivesse escapado, era aqui que se via — e o limite do botão ficaria a
-            1,72 contra o fundo.
+            O único dourado que pode aparecer aqui é o do botão «Entrar», sempre com a borda
+            bordô-noite: sem ela, o limite do botão ficaria a 1,72 contra o fundo.
           </p>
 
           <div className="superficie-creme flex flex-col gap-8 rounded-cartao border border-contorno-superficie p-4">
@@ -538,11 +559,43 @@ export function PaginaDemonstracao(): ReactElement {
           </p>
         </Seccao>
 
+        <Seccao id="sobre-papel" titulo="Superfície papel">
+          <p className="text-nota text-texto-suave">
+            Os mesmos controlos num Cartão papel. Como no creme, o botão dourado leva a borda
+            bordô-noite.
+          </p>
+
+          <Cartao tom="papel">
+            <div className="flex flex-col gap-8">
+              <GrelhaDeBotoes />
+              <GrelhaDeCampos />
+              <BarraDeChips nome="Categorias sobre papel" />
+              <ListaDeInterruptores />
+            </div>
+          </Cartao>
+        </Seccao>
+
+        <Seccao id="sobre-destaque" titulo="Superfície destaque">
+          <p className="text-nota text-texto-suave">
+            Os mesmos controlos num Cartão de destaque, com o círculo de decoração no canto. Aqui o
+            anel de foco é creme e não dourado.
+          </p>
+
+          <Cartao tom="destaque">
+            <div className="flex flex-col gap-8">
+              <GrelhaDeBotoes />
+              <GrelhaDeCampos />
+              <BarraDeChips nome="Categorias sobre destaque" />
+              <ListaDeInterruptores />
+            </div>
+          </Cartao>
+        </Seccao>
+
         <Seccao id="foco" titulo="Foco">
           <p className="text-corpo">
             Percorre esta página com Tab: todos os controlos têm de mostrar um anel visível. Dentro
-            do cartão creme o anel é bordô, não dourado — o dourado sobre creme dá 1,72 e não se
-            veria.
+            do creme e do papel o anel é bordô, não dourado — o dourado sobre creme dá 1,72 e não se
+            veria. No destaque o anel é creme.
           </p>
         </Seccao>
       </div>

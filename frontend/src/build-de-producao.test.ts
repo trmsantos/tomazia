@@ -118,7 +118,7 @@ describe("as fontes sobrevivem ao build", () => {
     const naOrigem = readdirSync(PASTA_PUBLICA_DAS_FONTES)
       .filter((nome) => nome.endsWith(".woff2"))
       .sort();
-    expect(naOrigem.length, "public/fontes/ tem de ter as três faces").toBe(3);
+    expect(naOrigem.length, "public/fontes/ tem de ter as duas faces").toBe(2);
 
     const pastaNoBuild = join(PASTA_DIST, "fontes");
     expect(existsSync(pastaNoBuild), "o build não levou a pasta das fontes para dist/").toBe(true);
@@ -151,8 +151,8 @@ describe("as fontes sobrevivem ao build", () => {
 
     // Guarda da regra 10: sem nenhum `@font-face` no CSS construído, o
     // ciclo acima não faz uma única asserção e o teste passa sem ter visto
-    // nada. Três faces, as da secção 4 de docs/ecras/F3-01.md.
-    expect(faces, "o CSS construído tem de trazer as três faces").toBe(3);
+    // nada. Duas faces, as da secção 3 de docs/ecras/R-01.md.
+    expect(faces, "o CSS construído tem de trazer as duas faces").toBe(2);
   });
 });
 

@@ -894,8 +894,9 @@ test.describe("as cinco formas da data, desenhadas (5.2)", () => {
    *
    * A data é a coisa maior do cartão, maior do que o nome do evento — é o
    * que responde à única pergunta que se faz a uma lista de eventos num bar
-   * (1, ponto 2). E o nome **não** é Playfair: duas Playfairs a 13 px de
-   * distância competem uma com a outra (4.2).
+   * (1, ponto 2). E o nome **não** é Bricolage: dois títulos na mesma letra
+   * a 13 px de distância competem um com o outro (4.2). R-01 / ADR 0023: a
+   * Playfair saiu, e a letra dos títulos passou a ser a Bricolage Grotesque.
    *
    * As três linhas vivem dentro do mesmo `<h3>` (4.3), e isso também se
    * afirma aqui: com o `<h3>` a conter só o nome, quem salta de cabeçalho
@@ -905,7 +906,7 @@ test.describe("as cinco formas da data, desenhadas (5.2)", () => {
    * 21 px) e os contrastes. Os primeiros são a escala do Tailwind e têm o
    * seu teste; os segundos medem-se nas capturas de 12.4.
    */
-  test("dentro do `<h3>`: a data é maior do que o nome, e o nome não é Playfair", async ({
+  test("dentro do `<h3>`: a data é maior do que o nome, e o nome não é Bricolage", async ({
     page,
   }) => {
     await abrirComFixtura(page, TRES_EVENTOS);
@@ -939,16 +940,22 @@ test.describe("as cinco formas da data, desenhadas (5.2)", () => {
       "o nome do evento é maior do que a linha do dia e da hora (4.2)",
     ).toBeGreaterThan(hora.tamanho);
 
-    expect(
-      nome.familia,
-      `a data e o nome saíram os dois em «${nome.familia}»: duas Playfairs no mesmo ` +
-        "cartão competem (4.2)",
-    ).not.toBe(data.familia);
+    // R-01 / ADR 0023: a letra dos títulos passou da Playfair para a
+    // Bricolage Grotesque. A data é título (`font-titulo`); o nome é texto.
     expect(
       data.familia,
-      "e a que é Playfair é a **data**, como o `<h2>` da secção — sem isto, as duas " +
-        "famílias podiam estar trocadas e a asserção de cima passava na mesma",
-    ).toMatch(/playfair/i);
+      `a data saiu em «${data.familia}»: é a letra dos títulos, como o \`<h2>\` da ` +
+        "secção, e tem de ser a Bricolage Grotesque",
+    ).toMatch(/bricolage/i);
+    expect(
+      nome.familia,
+      `a data e o nome saíram os dois em «${nome.familia}»: duas Bricolages no mesmo ` +
+        "cartão competem (4.2)",
+    ).not.toMatch(/bricolage/i);
+    expect(
+      nome.familia,
+      `o nome saiu em «${nome.familia}»: é texto e tem de ser a DM Sans, não uma letra de sistema`,
+    ).toMatch(/DM Sans/i);
   });
 });
 

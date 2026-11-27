@@ -277,6 +277,39 @@ describe("Folha", () => {
     expect(document.body.className).toBe(classesAntes);
   });
 
+  it("o painel tem o raio grande no topo e, a partir de 1024 px, em toda a volta", () => {
+    // R-01 / ADR 0023 (6.5 de docs/ecras/R-01.md): só os raios mudam. Era
+    // `rounded-t-cartao` e `lg:rounded-cartao`.
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={vi.fn()}>
+        <p>Rede: Bar da Tomazia</p>
+      </Folha>,
+    );
+
+    const painel = dialogoNoDocumento().firstElementChild;
+    expect(painel, "o <dialog> não tem o painel por dentro").not.toBeNull();
+    const classes = (painel?.className ?? "").split(/\s+/);
+    expect(classes).toContain("superficie-painel");
+    expect(classes).toContain("rounded-t-grande");
+    expect(classes).toContain("lg:rounded-grande");
+    expect(classes.filter((classe) => /rounded(-t)?-cartao$/.test(classe))).toEqual([]);
+  });
+
+  it("o título é `font-titulo`, sem peso ao lado", () => {
+    // R-01 / ADR 0023: `font-titulo` traz a Bricolage e o 800; um
+    // `font-normal|medio|forte` ao lado pedia outro peso (secção 3).
+    render(
+      <Folha aberta titulo="WiFi" aoFechar={vi.fn()}>
+        <p>Rede: Bar da Tomazia</p>
+      </Folha>,
+    );
+
+    const classes = screen.getByRole("heading", { name: "WiFi" }).className.split(/\s+/);
+    expect(classes).toContain("font-titulo");
+    expect(classes).toContain("text-titulo");
+    expect(classes.filter((classe) => /^font-(normal|medio|forte)$/.test(classe))).toEqual([]);
+  });
+
   it("nada dentro da Folha tem style inline", () => {
     const { container } = render(
       <Folha aberta titulo="Eliminar produto" aoFechar={vi.fn()}>

@@ -64,13 +64,25 @@ describe("src/styles/global.css", () => {
     expect(global()).toMatch(/prefers-reduced-motion:\s*reduce/);
   });
 
-  it("define as três classes de superfície, e só elas pintam o fundo", () => {
+  it("define as cinco classes de superfície, e só elas pintam o fundo", () => {
+    // R-01 / ADR 0023: o papel e o destaque juntam-se às três da F3-01, na
+    // mesma regra que pinta o fundo — uma classe de âmbito fora dela trocava
+    // os papéis sem pintar o fundo que eles pressupõem.
     const texto = global();
+    const regra =
+      /((?:\.superficie-[a-z]+\s*,\s*)*\.superficie-[a-z]+)\s*\{\s*background-color:\s*var\(--cor-fundo-local\)/.exec(
+        texto,
+      );
+    expect(regra, "não encontrei a regra das superfícies que pinta o fundo").not.toBeNull();
+    const seletores = (regra?.[1] ?? "").split(",").map((seletor) => seletor.trim());
 
-    for (const classe of [".superficie-escura", ".superficie-painel", ".superficie-creme"]) {
-      expect(texto, `falta ${classe}`).toContain(classe);
-    }
-    expect(texto).toMatch(/background-color:\s*var\(--cor-fundo-local\)/);
+    expect(seletores).toEqual([
+      ".superficie-escura",
+      ".superficie-painel",
+      ".superficie-creme",
+      ".superficie-papel",
+      ".superficie-destaque",
+    ]);
   });
 
   it("o corpo usa os tokens de tipografia, não valores escritos à mão", () => {
@@ -78,6 +90,22 @@ describe("src/styles/global.css", () => {
 
     expect(texto).toMatch(/var\(--fonte-corpo\)/);
     expect(texto).toMatch(/var\(--cor-texto\)/);
+  });
+
+  it("o font-titulo e o font-seccao trazem o peso e o espaçamento da Bricolage", () => {
+    // R-01, secção 3: as duas classes trazem o peso consigo e nunca se
+    // juntam a `font-normal|medio|forte`. A Bricolage só existe entre 700 e
+    // 800; um peso pedido de fora saía noutro sem dar erro.
+    const texto = global();
+
+    expect(texto).toMatch(/\.font-titulo\s*\{[^}]*font-weight:\s*var\(--peso-titulo\)[^}]*\}/);
+    expect(texto).toMatch(
+      /\.font-titulo\s*\{[^}]*letter-spacing:\s*var\(--espacejamento-titulo\)[^}]*\}/,
+    );
+    expect(texto).toMatch(/\.font-seccao\s*\{[^}]*font-weight:\s*var\(--peso-seccao\)[^}]*\}/);
+    expect(texto).toMatch(
+      /\.font-seccao\s*\{[^}]*letter-spacing:\s*var\(--espacejamento-titulo\)[^}]*\}/,
+    );
   });
 });
 

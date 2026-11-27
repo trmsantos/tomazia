@@ -10,12 +10,15 @@ import { juntar } from "./juntar";
  * ligações e o teclado funciona sem uma linha de código nossa.
  *
  * O estado ativo não vem só pela cor — o `aria-current` di-lo, e o
- * preenchimento cheio distingue-o de todos os outros. É o segundo dos três
- * usos do dourado, e só sobrevive porque a barra de chips vive sobre bordô;
- * dentro de um cartão creme, o `bg-acao` passa a ser a cor de marca sozinho.
+ * preenchimento cheio distingue-o de todos os outros. Nos fundos escuros o
+ * `bg-acao` é dourado (um dos três usos lá: ação principal, chip ativo e
+ * foco); no creme e no papel é a cor de marca escura, porque aí o dourado
+ * só aparece no Botão `dourado` (R-01 / ADR 0023).
  *
- * Quatro px de canto, não cápsulas: é o que a especificação diz, e o
- * `rounded-cheio` é só do Interruptor.
+ * Cápsula (`rounded-cheio`), como o Interruptor (R-01 / ADR 0023). Os dois
+ * estados têm a mesma caixa — `border` e `font-medio` nos dois — para a barra
+ * não saltar ao mudar de chip; o ativo leva a borda da cor do preenchimento.
+ * O `bg-controlo` do inativo é papel no creme e transparente nos escuros.
  */
 export type PropriedadesDoChip = {
   /** "#cafes" — a secção da página para onde o chip leva. */
@@ -31,9 +34,9 @@ export function Chip({ href, ativo = false, children }: PropriedadesDoChip): Rea
       aria-current={ativo ? "true" : undefined}
       className={juntar(
         "inline-flex items-center justify-center whitespace-nowrap",
-        "min-h-toque min-w-toque px-4 rounded-pequeno",
-        "text-nota font-forte",
-        ativo ? "bg-acao text-sobre-acao" : "border border-contorno text-texto",
+        "min-h-toque min-w-toque px-4 rounded-cheio border",
+        "text-nota font-medio",
+        ativo ? "border-acao bg-acao text-sobre-acao" : "border-contorno bg-controlo text-texto",
       )}
     >
       {children}
