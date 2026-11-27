@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # pedir-deploy.sh — pede ao cPanel, pela UAPI, para implantar a branch
-# `deploy` (F1-04, infra).
+# `deploy` (F1-04, infra; corrigido na F1-05).
 #
-# Corre em `deploy.yml`, depois do merge na `main`. A UAPI chamada é
-# `VersionControlDeployment::create`: cria uma tarefa de implantação para o
-# repositório Git já ligado no cPanel (Git Version Control), que faz o pull
-# `--ff-only` da branch `deploy` e corre as tarefas de `.cpanel.yml` — entre
-# elas, o próprio `deploy/deploy.sh` no servidor. O caminho do repositório é
-# construído a partir de `TOMAZIA_CPANEL_USER` pela convenção documentada em
-# `docs/ESPECIFICACAO.md` (`/home/<utilizador>/repositories/tomazia`); é um
-# ponto de extensão a confirmar com o Tomás na F1-05, quando o repositório
-# for mesmo ligado no cPanel — se o caminho real for outro, este script tem
-# de ser ajustado (ou de passar a ler outra variável de ambiente).
+# Corre em `deploy.yml`, depois do merge na `main`. Faz DOIS pedidos à UAPI,
+# por esta ordem, e só pede o segundo se o primeiro tiver sido aceite:
+#
+#   1. `VersionControl::update` com `repository_root` e `branch=deploy`:
+#      é este que faz o pull `--ff-only` da branch `deploy` do GitHub para o
+#      clone do servidor (documentação do cPanel: ao indicar `branch`, o
+#      sistema puxa as alterações do remoto).
+#   2. `VersionControlDeployment::create`: cria a tarefa de implantação do
+#      que JÁ está no clone (o HEAD local) e corre as tarefas de
+#      `.cpanel.yml` — entre elas, o próprio `deploy/deploy.sh` no servidor.
+#      NÃO faz pull: sem o passo 1, implantaria sempre a versão antiga.
+#
+# O caminho do repositório é construído a partir de `TOMAZIA_CPANEL_USER`
+# pela convenção documentada em `docs/ESPECIFICACAO.md`
+# (`/home/<utilizador>/repositories/tomazia`); é um ponto de extensão a
+# confirmar com o Tomás na F1-05, quando o repositório for mesmo ligado no
+# cPanel — se o caminho real for outro, este script tem de ser ajustado (ou
+# de passar a ler outra variável de ambiente).
 #
 # Sem argumentos de linha de comandos: tudo entra por variáveis de
 # ambiente, para o token nunca aparecer numa linha de comandos nos logs do
@@ -78,13 +86,20 @@ case "$TOMAZIA_CPANEL_BASE_URL" in
 esac
 
 repositorio="/home/${TOMAZIA_CPANEL_USER}/repositories/tomazia"
-url="${TOMAZIA_CPANEL_BASE_URL%/}/execute/VersionControlDeployment/create"
+base="${TOMAZIA_CPANEL_BASE_URL%/}"
 
 corpo_tmp=$(mktemp)
 # shellcheck disable=SC2064 # expandir agora o caminho, não a variável no momento do trap
 trap "rm -f '${corpo_tmp}'" EXIT
 
 # --- O pedido --------------------------------------------------------------
+#
+# chamar_uapi <etiqueta> <url> <texto de recusa> [parâmetro=valor ...]
+#
+# Partilhada pelo `update` e pelo `create`: o mesmo tratamento nos dois. Em
+# qualquer falha escreve a mensagem em stderr e SAI com 1 (corre no shell
+# principal, não numa subshell), por isso quem a chama nunca avança depois
+# de uma falha.
 #
 # O estado do curl é capturado à mão (regra 10): nunca `if curl ...; then`,
 # porque isso escondia qual dos dois falhou — a ligação, ou o próprio
@@ -100,60 +115,85 @@ trap "rm -f '${corpo_tmp}'" EXIT
 # `curl`, nunca para um ficheiro em disco, e nunca aparece no argv do
 # processo `curl` (visível, de outra forma, a qualquer coisa que consiga
 # listar processos nesta máquina enquanto o pedido está em curso).
-set +e
-codigo_http=$(
-  printf 'header = "Authorization: cpanel %s:%s"\n' \
-    "$TOMAZIA_CPANEL_USER" "$TOMAZIA_CPANEL_TOKEN" \
-    | curl -sS \
-      --connect-timeout 10 \
-      --max-time 15 \
-      --proto "=${protocolo_permitido}" \
-      --config - \
-      -o "$corpo_tmp" \
-      -w '%{http_code}' \
-      --data-urlencode "repository_root=${repositorio}" \
-      "$url"
-)
-estado_curl=$?
-set -e
+chamar_uapi() {
+  local etiqueta="$1" url="$2" texto_recusa="$3"
+  shift 3
+  local -a parametros=()
+  local p
+  for p in "$@"; do
+    parametros+=(--data-urlencode "$p")
+  done
 
-if [ "$estado_curl" -ne 0 ]; then
-  echo "pedir-deploy.sh: erro de rede ao contactar a UAPI do cPanel (curl saiu com o código ${estado_curl})." >&2
-  exit 1
-fi
+  local codigo_http estado_curl
+  : >"$corpo_tmp"
+  set +e
+  codigo_http=$(
+    printf 'header = "Authorization: cpanel %s:%s"\n' \
+      "$TOMAZIA_CPANEL_USER" "$TOMAZIA_CPANEL_TOKEN" \
+      | curl -sS \
+        --connect-timeout 10 \
+        --max-time 15 \
+        --proto "=${protocolo_permitido}" \
+        --config - \
+        -o "$corpo_tmp" \
+        -w '%{http_code}' \
+        "${parametros[@]}" \
+        "$url"
+  )
+  estado_curl=$?
+  set -e
 
-case "$codigo_http" in
-  2??) ;;
-  *)
-    echo "pedir-deploy.sh: a UAPI do cPanel respondeu com o código HTTP ${codigo_http}." >&2
+  if [ "$estado_curl" -ne 0 ]; then
+    echo "pedir-deploy.sh: erro de rede ao contactar a UAPI do cPanel em ${etiqueta} (curl saiu com o código ${estado_curl})." >&2
     exit 1
-    ;;
-esac
-
-# --- A leitura do corpo -----------------------------------------------------
-#
-# A UAPI responde sempre 200, mesmo quando falha: o que importa é o campo
-# `status` do JSON, nunca o código HTTP. O estado do jq é distinguido
-# explicitamente (regra 10): um erro de JSON é uma avaria (HTML de login,
-# corpo truncado, corpo vazio), nunca "sucesso silencioso".
-set +e
-status_bruto=$(jq -r '.status // empty' "$corpo_tmp" 2>/dev/null)
-estado_jq=$?
-set -e
-
-if [ "$estado_jq" -ne 0 ]; then
-  echo "pedir-deploy.sh: a resposta da UAPI não é JSON válido." >&2
-  exit 1
-fi
-
-if [ "$status_bruto" != "1" ]; then
-  mensagem=$(jq -r '(.errors // []) | map(tostring) | join("; ")' "$corpo_tmp" 2>/dev/null)
-  if [ -z "$mensagem" ]; then
-    mensagem="a UAPI devolveu status=${status_bruto:-ausente}."
   fi
-  echo "pedir-deploy.sh: pedido de deploy recusado pelo cPanel: ${mensagem}" >&2
-  exit 1
-fi
+
+  case "$codigo_http" in
+    2??) ;;
+    *)
+      echo "pedir-deploy.sh: a UAPI do cPanel respondeu com o código HTTP ${codigo_http} em ${etiqueta}." >&2
+      exit 1
+      ;;
+  esac
+
+  # A UAPI responde sempre 200, mesmo quando falha: o que importa é o campo
+  # `status` do JSON, nunca o código HTTP. O estado do jq é distinguido
+  # explicitamente (regra 10): um erro de JSON é uma avaria (HTML de login,
+  # corpo truncado, corpo vazio), nunca "sucesso silencioso".
+  local status_bruto estado_jq mensagem
+  set +e
+  status_bruto=$(jq -r '.status // empty' "$corpo_tmp" 2>/dev/null)
+  estado_jq=$?
+  set -e
+
+  if [ "$estado_jq" -ne 0 ]; then
+    echo "pedir-deploy.sh: a resposta da UAPI em ${etiqueta} não é JSON válido." >&2
+    exit 1
+  fi
+
+  if [ "$status_bruto" != "1" ]; then
+    mensagem=$(jq -r '(.errors // []) | map(tostring) | join("; ")' "$corpo_tmp" 2>/dev/null || true)
+    if [ -z "$mensagem" ]; then
+      mensagem="a UAPI devolveu status=${status_bruto:-ausente}."
+    fi
+    echo "pedir-deploy.sh: ${texto_recusa}: ${mensagem}" >&2
+    exit 1
+  fi
+}
+
+# 1. Puxar a branch `deploy` do GitHub para o clone do servidor.
+chamar_uapi "VersionControl/update" \
+  "${base}/execute/VersionControl/update" \
+  "a UAPI recusou o pull da branch deploy (a implantação não foi pedida)" \
+  "repository_root=${repositorio}" \
+  "branch=deploy"
+echo "pedir-deploy.sh: pull da branch deploy aceite pela UAPI do cPanel (status=1)."
+
+# 2. Só agora, com o clone atualizado, pedir a implantação.
+chamar_uapi "VersionControlDeployment/create" \
+  "${base}/execute/VersionControlDeployment/create" \
+  "pedido de deploy recusado pelo cPanel" \
+  "repository_root=${repositorio}"
 
 echo "pedir-deploy.sh: pedido de deploy aceite pela UAPI do cPanel (status=1)."
 exit 0
