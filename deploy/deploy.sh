@@ -20,8 +20,9 @@
 # $HOME/.tomazia-deploy.conf é a configuração do PRÓPRIO deploy.sh, nunca a
 # da app (`API/.env`): persiste fora do pacote sincronizado, precisamente
 # para sobreviver a cada deploy automático. É aqui que o Tomás aponta `WEB`
-# para `novo.<domínio>` durante a construção, e para `public_html` no corte
-# final (F5-02) — mudar o site de sítio passa a ser editar um ficheiro no
+# para a pasta do subdomínio durante a construção (a pasta chama-se
+# `~/novo.<domínio>`, mas o endereço é `new.<domínio>`), e para
+# `public_html` no corte final (F5-02) — mudar o site de sítio passa a ser editar um ficheiro no
 # servidor, nunca um commit.
 #
 # Ordem (provada pelos testes com o registo dos stubs): o trinco contra

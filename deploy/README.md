@@ -68,7 +68,7 @@ bloqueio de execução de scripts em `media/`, e o bloco do Passenger com
 1. **Environment `production`**, em Settings → Environments, com os
    segredos abaixo. Considerar exigir aprovação manual ("required
    reviewers") neste environment enquanto o site ainda está em
-   construção em `novo.<domínio>` — não é exigido por nenhum destes
+   construção em `new.<domínio>` — não é exigido por nenhum destes
    workflows, mas é uma rede extra barata.
 2. **Secrets no environment `production`:**
    - `TOMAZIA_CPANEL_BASE_URL` — base da UAPI do cPanel (ex.:
@@ -81,7 +81,7 @@ bloqueio de execução de scripts em `media/`, e o bloco do Passenger com
    - `TOMAZIA_CPANEL_TOKEN` — token da API do cPanel (nunca a password
      da conta).
    - `TOMAZIA_API_BASE_URL` — URL pública do site (ex.:
-     `https://novo.<domínio>`), usado por `verificar` (em `deploy.yml`)
+     `https://new.<domínio>`), usado por `verificar` (em `deploy.yml`)
      e por `saude.yml` para chamar `/api/health` e `/`. É secret, não
      placeholder, porque é um domínio real.
 3. **Regras de proteção de branch** para `main` e para `deploy` (branch
@@ -103,22 +103,56 @@ bloqueio de execução de scripts em `media/`, e o bloco do Passenger com
 Por esta ordem: cada passo depende do anterior. Os pontos de verificação
 existem para não se descobrir no fim que alguma coisa ficou para trás.
 
-**1. Subdomínio.** Criar `novo.<domínio>` enquanto o site PHP antigo
-continua no `public_html`. **Anotar o caminho da pasta que o cPanel cria**
-(algo como `/home/<utilizador>/novo.dominio.pt`) — é o valor do passo 5.
+> **Armadilhas que apareceram no primeiro deploy.** Ler antes de começar.
+>
+> - **"Share document root" desmarcado** ao criar o subdomínio (passo 1).
+>   Marcado, o subdomínio passa a servir o `public_html` — e o deploy, com
+>   `WEB` a apontar para lá, sincronizava o site novo por cima do PHP
+>   antigo, apagando o que não estivesse no build.
+> - **O ficheiro de ambiente da app (`.env`) vai em `~/tomazia_api/`,
+>   NUNCA na raiz do site.** Na raiz do site, sem a regra dos ficheiros
+>   escondidos do `htaccess.exemplo`, descarrega-se por
+>   `https://new.bardatomazia.pt/.env`, com o segredo de sessão lá
+>   dentro. Se lá esteve, mesmo que pouco tempo, gerar um segredo novo.
+> - **`~/.tomazia-deploy.conf` vai na pasta pessoal (`~/`), e o nome
+>   começa por ponto.** Sem o ponto, ou noutra pasta, o `deploy.sh` não o
+>   encontra e recusa ("ficheiro de configuração ... não existe").
+> - **Não carregar duas vezes em "Deploy HEAD Commit".** O cPanel não
+>   serializa os pedidos. O `deploy.sh` tem um trinco
+>   (`~/.tomazia-deploy.trinco`) e o segundo sai com "outro deploy está a
+>   correr" sem tocar em nada, mas o normal é esperar que o primeiro
+>   acabe. Se um deploy morrer à força, o seguinte recupera o trinco
+>   sozinho e di-lo na saída.
+> - **O repositório é público: clona-se por HTTPS, sem deploy key.** Não
+>   é preciso gerar chaves no cPanel nem pô-las no GitHub.
+
+**1. Subdomínio.** Criar `new.bardatomazia.pt` enquanto o site PHP antigo
+continua no `public_html`, com **"Share document root" desmarcado**. A
+pasta que o cPanel cria chama-se `novo.bardatomazia.pt` (o nome da pasta
+não é o do endereço: a pasta é `novo`, o endereço é `new`). **Anotar o
+caminho completo** (algo como `/home/<utilizador>/novo.bardatomazia.pt`) —
+é o valor do passo 5.
 
 **2. Setup Python App.** Python **3.11 ou superior**; *application root*
-`tomazia_api`; *application URL* o subdomínio do passo 1; *startup file*
+`tomazia_api`; *application URL*: escolher o subdomínio `new.bardatomazia.pt`
+na lista e escrever **`api`** na caixa do caminho, ao lado (a app é
+montada em `/api`, nunca na raiz do site); *startup file*
 `passenger_wsgi.py`. Cria `~/tomazia_api/` e o virtualenv em
 `~/virtualenv/tomazia_api/<versão>/`.
 
-**3. Deploy key.** Gerar o par de chaves no cPanel e pôr a **pública** no
-GitHub, em *Settings → Deploy keys* do repositório, **só com leitura**. É
-o que deixa o passo 4 clonar um repositório privado.
+O cPanel escreve o bloco do Passenger em **`WEB/api/.htaccess`** (uma
+pasta `api/` dentro da pasta do subdomínio, que só existe para isso), não
+no `.htaccess` da raiz. O deploy nunca apaga essa pasta nem esse ficheiro.
+É lá que se confirma a linha `PassengerFriendlyErrorPages Off` (ver o
+passo 7).
 
-**4. Git Version Control.** Clonar este repositório para
-`~/repositories/tomazia/`, na branch **`deploy`** — nunca na `main`. Essa
-branch já existe e já traz o pacote montado pelo CI.
+**3. Sem deploy key.** O repositório é público, por isso o passo 4 clona
+por HTTPS e não precisa de chave nenhuma.
+
+**4. Git Version Control.** Clonar
+`https://github.com/trmsantos/tomazia.git` para `~/repositories/tomazia/`,
+na branch **`deploy`** — nunca na `main`. Essa branch já existe e já traz
+o pacote montado pelo CI.
 
 > **Verificação.** `ls -a ~/repositories/tomazia/` tem de mostrar `api/`,
 > `frontend/`, `deploy/` e `.cpanel.yml`. Se faltar o `.cpanel.yml`, o
@@ -126,18 +160,20 @@ branch já existe e já traz o pacote montado pelo CI.
 > `include-hidden-files` do `upload-artifact` ter deixado de funcionar
 > numa subida de versão da ação.
 
-**5. `~/.tomazia-deploy.conf`**, uma linha, sem aspas:
+**5. `~/.tomazia-deploy.conf`** — na pasta pessoal, com o ponto no
+início do nome —, uma linha, sem aspas:
 
 ```
-WEB=/home/<utilizador>/novo.dominio.pt
+WEB=/home/<utilizador>/novo.bardatomazia.pt
 ```
 
-O caminho do passo 1. No corte final (F5-02) muda para `public_html`. É a
-configuração do `deploy.sh`, nunca a da app, e fica **fora** da pasta
+O caminho do passo 1 (a pasta, `novo`; não o endereço, `new`). No corte
+final (F5-02) muda para `public_html`. É a configuração do `deploy.sh`, nunca a da app, e fica **fora** da pasta
 sincronizada — por isso sobrevive a cada deploy.
 
-**6. Ficheiro de ambiente da app**, em `~/tomazia_api/`, copiado de
-`backend/.env.example` e preenchido à mão. O repositório nunca o escreve.
+**6. Ficheiro de ambiente da app**, em `~/tomazia_api/` — **nunca na
+pasta do site** —, copiado de `backend/.env.example` e preenchido à mão.
+O repositório nunca o escreve.
 O segredo de sessão gera-se no servidor:
 
 ```
@@ -151,9 +187,14 @@ A app **recusa arrancar** em produção com o segredo por omissão, com um
 valor com menos de 32 caracteres, ou com o placeholder do exemplo. É um
 guarda da F1-01, não um erro de configuração.
 
-**7. `.htaccess`** do subdomínio, à mão, a partir de
-`deploy/htaccess.exemplo`, com os `<...>` substituídos. O deploy nunca lhe
-toca.
+**7. `.htaccess`** da raiz do subdomínio, à mão, a partir de
+`deploy/htaccess.exemplo`, com os `<...>` substituídos — tudo menos o
+bloco do Passenger, que o cPanel já escreveu em `WEB/api/.htaccess` (passo
+2). Nesse, confirmar que está a linha `PassengerFriendlyErrorPages Off` e
+acrescentá-la se não estiver. O deploy nunca toca em nenhum dos dois.
+
+Sempre que o `htaccess.exemplo` mudar num PR, a alteração tem de ser
+colada à mão no `.htaccess` real: o deploy não o faz.
 
 **8. API Token do cPanel.** *Security → Manage API Tokens*. **Copiar no
 momento** — não volta a aparecer. Vai só para o secret
@@ -170,7 +211,7 @@ pasta desfaz as proteções todas dela.
 > `deploy.yml`: `porteiro` → `montar` → `publicar` → `pedir` →
 > `verificar`. Os três primeiros já passam sem servidor nenhum; o
 > **`pedir`** é o primeiro que fala com o cPanel, e é aí que se vê se os
-> secrets estão certos. No fim, `https://novo.<domínio>/api/health`
+> secrets estão certos. No fim, `https://new.<domínio>/api/health`
 > devolve `estado`, `versao` (igual ao SHA do commit) e `arrancado_em`. A
 > partir daqui o `saude.yml` fica verde sozinho, de hora a hora.
 

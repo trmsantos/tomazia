@@ -51,13 +51,13 @@ Frontend (em `frontend/`):
 ```bash
 npm ci
 npm run lint && npm run typecheck && npm test -- --run
-VITE_URL_PUBLICA=https://novo.bardatomazia.pt npm run build
+VITE_URL_PUBLICA=https://new.bardatomazia.pt npm run build
 npm run gerar-api      # tipos TypeScript a partir do OpenAPI do backend
 npx playwright test    # ponta a ponta
 ```
 
 O build exige `VITE_URL_PUBLICA` (o `og:image` é absoluto, F3-08) e falha sem
-ela. Até ao corte vale `https://novo.bardatomazia.pt`; na F5-02 passa a
+ela. Até ao corte vale `https://new.bardatomazia.pt`; na F5-02 passa a
 `https://bardatomazia.pt`, aqui e nos workflows. O servidor de
 desenvolvimento, o `npm test` e o Playwright não precisam dela.
 

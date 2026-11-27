@@ -217,9 +217,9 @@ jobs:
           # F3-08: o build de produção exige o endereço público (o og:image
           # é absoluto) e falha sem ele. Versionado aqui, junto do build que
           # o consome.
-          # F5-02 (corte): passa de https://novo.bardatomazia.pt para
+          # F5-02 (corte): passa de https://new.bardatomazia.pt para
           # https://bardatomazia.pt, aqui e no ci.yml.
-          VITE_URL_PUBLICA: https://novo.bardatomazia.pt
+          VITE_URL_PUBLICA: https://new.bardatomazia.pt
         run: npm run build
 
       # Este job NÃO monta o pacote: só constrói o frontend. Tudo o que

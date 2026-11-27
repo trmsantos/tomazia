@@ -31,9 +31,9 @@ O que este ficheiro prova (e o que não prova):
       um nome de versão fixo (o cPanel escolhe a versão).
 - `$HOME/.tomazia-deploy.conf` — o **ficheiro de configuração** do próprio
   `deploy.sh` (nunca o `.env` da app): uma linha `WEB=<caminho absoluto>`,
-  sem aspas. É aqui que o Tomás aponta `WEB` para `novo.<domínio>` durante
-  a construção e para `public_html` no corte final (F5-02) — persistente,
-  fora do pacote sincronizado, para sobreviver a cada deploy automático.
+  sem aspas. É aqui que o Tomás aponta `WEB` para a pasta do subdomínio
+  (`~/novo.<domínio>`, servida em `new.<domínio>`) durante a construção
+  e para `public_html` no corte final (F5-02) — persistente, fora do pacote sincronizado, para sobreviver a cada deploy automático.
 - `.env` (`API/.env`) é só a configuração da app. `deploy.sh` nunca lê o
   conteúdo, só confirma que existe — antes de mexer em nada, e outra vez
   depois das sincronizações, antes de tocar em `tmp/restart.txt`.

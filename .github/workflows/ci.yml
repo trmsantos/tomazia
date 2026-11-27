@@ -187,9 +187,9 @@ jobs:
           # é absoluto) e falha sem ele. Versionado aqui, e de propósito
           # SÓ neste passo, não no job: os testes do job provam que o build
           # falha sem a variável e não a podem herdar do ambiente.
-          # F5-02 (corte): passa de https://novo.bardatomazia.pt para
+          # F5-02 (corte): passa de https://new.bardatomazia.pt para
           # https://bardatomazia.pt, aqui e no deploy.yml.
-          VITE_URL_PUBLICA: https://novo.bardatomazia.pt
+          VITE_URL_PUBLICA: https://new.bardatomazia.pt
         run: npm run build
 
       # Monta o pacote de deploy a sério (o mesmo deploy/montar.sh que o
