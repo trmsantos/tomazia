@@ -22,8 +22,8 @@
 # para sobreviver a cada deploy automático. É aqui que o Tomás aponta `WEB`
 # para a pasta do subdomínio durante a construção (a pasta chama-se
 # `~/novo.<domínio>`, mas o endereço é `new.<domínio>`), e para
-# `public_html` no corte final (F5-02) — mudar o site de sítio passa a ser editar um ficheiro no
-# servidor, nunca um commit.
+# `public_html` no corte final (F5-02) — mudar o site de sítio passa a ser
+# editar um ficheiro no servidor, nunca um commit.
 #
 # Ordem (provada pelos testes com o registo dos stubs): o trinco contra
 # deploys em paralelo é o primeiro passo (ver `tomar_trinco`); `pip install`
@@ -40,8 +40,9 @@
 # not found" (código 127): o ambiente em que o cPanel da dominios.pt corre
 # o `.cpanel.yml` (CloudLinux, CageFS) não o tem. A sincronização é feita
 # pela função `sincronizar`, abaixo, só com `cp`, `mv`, `rm`, `mkdir`,
-# `rmdir` e `find` — ferramentas que existem em qualquer CageFS — e reproduz
-# a semântica dos três `rsync` que havia (ver o comentário da função). É
+# `rmdir` e `find` — ferramentas que se supõe existirem no CageFS (a
+# confirmar no terminal do cPanel com `command -v find cp mv rmdir mkdir`,
+# antes do primeiro deploy) — e reproduz a semântica dos três `rsync` que havia (ver o comentário da função). É
 # SEMPRE este caminho, mesmo onde o `rsync` exista: dois caminhos seriam
 # dois comportamentos para testar, e o que nunca corresse nos testes era o
 # que ia correr no servidor.
@@ -106,6 +107,13 @@ trap em_erro ERR
 # reutilizado por outro processo da mesma conta, o trinco parece vivo e o
 # deploy recusa. A mensagem diz o PID e o caminho do trinco, para se
 # confirmar com `ps` e apagar à mão. Recusar a mais é o lado seguro.
+#
+# Outro limite conhecido: um `kill -9` só mata o `deploy.sh`; os filhos (o
+# `pip install`, p. ex.) ficam órfãos e continuam a correr. O deploy
+# seguinte recupera o trinco e pode correr um segundo `pip` no mesmo
+# virtualenv, enquanto o órfão ainda escreve nele. Confirmar com `ps` que
+# não há `pip` antigo vivo antes de voltar a pedir um deploy após um
+# `kill -9`.
 # ---------------------------------------------------------------------------
 
 TRINCO="$HOME/.tomazia-deploy.trinco"
@@ -164,9 +172,9 @@ escrever_pid_no_trinco() {
 }
 
 tomar_trinco() {
-  local pid_dono estado abandonado pid_movido
+  local pid_dono estado abandonado pid_movido erro_mkdir
 
-  if mkdir -- "$TRINCO" 2>/dev/null; then
+  if erro_mkdir=$(mkdir -- "$TRINCO" 2>&1); then
     escrever_pid_no_trinco
     return 0
   fi
@@ -175,7 +183,7 @@ tomar_trinco() {
   # consegui criar por outra razão (avaria: permissões, um ficheiro com o
   # mesmo nome). Nunca a mesma mensagem.
   if [ -L "$TRINCO" ] || [ ! -d "$TRINCO" ]; then
-    echo "deploy.sh: não consegui criar o trinco ${TRINCO}, e o que lá está não é uma pasta de trinco (ou não há nada e o mkdir falhou por outra razão). Recuso continuar sem trinco. Nada foi alterado." >&2
+    echo "deploy.sh: não consegui criar o trinco ${TRINCO}, e o que lá está não é uma pasta de trinco (ou não há nada e o mkdir falhou por outra razão). O mkdir disse: ${erro_mkdir:-<nada>}. Recuso continuar sem trinco. Nada foi alterado." >&2
     exit 1
   fi
 
@@ -220,7 +228,16 @@ tomar_trinco() {
     fi
     exit 1
   fi
-  pid_movido=$(cat -- "$abandonado/pid" 2>/dev/null || true)
+  if ! pid_movido=$(cat -- "$abandonado/pid" 2>/dev/null); then
+    # Regra 10: "não consegui ler" não é "é de outro deploy". Tenta devolver
+    # a pasta ao sítio e recusa, com uma mensagem à parte.
+    if [ ! -e "$TRINCO" ] && mv -- "$abandonado" "$TRINCO"; then
+      echo "deploy.sh: não consegui ler o PID da pasta do trinco que acabei de mover (${abandonado}/pid), por isso não sei se era mesmo a do PID ${pid_dono}. Devolvi-a a ${TRINCO}. Recuso continuar. Nada foi alterado." >&2
+    else
+      echo "deploy.sh: não consegui ler o PID da pasta do trinco que acabei de mover, e não consegui devolvê-la: ficou em ${abandonado}. Recuso continuar. Nada foi alterado." >&2
+    fi
+    exit 1
+  fi
   if [ "$pid_movido" != "$pid_dono" ]; then
     if [ ! -e "$TRINCO" ] && mv -- "$abandonado" "$TRINCO"; then
       echo "deploy.sh: outro deploy está a correr: recuperou o trinco abandonado primeiro (PID ${pid_movido}). Devolvi-lhe o trinco; esta corrida termina aqui, sem tocar em nada." >&2

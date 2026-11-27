@@ -82,6 +82,7 @@ def _recusado(caminho: str) -> bool:
         "/media/.htaccess",
         "/media/2026/.escondido/foto.webp",
         "/api/.env",
+        "/api/.htaccess",
         "/.tomazia-sinc.123.index.html",
         # As armadilhas da exceção:
         "/.well-known/.env",

@@ -123,8 +123,23 @@ existem para não se descobrir no fim que alguma coisa ficou para trás.
 >   correr" sem tocar em nada, mas o normal é esperar que o primeiro
 >   acabe. Se um deploy morrer à força, o seguinte recupera o trinco
 >   sozinho e di-lo na saída.
+> - **Um `kill -9` deixa os filhos órfãos.** Se um deploy for morto à
+>   força, o `pip install` que ele lançou pode continuar a correr. O deploy
+>   seguinte recupera o trinco e pode correr um segundo `pip` no mesmo
+>   virtualenv. Antes de voltar a pedir, confirmar com `ps -u $USER` que
+>   não há nenhum `pip` antigo vivo.
 > - **O repositório é público: clona-se por HTTPS, sem deploy key.** Não
 >   é preciso gerar chaves no cPanel nem pô-las no GitHub.
+
+**0. Ferramentas do CageFS.** O `deploy.sh` supõe que existem; confirmar
+no terminal do cPanel, antes do primeiro deploy:
+
+```
+command -v find cp mv rmdir mkdir
+```
+
+Tem de imprimir um caminho para cada uma das cinco. Se faltar alguma, o
+deploy falha no servidor, não nos testes.
 
 **1. Subdomínio.** Criar `new.bardatomazia.pt` enquanto o site PHP antigo
 continua no `public_html`, com **"Share document root" desmarcado**. A

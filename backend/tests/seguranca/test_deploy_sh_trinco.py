@@ -278,9 +278,48 @@ def test_trinco_que_nao_se_consegue_criar_e_avaria_e_nao_ocupado(
 
     assert resultado.returncode != 0
     assert "não consegui criar o trinco" in _mensagem(resultado), _mensagem(resultado)
+    assert "O mkdir disse: mkdir:" in _mensagem(resultado), (
+        "A avaria tem de mostrar o stderr do mkdir:\n" + _mensagem(resultado)
+    )
     assert OCUPADO not in _mensagem(resultado)
     _assert_nada_tocado(instalacao, web_antes)
     assert _ler(_trinco(instalacao)) == "não sou um trinco\n"
+
+
+def test_pid_da_pasta_movida_ilegivel_nao_e_tratado_como_outro_deploy(
+    tmp_path: Path,
+) -> None:
+    """Um `cat` que falha só na pasta `.abandonado.*` simula "não consegui ler o PID movido"."""
+    instalacao = _preparar_instalacao_valida(tmp_path)
+    morto = _pid_morto()
+    _trinco(instalacao).mkdir()
+    (_trinco(instalacao) / "pid").write_text(f"{morto}\n", encoding="utf-8")
+    stub_bin = tmp_path / "stub-cat"
+    stub_bin.mkdir()
+    _escrever_stub(
+        stub_bin / "cat",
+        "#!/usr/bin/env bash\n"
+        'case "$*" in *.abandonado.*) echo "cat stub: a falhar" >&2; exit 1 ;; esac\n'
+        'exec /bin/cat "$@"\n',
+    )
+    web_antes = _instantaneo(instalacao.web)
+
+    resultado = _correr_deploy(
+        instalacao,
+        ambiente_extra={"PATH": f"{stub_bin}:{instalacao.ambiente['PATH']}"},
+    )
+
+    assert resultado.returncode != 0
+    assert "não consegui ler o PID da pasta do trinco" in _mensagem(resultado), (
+        _mensagem(resultado)
+    )
+    assert OCUPADO not in _mensagem(resultado), (
+        "Um PID ilegível foi tratado como 'outro deploy está a correr' — regra 10."
+    )
+    _assert_nada_tocado(instalacao, web_antes)
+    assert _ler(_trinco(instalacao) / "pid") == f"{morto}\n", (
+        "O trinco devia ter sido devolvido ao sítio."
+    )
 
 
 @pytest.mark.skipif(

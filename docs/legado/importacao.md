@@ -532,7 +532,7 @@ o cartão "Bebidas" tem de trazer os produtos dos dois `tipo` antigos juntos.
 
 ### 5.5 A olho, no site
 
-Abre o site novo (`novo.<domínio>`, o endereço da F1-05) na ementa e confirma:
+Abre o site novo (`new.<domínio>`, o endereço da F1-05) na ementa e confirma:
 
 - **onze cartões**, pela ordem da tabela acima, com um chip por cartão no topo;
 - o cartão **Bebidas** com os produtos dos dois `tipo` antigos;
