@@ -62,15 +62,35 @@ describe("Chip de categoria", () => {
     expect(screen.getByRole("link")).not.toHaveAttribute("aria-current");
   });
 
-  it("os chips não são cápsulas: 4 px de canto, 44 px de alvo", () => {
-    // A especificação diz 4 px (`rounded-pequeno`). `rounded-cheio` é só
-    // para o Interruptor.
+  it("os chips são cápsulas: rounded-cheio, 44 px de alvo", () => {
+    // R-01 / ADR 0023: eram 4 px (`rounded-pequeno`); agora o Chip e o
+    // Interruptor são as duas cápsulas.
     render(<Chip href="#cafes">Cafés</Chip>);
 
     const chip = screen.getByRole("link");
-    expect(chip.className).toContain("rounded-pequeno");
-    expect(chip.className).not.toContain("rounded-cheio");
+    expect(chip.className).toContain("rounded-cheio");
+    expect(chip.className).not.toContain("rounded-pequeno");
     expect(chip.className).toContain("min-h-toque");
+  });
+
+  it("ativo e inativo têm o mesmo peso e a mesma caixa: a barra não salta", () => {
+    // R-01 / ADR 0023: `font-medio` nos dois e `border` nos dois.
+    const { rerender } = render(
+      <Chip href="#cafes" ativo>
+        Cafés
+      </Chip>,
+    );
+    const ativo = screen.getByRole("link").className.split(/\s+/);
+
+    rerender(<Chip href="#cafes">Cafés</Chip>);
+    const inativo = screen.getByRole("link").className.split(/\s+/);
+
+    const pesos = (classes: string[]): string[] => classes.filter((c) => c.startsWith("font-"));
+    expect(pesos(ativo)).toEqual(["font-medio"]);
+    expect(pesos(inativo)).toEqual(pesos(ativo));
+    expect(ativo).toContain("border");
+    expect(inativo).toContain("border");
+    expect(ativo).toContain("border-acao");
   });
 
   it("ativo e inativo pegam pelos papéis, e nenhum escreve uma cor", () => {
@@ -86,6 +106,7 @@ describe("Chip de categoria", () => {
     rerender(<Chip href="#cafes">Cafés</Chip>);
     const inativo = screen.getByRole("link").className;
     expect(inativo).toContain("border-contorno");
+    expect(inativo).toContain("bg-controlo"); // R-01 / ADR 0023
     expect(inativo).not.toContain("bg-acao");
   });
 

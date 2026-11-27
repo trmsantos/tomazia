@@ -19,7 +19,8 @@ import { juntar } from "./juntar";
  * **O carril nunca é dourado.** O dourado tem três usos e este não é um
  * deles; e um carril `bg-acao` dentro de um cartão creme ficava a 1,72 contra
  * o fundo. Ligado é o carril cheio em `bg-texto` com o manípulo em `bg-fundo`,
- * que se lê nos dois âmbitos. O estado também não vem só da cor: a posição do
+ * que se lê nos dois âmbitos. No R-01 / ADR 0023 só mudou a letra do rótulo;
+ * o carril fica como estava, em cápsula. O estado também não vem só da cor: a posição do
  * manípulo e o carril cheio ou vazio chegam sozinhos.
  */
 export type PropriedadesDoInterruptor = {

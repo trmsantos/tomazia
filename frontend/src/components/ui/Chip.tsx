@@ -14,8 +14,10 @@ import { juntar } from "./juntar";
  * usos do dourado, e só sobrevive porque a barra de chips vive sobre bordô;
  * dentro de um cartão creme, o `bg-acao` passa a ser a cor de marca sozinho.
  *
- * Quatro px de canto, não cápsulas: é o que a especificação diz, e o
- * `rounded-cheio` é só do Interruptor.
+ * Cápsula (`rounded-cheio`), como o Interruptor (R-01 / ADR 0023). Os dois
+ * estados têm a mesma caixa — `border` e `font-medio` nos dois — para a barra
+ * não saltar ao mudar de chip; o ativo leva a borda da cor do preenchimento.
+ * O `bg-controlo` do inativo é papel no creme e transparente nos escuros.
  */
 export type PropriedadesDoChip = {
   /** "#cafes" — a secção da página para onde o chip leva. */
@@ -31,9 +33,9 @@ export function Chip({ href, ativo = false, children }: PropriedadesDoChip): Rea
       aria-current={ativo ? "true" : undefined}
       className={juntar(
         "inline-flex items-center justify-center whitespace-nowrap",
-        "min-h-toque min-w-toque px-4 rounded-pequeno",
-        "text-nota font-forte",
-        ativo ? "bg-acao text-sobre-acao" : "border border-contorno text-texto",
+        "min-h-toque min-w-toque px-4 rounded-cheio border",
+        "text-nota font-medio",
+        ativo ? "border-acao bg-acao text-sobre-acao" : "border-contorno bg-controlo text-texto",
       )}
     >
       {children}
